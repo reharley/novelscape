@@ -1,10 +1,14 @@
 import axios from 'axios';
 import cors from 'cors';
+import DOMPurify from 'dompurify';
 import dotenv from 'dotenv';
 import express from 'express';
 import fs from 'fs-extra';
 import { glob } from 'glob';
+import { JSDOM } from 'jsdom';
 import path from 'path';
+const { window } = new JSDOM('<!DOCTYPE html>');
+const domPurify = DOMPurify(window);
 
 dotenv.config();
 
@@ -59,6 +63,9 @@ app.get('/search', async (req, res) => {
   try {
     const response = await axios.get('https://civitai.com/api/v1/models', {
       params: { query },
+    });
+    response.data.items.forEach((item: any) => {
+      item.description = domPurify.sanitize(item.description);
     });
 
     res.json(response.data);
