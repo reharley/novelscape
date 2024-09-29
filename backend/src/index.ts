@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import express from 'express';
 import fs from 'fs-extra';
+import { glob } from 'glob';
 import path from 'path';
 
 dotenv.config();
@@ -13,7 +14,46 @@ const PORT = 5000;
 app.use(cors());
 app.use(express.json());
 
-// Route to search models on CivitAI
+const basePath = process.env.MODEL_PATH;
+if (!basePath) {
+  console.error('Model path not configured.');
+  process.exit(1);
+}
+
+// Endpoint to list downloaded models
+app.get('/list-models', async (req, res) => {
+  try {
+    const checkpointDir = path.join(basePath, 'models/Stable-diffusion/');
+    const files = await glob('**/*.{ckpt,safetensors,pt}', {
+      cwd: checkpointDir,
+    });
+    const models = files.map((file) => ({
+      name: path.basename(file),
+      path: path.join(checkpointDir, file),
+    }));
+    res.json(models);
+  } catch (error) {
+    console.error('Error listing models:', error);
+    res.status(500).json({ error: 'An error occurred while listing models.' });
+  }
+});
+
+// Endpoint to list downloaded LoRas
+app.get('/list-loras', async (req, res) => {
+  try {
+    const loraDir = path.join(basePath, 'models/Lora/');
+    const files = await glob('**/*.{safetensors,pt}', { cwd: loraDir });
+    const loras = files.map((file) => ({
+      name: path.basename(file),
+      path: path.join(loraDir, file),
+    }));
+    res.json(loras);
+  } catch (error) {
+    console.error('Error listing LoRas:', error);
+    res.status(500).json({ error: 'An error occurred while listing LoRas.' });
+  }
+});
+
 app.get('/search', async (req, res) => {
   const { query } = req.query;
   try {
@@ -46,13 +86,16 @@ app.post('/load-model', async (req, res) => {
 
     // Find the appropriate file to download based on type
     let modelFile = modelVersion.files.find((file: any) => {
+      // Adjust the conditions based on the file types and formats you expect
       return (
-        (file.type === 'Model' || file.type === 'Pruned Model') &&
+        (file.type === 'Model' ||
+          file.type === 'Pruned Model' ||
+          file.type === 'LoRA') &&
         (file.format === 'SafeTensor' || file.format === 'PickleTensor')
       );
     });
 
-    // If no suitable file found, look for other types
+    // If no suitable file found, look for any available file
     if (!modelFile) {
       modelFile = modelVersion.files.find((file: any) => true); // Fallback to any file
     }
@@ -72,57 +115,53 @@ app.post('/load-model', async (req, res) => {
       return;
     }
 
-    const basePath = process.env.MODEL_PATH;
-    if (!basePath) {
-      res.status(500).json({ error: 'Model path not configured.' });
-      return;
-    }
+    // Determine the correct save path based on model type
     let modelPath: string;
-    switch (modelType) {
-      case 'Checkpoint':
+    let refreshEndpoint: string | null = null;
+
+    switch (modelType.toLowerCase()) {
+      case 'checkpoint':
         modelPath = path.join(
           basePath,
           'models/Stable-diffusion/',
           modelFileName
         );
+        refreshEndpoint = '/sdapi/v1/refresh-checkpoints';
         break;
-      case 'TextualInversion':
+      case 'textualinversion':
         modelPath = path.join(basePath, 'embeddings/', modelFileName);
+        refreshEndpoint = '/sdapi/v1/refresh-embeddings';
         break;
-      case 'LoRA':
+      case 'lora':
         modelPath = path.join(basePath, 'models/Lora/', modelFileName);
+        // No refresh endpoint needed for LoRA
         break;
-      case 'Hypernetwork':
-        modelPath = path.join(basePath, 'models/hypernetworks/', modelFileName);
-        break;
-      case 'AestheticGradient':
-        modelPath = path.join(
-          basePath,
-          'models/aesthetic_embeddings/',
-          modelFileName
-        );
-        break;
+      // Add cases for other model types if necessary
       default:
         res.status(400).json({ error: 'Unsupported model type.' });
         return;
     }
 
-    // Download the model file
-    await downloadFile(modelUrl, modelPath, apiKey);
+    // Check if the model file already exists
+    if (fs.existsSync(modelPath)) {
+      console.log('Model already exists:', modelPath);
+      refreshEndpoint = null; // No need to refresh if model already exists
+    } else {
+      // Download the model file
+      await downloadFile(modelUrl, modelPath, apiKey);
+    }
 
     // Refresh models in Stable Diffusion WebUI if necessary
+    if (refreshEndpoint) {
+      await axios.post(`http://localhost:7860${refreshEndpoint}`);
+    }
+
+    // Set the model as active only if it's a Checkpoint
     if (modelType === 'Checkpoint') {
-      // Refresh and set the model
-      await axios.post('http://localhost:7860/sdapi/v1/refresh-checkpoints');
+      // Set the model as the active model
       await axios.post('http://localhost:7860/sdapi/v1/options', {
         sd_model_checkpoint: modelFileName,
       });
-    } else if (modelType === 'LoRA') {
-      // Refresh LoRA models if needed
-      // No specific API endpoint, but may be refreshed automatically
-    } else if (modelType === 'TextualInversion') {
-      // Refresh embeddings if needed
-      await axios.post('http://localhost:7860/sdapi/v1/refresh-embeddings');
     }
 
     res.json({ message: 'Model loaded successfully.' });
@@ -168,27 +207,94 @@ async function downloadFile(url: string, dest: string, apiKey: string) {
   });
 }
 
-app.post('/generate-image', async (req, res) => {
-  const { prompt } = req.body;
+app.post('/set-active-model', async (req, res) => {
+  const { modelName } = req.body;
   try {
+    const checkpointDir = path.join(basePath, 'models/Stable-diffusion/');
+    const modelPath = path.join(checkpointDir, modelName);
+
+    // Check if the model file exists
+    if (!fs.existsSync(modelPath)) {
+      // Model file does not exist; attempt to find and download it
+      // You may need to implement logic to search for the model by name in CivitAI
+      res.status(404).json({ error: 'Model file not found locally.' });
+      return;
+    }
+
+    // Set the model as the active model
+    await axios.post('http://localhost:7860/sdapi/v1/options', {
+      sd_model_checkpoint: modelName,
+    });
+
+    res.json({ message: 'Model set as active successfully.' });
+  } catch (error) {
+    console.error('Error setting active model:', error);
+    res
+      .status(500)
+      .json({ error: 'An error occurred while setting the active model.' });
+  }
+});
+
+app.post('/generate-image', async (req, res) => {
+  const { prompt, negative_prompt, steps, width, height, loras, model } =
+    req.body;
+  try {
+    // Check the currently active model
+    const optionsResponse = await axios.get(
+      'http://localhost:7860/sdapi/v1/options'
+    );
+    const currentModel = optionsResponse.data.sd_model_checkpoint;
+
+    // If the selected model is different from the current model, set it as active
+    if (model && model !== currentModel) {
+      await axios.post('http://localhost:7860/sdapi/v1/options', {
+        sd_model_checkpoint: model,
+      });
+    }
+
+    // Retrieve LoRA data from the WebUI API
+    const loraResponse = await axios.get(
+      'http://localhost:7860/sdapi/v1/loras'
+    );
+    const loraData = loraResponse.data; // Assuming this is an array of LoRA objects
+
+    // Create a mapping from filename to alias
+    const filenameToAliasMap: { [key: string]: string } = {};
+    for (const lora of loraData) {
+      const filename = path.basename(lora.path);
+      const alias = lora.alias;
+      filenameToAliasMap[filename] = alias;
+    }
+
+    // Construct prompt with correct LoRA references
+    let finalPrompt = prompt;
+    if (loras && loras.length > 0) {
+      const loraPrompts = loras.map((loraFilename: string) => {
+        const loraAlias = filenameToAliasMap[loraFilename];
+        if (loraAlias) {
+          return `<lora:${loraAlias}:1>`;
+        } else {
+          console.warn(`LoRA alias not found for filename: ${loraFilename}`);
+          return '';
+        }
+      });
+      finalPrompt = `${loraPrompts.join(' ')} ${prompt}`;
+    }
+
     // Send request to Stable Diffusion WebUI API
     const response = await axios.post(
       'http://localhost:7860/sdapi/v1/txt2img',
       {
-        prompt,
-        steps: 50,
-        width: 512,
-        height: 512,
-        sampler_name: 'Euler a',
-        cfg_scale: 7,
-        seed: -1, // Use -1 for a random seed
-        // You can include other parameters here, such as width, height, steps, etc.
+        prompt: finalPrompt,
+        negative_prompt: negative_prompt || '',
+        steps: steps || 20,
+        width: width || 512,
+        height: height || 512,
+        // Include other parameters as needed
       }
     );
 
-    // The API returns a base64-encoded image
     const imageBase64 = response.data.images[0];
-    console.log('imageBase64:', imageBase64);
 
     res.json({ image: imageBase64 });
   } catch (error) {
