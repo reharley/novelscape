@@ -12,10 +12,12 @@
   "license": "ISC",
   "dependencies": {
     "axios": "^1.7.7",
+    "cheerio": "^1.0.0",
     "civitai": "^0.1.15",
     "cors": "^2.8.5",
     "dompurify": "^3.1.7",
     "dotenv": "^16.4.5",
+    "epub2": "^3.0.2",
     "express": "^4.21.0",
     "fs-extra": "^11.2.0",
     "glob": "^11.0.0",
@@ -24,6 +26,7 @@
     "socket.io": "^4.8.0"
   },
   "devDependencies": {
+    "@types/cheerio": "^0.22.35",
     "@types/cors": "^2.8.17",
     "@types/dompurify": "^3.0.5",
     "@types/express": "^5.0.0",

@@ -1,12 +1,15 @@
 import axios from 'axios';
+import * as cheerio from 'cheerio';
 import cors from 'cors';
 import DOMPurify from 'dompurify';
 import dotenv from 'dotenv';
+import EPub from 'epub2';
 import express from 'express';
 import fs from 'fs-extra';
 import { glob } from 'glob';
 import { JSDOM } from 'jsdom';
 import path from 'path';
+
 const { window } = new JSDOM('<!DOCTYPE html>');
 const domPurify = DOMPurify(window);
 
@@ -41,6 +44,172 @@ app.get('/list-models', async (req, res) => {
     res.status(500).json({ error: 'An error occurred while listing models.' });
   }
 });
+
+// Directory where EPUB files are stored
+const booksDir = process.env.BOOKS_PATH;
+if (!booksDir) {
+  console.error('Books path not configured.');
+  process.exit(1);
+}
+const extractedDir = path.join(__dirname, '..', 'extracted_books');
+
+// Create extracted_books directory if it doesn't exist
+if (!fs.existsSync(extractedDir)) {
+  fs.mkdirSync(extractedDir);
+}
+// API to list available books
+app.get('/api/books', (req, res) => {
+  fs.readdir(booksDir, (err, files) => {
+    if (err) {
+      return res.status(500).send('Error reading books directory');
+    }
+    const books = files
+      .filter((file) => file.endsWith('.epub'))
+      .map((file) => path.parse(file).name);
+    res.json(books);
+  });
+});
+
+// API to get book content
+app.get('/api/books/:bookId', (req, res) => {
+  const { bookId } = req.params;
+  const bookPath = path.join(booksDir, `${bookId}.epub`);
+
+  if (!fs.existsSync(bookPath)) {
+    res.status(404).send('Book not found');
+    return;
+  }
+
+  const epub = new EPub(bookPath);
+
+  epub.on('end', () => {
+    const chapters = epub.flow;
+    let structuredContent: any[] = [];
+    let processedChapters = 0;
+
+    if (chapters.length === 0) {
+      res.status(404).send('No chapters found in the book');
+      return;
+    }
+
+    chapters.forEach((chapter, index) => {
+      const chapterId = chapter.id;
+      if (!chapterId) {
+        processedChapters++;
+        return; // Skip chapters without an ID
+      }
+
+      epub.getChapterRaw(chapterId, (err, text) => {
+        processedChapters++;
+        if (err || !text) {
+          console.error(`Error reading chapter ${chapterId}:`, err);
+        } else {
+          // Parse the chapter content and structure it
+          const chapterTitle = chapter.title || `Chapter ${index + 1}`;
+          const contents = parseChapterContent(text);
+          structuredContent.push({
+            order: index,
+            chapterTitle,
+            contents,
+          });
+        }
+        if (processedChapters === chapters.length) {
+          // Sort structuredContent based on chapter order
+          structuredContent.sort((a, b) => a.order - b.order);
+          res.json(structuredContent);
+        }
+      });
+    });
+
+    const manifestItems = Object.values(epub.manifest); // Extract manifest entries as an array
+    const extractPath = path.join(extractedDir, bookId);
+    manifestItems.forEach((item) => {
+      if (!item.id) return;
+      epub.getFile(item.id, (err, data, mimeType) => {
+        if (!item.href) return;
+        if (err) {
+          console.error(`Error extracting file ${item.href}:`, err);
+        } else {
+          // Create the appropriate subdirectory if needed
+          const outputPath = path.join(extractPath, item.href);
+          const outputDir = path.dirname(outputPath);
+          if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true });
+          }
+
+          // Write file to disk
+          if (data) fs.writeFileSync(outputPath, data);
+          console.log(`Extracted: ${item.href}`);
+        }
+      });
+    });
+  });
+
+  epub.parse();
+});
+
+function parseChapterContent(text: string) {
+  const $ = cheerio.load(text);
+  const contents: any[] = [];
+
+  function processElement(element: cheerio.Element) {
+    // @ts-ignore
+    const tagName = element.tagName.toLowerCase();
+
+    // Generalized heading check for any h1, h2, h3, h4, h5, h6 tags
+    if (/^h[1-6]$/.test(tagName)) {
+      contents.push({
+        type: 'title',
+        text: $(element).text(),
+        size: tagName, // Include the tag size (e.g., h1, h2)
+      });
+    } else if (tagName === 'p') {
+      const imagesInParagraph = $(element).find('img');
+      if (imagesInParagraph.length > 0) {
+        imagesInParagraph.each((_, img) => {
+          const src = $(img).attr('src');
+          contents.push({
+            type: 'paragraph',
+            text: $(element).text(), // Extract text of the paragraph
+            src, // Attach image source if present
+          });
+        });
+      } else {
+        contents.push({
+          type: 'paragraph',
+          text: $(element).text(),
+        });
+      }
+    } else if (tagName === 'div') {
+      $(element)
+        .children()
+        .each((_, child) => {
+          processElement(child);
+        });
+    } else if (tagName === 'img') {
+      const src = $(element).attr('src');
+      contents.push({
+        type: 'image',
+        src,
+      });
+    } else {
+      contents.push({
+        type: 'unknown',
+        text: $(element).text(),
+        tag: tagName,
+      });
+    }
+  }
+
+  // Process all body children elements recursively
+  $('body')
+    .children()
+    .each((_, element) => {
+      processElement(element);
+    });
+
+  return contents;
+}
 
 // Endpoint to list downloaded LoRas
 app.get('/list-loras', async (req, res) => {
