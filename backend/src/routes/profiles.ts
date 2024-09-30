@@ -1,8 +1,15 @@
-import { PrismaClient } from '@prisma/client';
 import { Router } from 'express';
+import prisma from '../config/prisma';
+import {
+  generateImageForProfile,
+  getProfilesForBook,
+} from '../controllers/profilesController';
 
 const router = Router();
-const prisma = new PrismaClient();
+router.post('/:profileId/generate-image', generateImageForProfile);
+
+// Endpoint to get profiles for a book
+router.get('/books/:bookId/profiles', getProfilesForBook);
 
 // GET /api/profiles - List all profiles with their associated LoRAs
 router.get('/', async (req, res) => {

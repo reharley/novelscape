@@ -1,19 +1,19 @@
-import { PrismaClient } from '@prisma/client';
-import { Router } from 'express';
+import express from 'express';
+import {
+  listDownloadedLoras,
+  listDownloadedModels,
+  loadModelController,
+  setActiveModelController,
+} from '../controllers/aiModelsController';
 
-const router = Router();
-const prisma = new PrismaClient();
+const router = express.Router();
 
-router.get('/loras', async (req, res) => {
-  try {
-    const loras = await prisma.aiModel.findMany({
-      where: { type: 'LORA' },
-    });
-    res.json(loras);
-  } catch (error) {
-    console.error('Error listing LoRAs:', error);
-    res.status(500).json({ error: 'An error occurred while listing LoRAs.' });
-  }
-});
+router.get('/list-models', listDownloadedModels);
+
+router.get('/list-loras', listDownloadedLoras);
+
+router.post('/load-model', loadModelController);
+
+router.post('/set-active-model', setActiveModelController);
 
 export default router;

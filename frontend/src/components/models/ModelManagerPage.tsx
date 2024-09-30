@@ -6,6 +6,7 @@ import {
   Input,
   Layout,
   List,
+  message,
   Modal,
   Select,
   Spin,
@@ -46,12 +47,14 @@ const ModelManagerPage: React.FC = () => {
     useState<AiModel | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
 
-  const baseUrl = 'http://localhost:5000';
+  const baseUrl = 'http://localhost:5000/api';
 
   useEffect(() => {
     const fetchDownloadedModels = async () => {
       try {
-        const response = await axios.get<AiModel[]>(`${baseUrl}/list-models`);
+        const response = await axios.get<AiModel[]>(
+          `${baseUrl}/ai-models/list-models`
+        );
         const models = response.data;
         setDownloadedModels(models);
         if (models.length > 0) {
@@ -59,7 +62,7 @@ const ModelManagerPage: React.FC = () => {
         }
       } catch (error) {
         console.error('Error fetching downloaded models:', error);
-        alert('Failed to fetch downloaded models.');
+        message.error('Failed to fetch downloaded models.');
       }
     };
 
@@ -69,12 +72,14 @@ const ModelManagerPage: React.FC = () => {
   useEffect(() => {
     const fetchDownloadedLoras = async () => {
       try {
-        const response = await axios.get<AiModel[]>(`${baseUrl}/list-loras`);
+        const response = await axios.get<AiModel[]>(
+          `${baseUrl}/ai-models/list-loras`
+        );
         const loras = response.data;
         setDownloadedLoras(loras);
       } catch (error) {
         console.error('Error fetching downloaded LoRAs:', error);
-        alert('Failed to fetch downloaded LoRAs.');
+        message.error('Failed to fetch downloaded LoRAs.');
       }
     };
 
@@ -106,7 +111,7 @@ const ModelManagerPage: React.FC = () => {
       setModels(modelsData || []);
     } catch (error) {
       console.error('Error fetching models:', error);
-      alert('Failed to fetch models.');
+      message.error('Failed to fetch models.');
     }
     setLoading(false);
   };
@@ -115,13 +120,13 @@ const ModelManagerPage: React.FC = () => {
     if (!window.confirm(`Are you sure you want to load this ${model.type}?`))
       return;
     try {
-      const response = await axios.post(`${baseUrl}/load-model`, {
+      const response = await axios.post(`${baseUrl}/ai-models/load-model`, {
         modelId: model.id, // Ensure you're sending the correct ID
       });
-      alert(response.data.message);
+      message.info(response.data.message);
     } catch (error: any) {
       console.error(`Error loading ${model.type}:`, error);
-      alert(
+      message.error(
         `Failed to load the ${model.type}. ${error.response?.data?.error || ''}`
       );
     }
@@ -129,7 +134,7 @@ const ModelManagerPage: React.FC = () => {
 
   const handleGenerateImage = async () => {
     if (!prompt || !selectedModel) {
-      alert('Please enter a prompt and select a model.');
+      message.error('Please enter a prompt and select a model.');
       return;
     }
     setLoading(true);
@@ -142,7 +147,9 @@ const ModelManagerPage: React.FC = () => {
       setGeneratedImage(`data:image/png;base64,${response.data.image}`);
     } catch (error: any) {
       console.error('Error generating image:', error);
-      alert(`Failed to generate image. ${error.response?.data?.error || ''}`);
+      message.error(
+        `Failed to generate image. ${error.response?.data?.error || ''}`
+      );
     }
     setLoading(false);
   };

@@ -28,6 +28,12 @@ interface ChapterContent {
   contents: ContentItem[];
 }
 
+interface AiModel {
+  name: string;
+  fileName: string;
+  modelId: number;
+}
+
 const AIEnhancedReaderPage: React.FC = () => {
   const [books, setBooks] = useState<string[]>([]);
   const [selectedBook, setSelectedBook] = useState<string | null>(null);
@@ -36,39 +42,39 @@ const AIEnhancedReaderPage: React.FC = () => {
   const [currentContentIndex, setCurrentContentIndex] = useState<number>(0);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [loadingImage, setLoadingImage] = useState<boolean>(false);
-  const [downloadedModels, setDownloadedModels] = useState<string[]>([]);
-  const [selectedModel, setSelectedModel] = useState<string>('');
-  const [downloadedLoras, setDownloadedLoras] = useState<string[]>([]);
+  const [downloadedModels, setDownloadedModels] = useState<AiModel[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>();
+  const [downloadedLoras, setDownloadedLoras] = useState<AiModel[]>([]);
   const [selectedLoras, setSelectedLoras] = useState<string[]>([]);
 
-  const baseUrl = 'http://localhost:5000';
+  const baseUrl = 'http://localhost:5000/api';
 
   useEffect(() => {
     axios
-      .get(baseUrl + '/api/books')
+      .get(baseUrl + '/books')
       .then((response) => setBooks(response.data))
       .catch((error) => console.error(error));
 
     // Fetch downloaded models
     axios
-      .get(baseUrl + '/list-models')
+      .get(baseUrl + '/ai-models/list-models')
       .then((response) => {
-        setDownloadedModels(response.data.map((model: any) => model.name));
+        setDownloadedModels(response.data);
       })
       .catch((error) => console.error(error));
 
     // Fetch downloaded LoRAs
     axios
-      .get(baseUrl + '/list-loras')
+      .get(baseUrl + '/ai-models/list-loras')
       .then((response) => {
-        setDownloadedLoras(response.data.map((lora: any) => lora.name));
+        setDownloadedLoras(response.data);
       })
       .catch((error) => console.error(error));
   }, []);
 
   const fetchBookContent = (bookId: string) => {
     axios
-      .get(`${baseUrl}/api/books/${bookId}`)
+      .get(`${baseUrl}/books/${bookId}`)
       .then((response) => {
         setChapters(response.data);
         setCurrentChapterIndex(0);
@@ -77,6 +83,8 @@ const AIEnhancedReaderPage: React.FC = () => {
       })
       .catch((error) => console.error(error));
   };
+  console.log('models:', downloadedModels);
+  console.log('loras:', downloadedLoras);
 
   const generateImage = async () => {
     const currentContent =
@@ -207,9 +215,9 @@ const AIEnhancedReaderPage: React.FC = () => {
                 value={selectedModel}
                 onChange={handleModelChange}
               >
-                {downloadedModels.map((modelName) => (
-                  <Option key={modelName} value={modelName}>
-                    {modelName}
+                {downloadedModels.map((model) => (
+                  <Option key={model.modelId} value={model.fileName}>
+                    {model.name}
                   </Option>
                 ))}
               </Select>
@@ -224,9 +232,9 @@ const AIEnhancedReaderPage: React.FC = () => {
                 value={selectedLoras}
                 onChange={handleLoraSelection}
               >
-                {downloadedLoras.map((loraName) => (
-                  <Option key={loraName} value={loraName}>
-                    {loraName}
+                {downloadedLoras.map((lora) => (
+                  <Option key={lora.modelId} value={lora.fileName}>
+                    {lora.name}
                   </Option>
                 ))}
               </Select>
