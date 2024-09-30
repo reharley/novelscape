@@ -41,7 +41,7 @@ router.post('/:bookId/extract-profiles', extractProfilesController);
 
 /**
  * @route DELETE /api/books/:bookId
- * @desc Delete a book and its associated profiles and extractions
+ * @desc Delete a book and its associated profiles and passages
  * @access Public
  */
 router.delete('/:bookId', deleteBook);

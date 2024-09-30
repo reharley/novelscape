@@ -15,7 +15,7 @@ export interface Profile {
   name: string;
   type: string;
   bookId: string;
-  extractionId?: number;
+  passageId?: number;
   descriptions: Description[];
   aiModels: AiModel[];
 }
@@ -24,5 +24,5 @@ export interface Description {
   id: number;
   text: string;
   profileId: number;
-  extractionId: number;
+  passageId: number;
 }

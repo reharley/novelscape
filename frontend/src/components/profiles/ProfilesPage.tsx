@@ -68,7 +68,7 @@ const ProfilesPage: React.FC = () => {
         `http://localhost:5000/api/books/${selectedBookFile}/extract-profiles`
       );
       message.success(response.data.message);
-      // Refresh profiles after extraction
+      // Refresh profiles after passage
       await fetchProfiles();
     } catch (error) {
       message.error('Error extracting profiles.');
@@ -100,7 +100,8 @@ const ProfilesPage: React.FC = () => {
       },
     });
   };
-
+  console.log(bookFiles);
+  console.log(selectedBookFile);
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Content style={{ padding: '50px' }}>

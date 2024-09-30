@@ -1,10 +1,10 @@
 import cors from 'cors';
 import express from 'express';
 import './config/dotenv'; // Initialize environment variables
-import prisma from './config/prisma'; // Initialize Prisma Client
+import prisma from './config/prisma';
 import { errorHandler } from './middleware/errorHandler';
 import routes from './routes';
-console.log(prisma);
+prisma; // Initialize Prisma Client
 const app = express();
 const PORT = process.env.PORT || 5000;
 

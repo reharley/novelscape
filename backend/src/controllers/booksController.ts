@@ -123,8 +123,7 @@ export async function extractProfilesController(req: Request, res: Response) {
   const { bookId } = req.params;
 
   try {
-    await extractProfiles(bookId, booksDir, extractedDir);
-    res.json({ message: 'Entities extracted and saved successfully.' });
+    await extractProfiles(bookId, booksDir, extractedDir, res);
   } catch (error: any) {
     console.error('Error extracting profiles:', error);
     res
@@ -137,20 +136,20 @@ export async function deleteBook(req: Request, res: Response) {
   const { bookId } = req.params;
 
   try {
-    // Manually delete related extractions and profiles before deleting the book
+    // Manually delete related passages and profiles before deleting the book
     await prisma.description.deleteMany({
-      where: {
-        profile: {
-          bookId,
-        },
-      },
+      where: { bookId },
     });
 
-    await prisma.extraction.deleteMany({
+    await prisma.passage.deleteMany({
       where: { bookId },
     });
 
     await prisma.profile.deleteMany({
+      where: { bookId },
+    });
+
+    await prisma.chapter.deleteMany({
       where: { bookId },
     });
 

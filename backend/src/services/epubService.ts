@@ -1,5 +1,6 @@
 import DOMPurify from 'dompurify';
 import EPub from 'epub2';
+import { Response } from 'express';
 import fs from 'fs-extra';
 import { JSDOM } from 'jsdom';
 import path from 'path';
@@ -13,7 +14,8 @@ const domPurify = DOMPurify(window);
 export async function extractProfiles(
   bookId: string,
   booksDir: string,
-  extractedDir: string
+  extractedDir: string,
+  res: Response
 ) {
   const bookPath = path.join(booksDir, bookId);
 
@@ -41,7 +43,7 @@ export async function extractProfiles(
       throw new Error('No chapters found in the book');
     }
 
-    const CONCURRENCY_LIMIT = 5; // Set the concurrency limit here
+    const CONCURRENCY_LIMIT = chapters.length; //8; // Set the concurrency limit here
     const batchSize = CONCURRENCY_LIMIT;
     for (let i = 0; i < chapters.length; i += batchSize) {
       const batch = chapters.slice(i, i + batchSize);
@@ -51,22 +53,30 @@ export async function extractProfiles(
       await Promise.all(batchPromises);
     }
 
-    // Extract manifest items
-    const manifestItems = Object.values(epub.manifest);
+    const manifestItems = Object.values(epub.manifest); // Extract manifest entries as an array
     const extractPath = path.join(extractedDir, bookId);
-    for (const item of manifestItems) {
-      if (!item.id || !item.href) continue;
-      try {
-        const data = await epub.getFileAsync(item.id);
-        const outputPath = path.join(extractPath, item.href);
-        const outputDir = path.dirname(outputPath);
-        await fs.ensureDir(outputDir);
-        if (data) await fs.writeFile(outputPath, data);
-        console.log(`Extracted: ${item.href}`);
-      } catch (err) {
-        console.error(`Error extracting file ${item.href}:`, err);
-      }
-    }
+    manifestItems.forEach((item) => {
+      if (!item.id) return;
+      epub.getFile(item.id, (err, data, mimeType) => {
+        if (!item.href) return;
+        if (err) {
+          console.error(`Error extracting file ${item.href}:`, err);
+        } else {
+          // Create the appropriate subdirectory if needed
+          const outputPath = path.join(extractPath, item.href);
+          const outputDir = path.dirname(outputPath);
+          if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true });
+          }
+
+          // Write file to disk
+          if (data) fs.writeFileSync(outputPath, data);
+          console.log(`Extracted: ${item.href}`);
+        }
+      });
+    });
+
+    res.json({ message: 'Entities extracted and saved successfully.' });
   });
 
   epub.parse();
@@ -90,6 +100,7 @@ export function getChapterRawAsync(
 async function processChapter(epub: EPub, chapter: any, book: any) {
   const chapterId = chapter.id;
   if (!chapterId) return;
+  if (!chapter.order) return;
 
   try {
     const text = await getChapterRawAsync(epub, chapterId);
@@ -101,7 +112,17 @@ async function processChapter(epub: EPub, chapter: any, book: any) {
     const chapterTitle = chapter.title || `Chapter ${chapter.order}`;
     const contents = parseChapterContent(text); // Parses the chapter content
 
+    const chapterRecord = await prisma.chapter.create({
+      data: {
+        order: chapter.order,
+        title: chapterTitle,
+        contents: contents, // Assuming contents is a JSON object
+        bookId: book.id,
+      },
+    });
+
     // Process each content item
+    let passageCounter = 1;
     for (const contentItem of contents) {
       if (contentItem.type === 'paragraph' || contentItem.type === 'title') {
         const textContent = contentItem.text.trim();
@@ -111,11 +132,13 @@ async function processChapter(epub: EPub, chapter: any, book: any) {
           continue;
         }
 
-        // Create Extraction entry
-        const extraction = await prisma.extraction.create({
+        // Create Passage entry
+        const passage = await prisma.passage.create({
           data: {
             textContent,
+            order: passageCounter++,
             bookId: book.id,
+            chapterId: chapterRecord.id,
           },
         });
 
@@ -149,7 +172,7 @@ Output the result as a JSON array of entities.`,
           .trim();
 
         // Attempt to extract and parse JSON from the assistant's message
-        let entities;
+        let entities: { name?: string; type?: string; description?: string }[];
         try {
           entities = JSON.parse(assistantMessage);
         } catch (parseError) {
@@ -167,6 +190,13 @@ Output the result as a JSON array of entities.`,
 
         // Save profiles and descriptions to the database
         for (const entity of entities) {
+          if (!entity.name || !entity.type) {
+            console.error(
+              `Invalid entity detected in chapter ${chapterTitle}:`,
+              entity
+            );
+            continue;
+          }
           const profileType = entity.type.toUpperCase();
           // Upsert Profile
           const profile = await prisma.profile.upsert({
@@ -184,12 +214,27 @@ Output the result as a JSON array of entities.`,
             },
           });
 
-          // Create Description linked to Profile and Extraction
+          if (!entity.description) {
+            console.error(`No description provided for entity ${entity.name}`);
+            continue;
+          }
+          // Create Description linked to Profile and Passage
           await prisma.description.create({
             data: {
               text: entity.description,
+              bookId: book.id,
               profileId: profile.id,
-              extractionId: extraction.id,
+              passageId: passage.id, // Updated from passageId to passageId
+            },
+          });
+
+          // Connect Profile to Passage implicitly
+          await prisma.passage.update({
+            where: { id: passage.id },
+            data: {
+              profiles: {
+                connect: { id: profile.id },
+              },
             },
           });
         }
