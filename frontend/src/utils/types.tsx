@@ -9,6 +9,11 @@ export interface AiModel {
   createdAt: string;
   updatedAt: string;
 }
+export interface Book {
+  id: string;
+  title: string;
+  // Add other fields if necessary
+}
 
 export interface Profile {
   id: number;

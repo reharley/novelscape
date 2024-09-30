@@ -29,14 +29,26 @@ export async function listBookFiles(req: Request, res: Response) {
 
 export async function listBooks(req: Request, res: Response) {
   try {
-    const files = await fs.readdir(booksDir);
-    const books = files
-      .filter((file) => file.endsWith('.epub'))
-      .map((file) => path.parse(file).name);
+    const books = await prisma.book.findMany({
+      select: {
+        id: true,
+        title: true,
+        // Include other fields if necessary
+      },
+      orderBy: {
+        title: 'asc', // Optional: order books alphabetically by title
+      },
+    });
+
+    if (books.length === 0) {
+      res.status(404).json({ message: 'No books found in the database.' });
+      return;
+    }
+
     res.json(books);
   } catch (error) {
-    console.error('Error reading books directory:', error);
-    res.status(500).send('Error reading books directory');
+    console.error('Error fetching books from the database:', error);
+    res.status(500).json({ error: 'Failed to fetch books.' });
   }
 }
 
@@ -129,6 +141,93 @@ export async function extractProfilesController(req: Request, res: Response) {
     res
       .status(500)
       .json({ error: error.message || 'Failed to extract profiles.' });
+  }
+}
+
+export async function getPassagesForBook(req: Request, res: Response) {
+  const { bookId } = req.params;
+
+  try {
+    const passages = await prisma.passage.findMany({
+      where: { bookId },
+      orderBy: { order: 'asc' },
+      include: {
+        profiles: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+          },
+        },
+      },
+    });
+
+    if (passages.length === 0) {
+      res.status(404).json({ message: 'No passages found for this book.' });
+      return;
+    }
+
+    res.json(passages);
+  } catch (error) {
+    console.error('Error fetching passages:', error);
+    res.status(500).json({ error: 'Failed to fetch passages.' });
+  }
+}
+export async function getPassagesForChapter(req: Request, res: Response) {
+  const { bookId, chapterId } = req.params;
+
+  try {
+    const passages = await prisma.passage.findMany({
+      where: {
+        bookId: bookId,
+        chapterId: parseInt(chapterId, 10),
+      },
+      orderBy: { order: 'asc' },
+      include: {
+        profiles: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+          },
+        },
+      },
+    });
+
+    if (passages.length === 0) {
+      res.status(404).json({ message: 'No passages found for this chapter.' });
+      return;
+    }
+
+    res.json(passages);
+  } catch (error) {
+    console.error('Error fetching passages:', error);
+    res.status(500).json({ error: 'Failed to fetch passages.' });
+  }
+}
+export async function getChaptersForBook(req: Request, res: Response) {
+  const { bookId } = req.params;
+
+  try {
+    const chapters = await prisma.chapter.findMany({
+      where: { bookId: bookId },
+      orderBy: { order: 'asc' },
+      select: {
+        id: true,
+        order: true,
+        title: true,
+      },
+    });
+
+    if (chapters.length === 0) {
+      res.status(404).json({ message: 'No chapters found for this book.' });
+      return;
+    }
+
+    res.json(chapters);
+  } catch (error) {
+    console.error('Error fetching chapters:', error);
+    res.status(500).json({ error: 'Failed to fetch chapters.' });
   }
 }
 

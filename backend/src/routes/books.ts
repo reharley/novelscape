@@ -4,6 +4,9 @@ import {
   deleteBook,
   extractProfilesController,
   getBookContent,
+  getChaptersForBook,
+  getPassagesForBook,
+  getPassagesForChapter,
   getProfilesForBook,
   listBookFiles,
   listBooks,
@@ -17,6 +20,26 @@ const router = express.Router();
  * @access Public
  */
 router.get('/files', listBookFiles);
+
+/**
+ * @route GET /api/books/:bookId/passages
+ * @desc Get passages for a specific book along with their profiles
+ * @access Public
+ */
+router.get('/:bookId/passages', getPassagesForBook);
+/**
+ * @route GET /api/books/:bookId/chapters
+ * @desc Get all chapters for a specific book
+ * @access Public
+ */
+router.get('/:bookId/chapters', getChaptersForBook);
+
+/**
+ * @route GET /api/books/:bookId/chapters/:chapterId/passages
+ * @desc Get all passages for a specific chapter along with their profiles
+ * @access Public
+ */
+router.get('/:bookId/chapters/:chapterId/passages', getPassagesForChapter);
 
 /**
  * @route GET /api/books
