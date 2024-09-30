@@ -179,7 +179,7 @@ const ModelManagerPage: React.FC = () => {
           >
             <Option value='All'>All Types</Option>
             <Option value='Checkpoint'>Checkpoint</Option>
-            <Option value='LoRA'>LoRA</Option>
+            <Option value='LORA'>LORA</Option>
             <Option value='TextualInversion'>Embedding</Option>
             {/* Add other types as needed */}
           </Select>
@@ -267,7 +267,7 @@ const ModelManagerPage: React.FC = () => {
           </Select>
         </div>
 
-        {/* LoRA Selection */}
+        {/* LORA Selection */}
         <div style={{ marginTop: '20px' }}>
           <Title level={2}>Select LoRAs to Include</Title>
           <Select

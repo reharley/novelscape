@@ -36,6 +36,9 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
           <Menu.Item key='/profiles'>
             <Link to='/profiles'>Profiles</Link>
           </Menu.Item>
+          <Menu.Item key='/associate-loras'>
+            <Link to='/associate-loras'>Associate LoRAs</Link>
+          </Menu.Item>
         </Menu>
       </Header>
       <Content style={{ padding: '50px', marginTop: 64 }}>{children}</Content>

@@ -31,7 +31,7 @@ model Extraction {
     textContent  String
     book         Book          @relation(fields: [bookId], references: [id])
     bookId       String
-    descriptions Description[] // Extraction relates to multiple descriptions
+    descriptions Description[]
     createdAt    DateTime      @default(now())
     updatedAt    DateTime      @updatedAt
     Profile      Profile[]
@@ -46,6 +46,7 @@ model Profile {
     bookId       String
     Extraction   Extraction?   @relation(fields: [extractionId], references: [id])
     extractionId Int?
+    aiModels     AiModel[]     @relation("ProfileLoRAs") // Many-to-Many Relation
 
     @@unique([name, bookId]) // Ensure profiles are unique for each book
 }
@@ -69,4 +70,6 @@ model AiModel {
     images      Json?
     createdAt   DateTime @default(now())
     updatedAt   DateTime @updatedAt
+
+    profiles Profile[] @relation("ProfileLoRAs") // Many-to-Many Relation
 }

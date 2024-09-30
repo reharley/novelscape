@@ -214,7 +214,7 @@ const AIEnhancedReaderPage: React.FC = () => {
                 ))}
               </Select>
             </div>
-            {/* LoRA Selection */}
+            {/* LORA Selection */}
             <div style={{ marginBottom: '20px' }}>
               <h2>Select LoRAs to Include</h2>
               <Select

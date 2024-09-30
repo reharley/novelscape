@@ -10,6 +10,7 @@ import fs from 'fs-extra';
 import { JSDOM } from 'jsdom';
 import OpenAI from 'openai';
 import path from 'path';
+import { aiModelsRouter, profilesRouter } from './routes';
 
 const prisma = new PrismaClient();
 
@@ -344,124 +345,16 @@ app.post('/api/books/:bookId/extract-profiles', async (req, res) => {
         return res.status(404).json({ error: 'No chapters found in the book' });
       }
 
-      // Process chapters sequentially using async/await
-      for (const [index, chapter] of chapters.entries()) {
-        const chapterId = chapter.id;
-        if (!chapterId) continue;
+      const CONCURRENCY_LIMIT = 5; // Set the concurrency limit here
 
-        try {
-          // Get the chapter content asynchronously
-          const text = await getChapterRawAsync(epub, chapterId);
-          if (!text) {
-            console.error(`Error: Chapter ${chapterId} is empty.`);
-            continue;
-          }
-
-          const chapterTitle = chapter.title || `Chapter ${index + 1}`;
-          const contents = parseChapterContent(text); // Assuming this parses chapter content
-
-          // Process each paragraph or title individually
-          for (const contentItem of contents) {
-            if (
-              contentItem.type === 'paragraph' ||
-              contentItem.type === 'title'
-            ) {
-              const textContent = contentItem.text.trim();
-
-              if (!textContent) {
-                console.log(
-                  `Skipping empty content in chapter: ${chapterTitle}`
-                );
-                continue;
-              }
-
-              // Create Extraction entry
-              const extraction = await prisma.extraction.create({
-                data: {
-                  textContent,
-                  bookId: book.id,
-                },
-              });
-
-              // Send text to OpenAI API for NER
-              const response = await openai.chat.completions.create({
-                model: 'gpt-3.5-turbo',
-                messages: [
-                  {
-                    role: 'system',
-                    content: `You are an assistant that performs named entity recognition (NER) on a given text. Identify and extract all named entities, categorizing them as one of the following types: 'Character', 'Building', 'Scene', 'Animal', 'Object'. For each entity, provide:
-- name: The name of the entity.
-- type: One of 'Character', 'Building', 'Scene', 'Animal', or 'Object'.
-- description: A brief description of the entity based on the context.
-
-Output the result as a JSON array of entities.`,
-                  },
-                  {
-                    role: 'user',
-                    content: `Extract entities from the following text:\n\n${textContent}`,
-                  },
-                ],
-                max_tokens: 1000,
-              });
-
-              let assistantMessage = response.choices[0].message?.content || '';
-
-              // Sanitize the response
-              assistantMessage = assistantMessage
-                .trim()
-                .replace(/```(?:json|)/g, '')
-                .trim();
-
-              // Attempt to extract and parse JSON from the assistant's message
-              let entities;
-              try {
-                entities = JSON.parse(assistantMessage);
-              } catch (parseError) {
-                console.error('JSON parse error:', parseError);
-                const jsonMatch = assistantMessage.match(/\[.*\]/s);
-                if (jsonMatch) {
-                  entities = JSON.parse(jsonMatch[0]);
-                } else {
-                  console.error(
-                    'Failed to parse entities as JSON after sanitization.'
-                  );
-                  continue; // Skip if unable to parse
-                }
-              }
-
-              // Save profiles and descriptions to the database
-              for (const entity of entities) {
-                const profileType = entity.type.toUpperCase();
-                // Upsert Profile
-                const profile = await prisma.profile.upsert({
-                  where: {
-                    name_bookId: {
-                      name: entity.name,
-                      bookId: book.id,
-                    },
-                  },
-                  update: {},
-                  create: {
-                    name: entity.name,
-                    type: profileType,
-                    bookId: book.id,
-                  },
-                });
-
-                // Create Description linked to Profile and Extraction
-                await prisma.description.create({
-                  data: {
-                    text: entity.description,
-                    profileId: profile.id,
-                    extractionId: extraction.id,
-                  },
-                });
-              }
-            }
-          }
-        } catch (chapterError) {
-          console.error(`Error processing chapter ${chapterId}:`, chapterError);
-        }
+      // Split chapters into batches of 3
+      const batchSize = CONCURRENCY_LIMIT;
+      for (let i = 0; i < chapters.length; i += batchSize) {
+        const batch = chapters.slice(i, i + batchSize);
+        const batchPromises = batch.map((chapter) =>
+          processChapter(epub, chapter, book)
+        );
+        await Promise.all(batchPromises);
       }
 
       res.json({ message: 'Entities extracted and saved successfully.' });
@@ -485,6 +378,120 @@ function getChapterRawAsync(epub: EPub, chapterId: string): Promise<string> {
     });
   });
 }
+
+const processChapter = async (epub: EPub, chapter: any, book: any) => {
+  const chapterId = chapter.id;
+  if (!chapterId) return;
+
+  try {
+    // Get the chapter content asynchronously
+    const text = await getChapterRawAsync(epub, chapterId);
+    if (!text) {
+      console.error(`Error: Chapter ${chapterId} is empty.`);
+      return;
+    }
+
+    const chapterTitle = chapter.title || `Chapter ${chapter.order}`;
+    const contents = parseChapterContent(text); // Assuming this parses chapter content
+
+    // Process each paragraph or title individually
+    for (const contentItem of contents) {
+      if (contentItem.type === 'paragraph' || contentItem.type === 'title') {
+        const textContent = contentItem.text.trim();
+
+        if (!textContent) {
+          console.log(`Skipping empty content in chapter: ${chapterTitle}`);
+          continue;
+        }
+
+        // Create Extraction entry
+        const extraction = await prisma.extraction.create({
+          data: {
+            textContent,
+            bookId: book.id,
+          },
+        });
+
+        // Send text to OpenAI API for NER
+        const response = await openai.chat.completions.create({
+          model: 'gpt-3.5-turbo',
+          messages: [
+            {
+              role: 'system',
+              content: `You are an assistant that performs named entity recognition (NER) on a given text. Identify and extract all named entities, categorizing them as one of the following types: 'Character', 'Building', 'Scene', 'Animal', 'Object'. For each entity, provide:
+- name: The name of the entity.
+- type: One of 'Character', 'Building', 'Scene', 'Animal', or 'Object'.
+- description: A brief description of the entity based on the context.
+
+Output the result as a JSON array of entities.`,
+            },
+            {
+              role: 'user',
+              content: `Extract entities from the following text:\n\n${textContent}`,
+            },
+          ],
+          max_tokens: 1000,
+        });
+
+        let assistantMessage = response.choices[0].message?.content || '';
+
+        // Sanitize the response
+        assistantMessage = assistantMessage
+          .trim()
+          .replace(/```(?:json|)/g, '')
+          .trim();
+
+        // Attempt to extract and parse JSON from the assistant's message
+        let entities;
+        try {
+          entities = JSON.parse(assistantMessage);
+        } catch (parseError) {
+          console.error('JSON parse error:', parseError);
+          const jsonMatch = assistantMessage.match(/\[.*\]/s);
+          if (jsonMatch) {
+            entities = JSON.parse(jsonMatch[0]);
+          } else {
+            console.error(
+              'Failed to parse entities as JSON after sanitization.'
+            );
+            continue; // Skip if unable to parse
+          }
+        }
+
+        // Save profiles and descriptions to the database
+        for (const entity of entities) {
+          const profileType = entity.type.toUpperCase();
+          // Upsert Profile
+          const profile = await prisma.profile.upsert({
+            where: {
+              name_bookId: {
+                name: entity.name,
+                bookId: book.id,
+              },
+            },
+            update: {},
+            create: {
+              name: entity.name,
+              type: profileType,
+              bookId: book.id,
+            },
+          });
+
+          // Create Description linked to Profile and Extraction
+          await prisma.description.create({
+            data: {
+              text: entity.description,
+              profileId: profile.id,
+              extractionId: extraction.id,
+            },
+          });
+        }
+      }
+    }
+  } catch (chapterError) {
+    console.error(`Error processing chapter ${chapterId}:`, chapterError);
+  }
+};
 
 app.delete('/api/books/:bookId', async (req, res) => {
   const { bookId } = req.params;
@@ -522,7 +529,7 @@ app.delete('/api/books/:bookId', async (req, res) => {
 app.get('/list-loras', async (req, res) => {
   try {
     const loras = await prisma.aiModel.findMany({
-      where: { type: 'LoRA' },
+      where: { type: 'LORA' },
     });
     res.json(loras);
   } catch (error) {
@@ -559,7 +566,7 @@ app.post('/load-model', async (req, res) => {
     const modelData = modelResponse.data;
 
     // Determine the model type
-    const modelType = modelData.type; // "Checkpoint", "LoRA", "TextualInversion", etc.
+    const modelType = modelData.type; // "Checkpoint", "LORA", "TextualInversion", etc.
 
     // Get the latest version of the model
     const modelVersion = modelData.modelVersions[0];
@@ -570,7 +577,7 @@ app.post('/load-model', async (req, res) => {
       return (
         (file.type === 'Model' ||
           file.type === 'Pruned Model' ||
-          file.type === 'LoRA') &&
+          file.type === 'LORA') &&
         (file.format === 'SafeTensor' || file.format === 'PickleTensor')
       );
     });
@@ -614,7 +621,7 @@ app.post('/load-model', async (req, res) => {
         break;
       case 'lora':
         modelPath = path.join(basePath, 'models/Lora/', modelFileName);
-        // No refresh endpoint needed for LoRA
+        // No refresh endpoint needed for LORA
         break;
       // Add cases for other model types if necessary
       default:
@@ -752,11 +759,11 @@ app.post('/generate-image', async (req, res) => {
       });
     }
 
-    // Retrieve LoRA data from the WebUI API
+    // Retrieve LORA data from the WebUI API
     const loraResponse = await axios.get(
       'http://localhost:7860/sdapi/v1/loras'
     );
-    const loraData = loraResponse.data; // Assuming this is an array of LoRA objects
+    const loraData = loraResponse.data; // Assuming this is an array of LORA objects
 
     // Create a mapping from filename to alias
     const filenameToAliasMap: { [key: string]: string } = {};
@@ -766,7 +773,7 @@ app.post('/generate-image', async (req, res) => {
       filenameToAliasMap[filename] = alias;
     }
 
-    // Construct prompt with correct LoRA references
+    // Construct prompt with correct LORA references
     let finalPrompt = prompt;
     if (loras && loras.length > 0) {
       const loraPrompts = loras.map((loraFilename: string) => {
@@ -774,7 +781,7 @@ app.post('/generate-image', async (req, res) => {
         if (loraAlias) {
           return `<lora:${loraAlias}:1>`;
         } else {
-          console.warn(`LoRA alias not found for filename: ${loraFilename}`);
+          console.warn(`LORA alias not found for filename: ${loraFilename}`);
           return '';
         }
       });
@@ -804,6 +811,9 @@ app.post('/generate-image', async (req, res) => {
       .json({ error: 'An error occurred while generating the image.' });
   }
 });
+
+app.use('/api/ai-models', aiModelsRouter);
+app.use('/api/profiles', profilesRouter);
 
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
