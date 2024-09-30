@@ -1,0 +1,60 @@
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+model Book {
+    id          String       @id // Use the filename as the unique ID
+    title       String
+    chapters    Chapter[]
+    profiles    Profile[]
+    extractions Extraction[]
+    createdAt   DateTime     @default(now())
+    updatedAt   DateTime     @updatedAt
+}
+
+model Chapter {
+    id       Int    @id @default(autoincrement())
+    order    Int
+    title    String
+    contents Json
+    book     Book   @relation(fields: [bookId], references: [id])
+    bookId   String
+}
+
+model Extraction {
+    id           Int           @id @default(autoincrement())
+    textContent  String
+    book         Book          @relation(fields: [bookId], references: [id])
+    bookId       String
+    descriptions Description[] // Extraction relates to multiple descriptions
+    createdAt    DateTime      @default(now())
+    updatedAt    DateTime      @updatedAt
+    Profile      Profile[]
+}
+
+model Profile {
+    id           Int           @id @default(autoincrement())
+    name         String
+    type         String
+    descriptions Description[] // A profile has multiple descriptions
+    book         Book          @relation(fields: [bookId], references: [id])
+    bookId       String
+    Extraction   Extraction?   @relation(fields: [extractionId], references: [id])
+    extractionId Int?
+
+    @@unique([name, bookId]) // Ensure profiles are unique for each book
+}
+
+model Description {
+    id           Int        @id @default(autoincrement())
+    text         String
+    profile      Profile    @relation(fields: [profileId], references: [id])
+    profileId    Int
+    extraction   Extraction @relation(fields: [extractionId], references: [id])
+    extractionId Int
+}

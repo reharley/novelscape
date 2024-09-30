@@ -1,3 +1,4 @@
+import { PrismaClient } from '@prisma/client';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import cors from 'cors';
@@ -8,7 +9,18 @@ import express from 'express';
 import fs from 'fs-extra';
 import { glob } from 'glob';
 import { JSDOM } from 'jsdom';
+import OpenAI from 'openai';
 import path from 'path';
+
+const prisma = new PrismaClient();
+
+if (!process.env.OPENAI_API_KEY) {
+  console.error('OpenAI API key not found.');
+  process.exit(1);
+}
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 const { window } = new JSDOM('<!DOCTYPE html>');
 const domPurify = DOMPurify(window);
@@ -52,7 +64,16 @@ if (!booksDir) {
   process.exit(1);
 }
 const extractedDir = path.join(__dirname, '..', 'extracted_books');
-
+app.get('/api/books/files', async (req, res) => {
+  try {
+    const files = await fs.readdir(booksDir);
+    const bookFiles = files.filter((file) => file.endsWith('.epub'));
+    res.json(bookFiles); // Return only EPUB files
+  } catch (error) {
+    console.error('Error fetching book files:', error);
+    res.status(500).json({ error: 'Failed to fetch book files.' });
+  }
+});
 // Create extracted_books directory if it doesn't exist
 if (!fs.existsSync(extractedDir)) {
   fs.mkdirSync(extractedDir);
@@ -157,7 +178,9 @@ function parseChapterContent(text: string) {
     const tagName = element.tagName.toLowerCase();
 
     // Generalized heading check for any h1, h2, h3, h4, h5, h6 tags
+    const text = $(element).text().trim();
     if (/^h[1-6]$/.test(tagName)) {
+      if (text.length === 0) return; // Skip empty elements
       contents.push({
         type: 'title',
         text: $(element).text(),
@@ -166,6 +189,7 @@ function parseChapterContent(text: string) {
     } else if (tagName === 'p') {
       const imagesInParagraph = $(element).find('img');
       if (imagesInParagraph.length > 0) {
+        if (text.length === 0) return; // Skip empty elements
         imagesInParagraph.each((_, img) => {
           const src = $(img).attr('src');
           contents.push({
@@ -175,6 +199,7 @@ function parseChapterContent(text: string) {
           });
         });
       } else {
+        if (text.length === 0) return; // Skip empty elements
         contents.push({
           type: 'paragraph',
           text: $(element).text(),
@@ -187,12 +212,14 @@ function parseChapterContent(text: string) {
           processElement(child);
         });
     } else if (tagName === 'img') {
+      if (text.length === 0) return; // Skip empty elements
       const src = $(element).attr('src');
       contents.push({
         type: 'image',
         src,
       });
     } else {
+      if (text.length === 0) return; // Skip empty elements
       contents.push({
         type: 'unknown',
         text: $(element).text(),
@@ -210,7 +237,293 @@ function parseChapterContent(text: string) {
 
   return contents;
 }
+app.post('/api/profiles/:profileId/generate-image', async (req, res) => {
+  const { profileId } = req.params;
+  try {
+    // Fetch the profile from the database
+    const profile = await prisma.profile.findUnique({
+      where: { id: Number(profileId) },
+    });
 
+    if (!profile) {
+      res.status(404).json({ error: 'Profile not found.' });
+      return;
+    }
+
+    // // Generate image using the description as prompt
+    // const response = await axios.post('http://localhost:5000/generate-image', {
+    //   prompt: profile.description,
+    //   // Include other parameters like selected model or loras if needed
+    // });
+
+    // const imageBase64 = response.data.image;
+
+    // // Save the image to the server or a cloud storage
+    // const imagePath = `/images/profiles/${profile.id}.png`;
+    // const imageFullPath = path.join(__dirname, 'public', imagePath);
+    // await fs.ensureDir(path.dirname(imageFullPath));
+    // fs.writeFileSync(imageFullPath, Buffer.from(imageBase64, 'base64'));
+
+    // // Update the profile with the image URL
+    // await prisma.profile.update({
+    //   where: { id: Number(profileId) },
+    //   data: { imageUrl: imagePath },
+    // });
+
+    res.json({});
+    // res.json({ imageUrl: imagePath });
+  } catch (error) {
+    console.error('Error generating image for profile:', error);
+    res.status(500).json({ error: 'Failed to generate image.' });
+  }
+});
+
+// Endpoint to get the list of books
+app.get('/api/books-list', async (req, res) => {
+  try {
+    const books = await prisma.book.findMany();
+    res.json(books);
+  } catch (error) {
+    console.error('Error fetching books:', error);
+    res.status(500).json({ error: 'Failed to fetch books.' });
+  }
+});
+
+// Endpoint to get profiles for a book
+app.get('/api/books/:bookId/profiles', async (req, res) => {
+  const { bookId } = req.params;
+  try {
+    const profiles = await prisma.profile.findMany({
+      where: { bookId },
+      include: {
+        descriptions: true, // Include descriptions
+      },
+    });
+    res.json(profiles);
+  } catch (error) {
+    console.error('Error fetching profiles:', error);
+    res.status(500).json({ error: 'Failed to fetch profiles.' });
+  }
+});
+app.get('/api/books/files', async (req, res) => {
+  try {
+    const files = await fs.readdir(booksDir);
+    const bookFiles = files.filter((file) => file.endsWith('.epub'));
+    res.json(bookFiles); // Return only EPUB files
+  } catch (error) {
+    console.error('Error fetching book files:', error);
+    res.status(500).json({ error: 'Failed to fetch book files.' });
+  }
+});
+app.post('/api/books/:bookId/extract-profiles', async (req, res) => {
+  const { bookId } = req.params;
+  const bookPath = path.join(booksDir, bookId);
+
+  try {
+    // Check if the book exists
+    if (
+      !(await fs
+        .access(bookPath)
+        .then(() => true)
+        .catch(() => false))
+    ) {
+      res.status(404).json({ error: 'Book not found.' });
+      return;
+    }
+
+    // Upsert the book with id as filename
+    const book = await prisma.book.upsert({
+      where: { id: bookId },
+      update: {},
+      create: {
+        id: bookId,
+        title: path.parse(bookId).name,
+      },
+    });
+
+    const epub = new EPub(bookPath);
+
+    epub.on('end', async () => {
+      const chapters = epub.flow;
+
+      if (chapters.length === 0) {
+        return res.status(404).json({ error: 'No chapters found in the book' });
+      }
+
+      // Process chapters sequentially using async/await
+      for (const [index, chapter] of chapters.entries()) {
+        const chapterId = chapter.id;
+        if (!chapterId) continue;
+
+        try {
+          // Get the chapter content asynchronously
+          const text = await getChapterRawAsync(epub, chapterId);
+          if (!text) {
+            console.error(`Error: Chapter ${chapterId} is empty.`);
+            continue;
+          }
+
+          const chapterTitle = chapter.title || `Chapter ${index + 1}`;
+          const contents = parseChapterContent(text); // Assuming this parses chapter content
+
+          // Process each paragraph or title individually
+          for (const contentItem of contents) {
+            if (
+              contentItem.type === 'paragraph' ||
+              contentItem.type === 'title'
+            ) {
+              const textContent = contentItem.text.trim();
+
+              if (!textContent) {
+                console.log(
+                  `Skipping empty content in chapter: ${chapterTitle}`
+                );
+                continue;
+              }
+
+              // Create Extraction entry
+              const extraction = await prisma.extraction.create({
+                data: {
+                  textContent,
+                  bookId: book.id,
+                },
+              });
+
+              // Send text to OpenAI API for NER
+              const response = await openai.chat.completions.create({
+                model: 'gpt-3.5-turbo',
+                messages: [
+                  {
+                    role: 'system',
+                    content: `You are an assistant that performs named entity recognition (NER) on a given text. Identify and extract all named entities, categorizing them as one of the following types: 'Character', 'Building', 'Scene', 'Animal', 'Object'. For each entity, provide:
+- name: The name of the entity.
+- type: One of 'Character', 'Building', 'Scene', 'Animal', or 'Object'.
+- description: A brief description of the entity based on the context.
+
+Output the result as a JSON array of entities.`,
+                  },
+                  {
+                    role: 'user',
+                    content: `Extract entities from the following text:\n\n${textContent}`,
+                  },
+                ],
+                max_tokens: 1000,
+              });
+
+              let assistantMessage = response.choices[0].message?.content || '';
+
+              // Sanitize the response
+              assistantMessage = assistantMessage
+                .trim()
+                .replace(/```(?:json|)/g, '')
+                .trim();
+
+              // Attempt to extract and parse JSON from the assistant's message
+              let entities;
+              try {
+                entities = JSON.parse(assistantMessage);
+              } catch (parseError) {
+                console.error('JSON parse error:', parseError);
+                const jsonMatch = assistantMessage.match(/\[.*\]/s);
+                if (jsonMatch) {
+                  entities = JSON.parse(jsonMatch[0]);
+                } else {
+                  console.error(
+                    'Failed to parse entities as JSON after sanitization.'
+                  );
+                  continue; // Skip if unable to parse
+                }
+              }
+
+              // Save profiles and descriptions to the database
+              for (const entity of entities) {
+                const profileType = entity.type.toUpperCase();
+                // Upsert Profile
+                const profile = await prisma.profile.upsert({
+                  where: {
+                    name_bookId: {
+                      name: entity.name,
+                      bookId: book.id,
+                    },
+                  },
+                  update: {},
+                  create: {
+                    name: entity.name,
+                    type: profileType,
+                    bookId: book.id,
+                  },
+                });
+
+                // Create Description linked to Profile and Extraction
+                await prisma.description.create({
+                  data: {
+                    text: entity.description,
+                    profileId: profile.id,
+                    extractionId: extraction.id,
+                  },
+                });
+              }
+            }
+          }
+        } catch (chapterError) {
+          console.error(`Error processing chapter ${chapterId}:`, chapterError);
+        }
+      }
+
+      res.json({ message: 'Entities extracted and saved successfully.' });
+    });
+
+    epub.parse();
+  } catch (error) {
+    console.error('Error extracting profiles:', error);
+    res.status(500).json({ error: 'Failed to extract profiles.' });
+  }
+});
+
+function getChapterRawAsync(epub: EPub, chapterId: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    epub.getChapterRaw(chapterId, (err, text) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(text || '');
+      }
+    });
+  });
+}
+
+app.delete('/api/books/:bookId', async (req, res) => {
+  const { bookId } = req.params;
+
+  try {
+    // Manually delete related extractions and profiles before deleting the book
+    await prisma.description.deleteMany({
+      where: {
+        profile: {
+          bookId,
+        },
+      },
+    });
+
+    await prisma.extraction.deleteMany({
+      where: { bookId },
+    });
+
+    await prisma.profile.deleteMany({
+      where: { bookId },
+    });
+
+    // Finally, delete the book
+    await prisma.book.delete({
+      where: { id: bookId },
+    });
+
+    res.json({ message: 'Book and associated profiles deleted successfully.' });
+  } catch (error) {
+    console.error('Error deleting book:', error);
+    res.status(500).json({ error: 'Failed to delete book.' });
+  }
+});
 // Endpoint to list downloaded LoRas
 app.get('/list-loras', async (req, res) => {
   try {

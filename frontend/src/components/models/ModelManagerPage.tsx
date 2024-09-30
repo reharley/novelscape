@@ -159,7 +159,7 @@ const ModelManagerPage: React.FC = () => {
   };
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout>
       <Content style={{ padding: '20px' }}>
         {/* Search and Filters */}
         <div style={{ marginBottom: '20px' }}>

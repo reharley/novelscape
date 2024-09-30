@@ -180,7 +180,7 @@ const AIEnhancedReaderPage: React.FC = () => {
     : 0;
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout>
       <Content style={{ padding: '50px' }}>
         <Select
           placeholder='Select a book'

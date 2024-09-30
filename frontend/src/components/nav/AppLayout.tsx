@@ -11,14 +11,14 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const selectedKeys = [location.pathname];
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout style={{ maxHeight: '100vh' }}>
       <Header style={{ position: 'fixed', zIndex: 1, width: '100%' }}>
         {/* You can replace this div with your logo */}
         <div
           className='logo'
           style={{ float: 'left', color: 'white', marginRight: '20px' }}
         >
-          <h2 style={{ color: 'white' }}>My App</h2>
+          <h2 style={{ color: 'white' }}>NovelScape</h2>
         </div>
         <Menu theme='dark' mode='horizontal' selectedKeys={selectedKeys}>
           <Menu.Item key='/'>
@@ -32,6 +32,9 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
           </Menu.Item>
           <Menu.Item key='/ai-reader'>
             <Link to='/ai-reader'>AI Enhanced Reader</Link>
+          </Menu.Item>
+          <Menu.Item key='/profiles'>
+            <Link to='/profiles'>Profiles</Link>
           </Menu.Item>
         </Menu>
       </Header>

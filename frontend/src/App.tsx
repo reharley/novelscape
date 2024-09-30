@@ -8,8 +8,8 @@ import {
 
 import AppLayout from './components/nav/AppLayout';
 
-// Import the new pages
 import ModelManagerPage from './components/models/ModelManagerPage';
+import ProfilesPage from './components/profiles/ProfilesPage';
 import AIEnhancedReaderPage from './components/reader/AIEnhancedReaderPage.tsx';
 import BookReaderPage from './components/reader/BookReaderPage';
 
@@ -28,6 +28,7 @@ const router = createBrowserRouter(
         <Route path='models' element={<ModelManagerPage />} />
         <Route path='reader' element={<BookReaderPage />} />
         <Route path='ai-reader' element={<AIEnhancedReaderPage />} />
+        <Route path='profiles' element={<ProfilesPage />} />
       </Route>
       {/* </Route> */}
     </>

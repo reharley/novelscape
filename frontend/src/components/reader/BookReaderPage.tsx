@@ -111,8 +111,10 @@ const BookReaderPage: React.FC = () => {
       )
     : 0;
 
+  console.log('currentChapter', currentChapter);
+  console.log('currentContent', currentContent);
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout>
       <Content style={{ padding: '50px' }}>
         <Select
           placeholder='Select a book'
