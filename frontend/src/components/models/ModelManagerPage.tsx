@@ -19,60 +19,66 @@ const { Option } = Select;
 const { Search } = Input;
 const { Text, Title } = Typography;
 
-interface Model {
+interface AiModel {
   id: number;
+  modelId: number;
   name: string;
-  description: string;
+  fileName: string;
   type: string;
-  images: { url: string }[];
+  description?: string;
+  images?: any; // Adjust based on your image data structure
+  createdAt: string;
+  updatedAt: string;
 }
 
 const ModelManagerPage: React.FC = () => {
   const [query, setQuery] = useState('');
-  const [models, setModels] = useState<Model[]>([]);
+  const [models, setModels] = useState<any[]>([]); // Adjust type based on your search result
   const [loading, setLoading] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [modelTypeFilter, setModelTypeFilter] = useState<string>('All');
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
-  const [downloadedModels, setDownloadedModels] = useState<string[]>([]);
+  const [downloadedModels, setDownloadedModels] = useState<AiModel[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('');
-  const [downloadedLoras, setDownloadedLoras] = useState<string[]>([]);
+  const [downloadedLoras, setDownloadedLoras] = useState<AiModel[]>([]);
   const [selectedLoras, setSelectedLoras] = useState<string[]>([]);
   const [selectedModelDetails, setSelectedModelDetails] =
-    useState<Model | null>(null);
+    useState<AiModel | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
 
   const baseUrl = 'http://localhost:5000';
 
   useEffect(() => {
-    const fetchDownloadedLoras = async () => {
-      try {
-        const response = await axios.get(baseUrl + '/list-loras');
-        const loras = response.data.map((lora: any) => lora.name);
-        setDownloadedLoras(loras);
-      } catch (error) {
-        console.error('Error fetching downloaded LoRAs:', error);
-      }
-    };
-
-    fetchDownloadedLoras();
-  }, []);
-
-  useEffect(() => {
     const fetchDownloadedModels = async () => {
       try {
-        const response = await axios.get(baseUrl + '/list-models');
-        const models = response.data.map((model: any) => model.name);
+        const response = await axios.get<AiModel[]>(`${baseUrl}/list-models`);
+        const models = response.data;
         setDownloadedModels(models);
         if (models.length > 0) {
-          setSelectedModel(models[0]); // Set default selected model
+          setSelectedModel(models[0].fileName); // Use fileName for selection
         }
       } catch (error) {
         console.error('Error fetching downloaded models:', error);
+        alert('Failed to fetch downloaded models.');
       }
     };
 
     fetchDownloadedModels();
+  }, []);
+
+  useEffect(() => {
+    const fetchDownloadedLoras = async () => {
+      try {
+        const response = await axios.get<AiModel[]>(`${baseUrl}/list-loras`);
+        const loras = response.data;
+        setDownloadedLoras(loras);
+      } catch (error) {
+        console.error('Error fetching downloaded LoRAs:', error);
+        alert('Failed to fetch downloaded LoRAs.');
+      }
+    };
+
+    fetchDownloadedLoras();
   }, []);
 
   const handleLoraSelection = (values: string[]) => {
@@ -87,7 +93,7 @@ const ModelManagerPage: React.FC = () => {
     if (!query) return;
     setLoading(true);
     try {
-      const response = await axios.get(baseUrl + '/search', {
+      const response = await axios.get(`${baseUrl}/search`, {
         params: { query },
       });
       const modelsData = response.data.items.map((item: any) => ({
@@ -105,35 +111,38 @@ const ModelManagerPage: React.FC = () => {
     setLoading(false);
   };
 
-  const handleLoadModel = async (modelId: number, modelType: string) => {
-    if (!window.confirm(`Are you sure you want to load this ${modelType}?`))
+  const handleLoadModel = async (model: AiModel) => {
+    if (!window.confirm(`Are you sure you want to load this ${model.type}?`))
       return;
     try {
-      const response = await axios.post(baseUrl + '/load-model', {
-        modelId,
+      const response = await axios.post(`${baseUrl}/load-model`, {
+        modelId: model.id, // Ensure you're sending the correct ID
       });
       alert(response.data.message);
     } catch (error: any) {
-      console.error(`Error loading ${modelType}:`, error);
+      console.error(`Error loading ${model.type}:`, error);
       alert(
-        `Failed to load the ${modelType}. ${error.response?.data?.error || ''}`
+        `Failed to load the ${model.type}. ${error.response?.data?.error || ''}`
       );
     }
   };
 
   const handleGenerateImage = async () => {
-    if (!prompt || !selectedModel) return;
+    if (!prompt || !selectedModel) {
+      alert('Please enter a prompt and select a model.');
+      return;
+    }
     setLoading(true);
     try {
-      const response = await axios.post(baseUrl + '/generate-image', {
+      const response = await axios.post(`${baseUrl}/generate-image`, {
         prompt,
-        loras: selectedLoras,
-        model: selectedModel,
+        loras: selectedLoras, // These are fileNames
+        model: selectedModel, // This is the fileName of the selected model
       });
       setGeneratedImage(`data:image/png;base64,${response.data.image}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating image:', error);
-      alert('Failed to generate image.');
+      alert(`Failed to generate image. ${error.response?.data?.error || ''}`);
     }
     setLoading(false);
   };
@@ -143,7 +152,7 @@ const ModelManagerPage: React.FC = () => {
     return model.type === modelTypeFilter;
   });
 
-  const showModelDetails = (model: Model) => {
+  const showModelDetails = (model: AiModel) => {
     setSelectedModelDetails(model);
     setIsModalVisible(true);
   };
@@ -228,12 +237,7 @@ const ModelManagerPage: React.FC = () => {
             <Button
               key='load'
               type='primary'
-              onClick={() =>
-                handleLoadModel(
-                  selectedModelDetails!.id,
-                  selectedModelDetails!.type
-                )
-              }
+              onClick={() => handleLoadModel(selectedModelDetails!)}
             >
               Load {selectedModelDetails?.type}
             </Button>,
@@ -255,9 +259,9 @@ const ModelManagerPage: React.FC = () => {
             value={selectedModel}
             onChange={handleModelChange}
           >
-            {downloadedModels.map((modelName) => (
-              <Option key={modelName} value={modelName}>
-                {modelName}
+            {downloadedModels.map((model) => (
+              <Option key={model.fileName} value={model.fileName}>
+                {model.name}
               </Option>
             ))}
           </Select>
@@ -273,9 +277,9 @@ const ModelManagerPage: React.FC = () => {
             value={selectedLoras}
             onChange={handleLoraSelection}
           >
-            {downloadedLoras.map((loraName) => (
-              <Option key={loraName} value={loraName}>
-                {loraName}
+            {downloadedLoras.map((lora) => (
+              <Option key={lora.fileName} value={lora.fileName}>
+                {lora.name}
               </Option>
             ))}
           </Select>

@@ -7,7 +7,6 @@ import dotenv from 'dotenv';
 import EPub from 'epub2';
 import express from 'express';
 import fs from 'fs-extra';
-import { glob } from 'glob';
 import { JSDOM } from 'jsdom';
 import OpenAI from 'openai';
 import path from 'path';
@@ -42,14 +41,9 @@ if (!basePath) {
 // Endpoint to list downloaded models
 app.get('/list-models', async (req, res) => {
   try {
-    const checkpointDir = path.join(basePath, 'models/Stable-diffusion/');
-    const files = await glob('**/*.{ckpt,safetensors,pt}', {
-      cwd: checkpointDir,
+    const models = await prisma.aiModel.findMany({
+      where: { type: 'Checkpoint' },
     });
-    const models = files.map((file) => ({
-      name: path.basename(file),
-      path: path.join(checkpointDir, file),
-    }));
     res.json(models);
   } catch (error) {
     console.error('Error listing models:', error);
@@ -527,16 +521,13 @@ app.delete('/api/books/:bookId', async (req, res) => {
 // Endpoint to list downloaded LoRas
 app.get('/list-loras', async (req, res) => {
   try {
-    const loraDir = path.join(basePath, 'models/Lora/');
-    const files = await glob('**/*.{safetensors,pt}', { cwd: loraDir });
-    const loras = files.map((file) => ({
-      name: path.basename(file),
-      path: path.join(loraDir, file),
-    }));
+    const loras = await prisma.aiModel.findMany({
+      where: { type: 'LoRA' },
+    });
     res.json(loras);
   } catch (error) {
-    console.error('Error listing LoRas:', error);
-    res.status(500).json({ error: 'An error occurred while listing LoRas.' });
+    console.error('Error listing LoRAs:', error);
+    res.status(500).json({ error: 'An error occurred while listing LoRAs.' });
   }
 });
 
@@ -652,6 +643,26 @@ app.post('/load-model', async (req, res) => {
         sd_model_checkpoint: modelFileName,
       });
     }
+
+    // Upsert the model into the database
+    await prisma.aiModel.upsert({
+      where: { modelId: modelData.id },
+      update: {
+        name: modelData.name,
+        fileName: modelFileName,
+        type: modelData.type,
+        description: modelData.description,
+        images: modelData.modelVersions[0]?.images,
+      },
+      create: {
+        modelId: modelData.id,
+        name: modelData.name,
+        fileName: modelFileName,
+        type: modelData.type,
+        description: modelData.description,
+        images: modelData.modelVersions[0]?.images,
+      },
+    });
 
     res.json({ message: 'Model loaded successfully.' });
   } catch (error) {
