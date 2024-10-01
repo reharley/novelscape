@@ -175,22 +175,31 @@ export async function getPassagesForBook(req: Request, res: Response) {
 }
 export async function getPassagesForChapter(req: Request, res: Response) {
   const { bookId, chapterId } = req.params;
-
+  if (!bookId || !chapterId) {
+    res.status(400).json({ error: 'bookId and chapterId are required.' });
+    return;
+  }
   try {
     const passages = await prisma.passage.findMany({
       where: {
         bookId: bookId,
-        chapterId: parseInt(chapterId, 10),
+        chapterId: Number(chapterId),
       },
-      orderBy: { order: 'asc' },
-      include: {
+      select: {
+        id: true,
+        textContent: true,
+        order: true,
         profiles: {
           select: {
             id: true,
             name: true,
             type: true,
+            imageUrl: true,
           },
         },
+      },
+      orderBy: {
+        order: 'asc',
       },
     });
 
@@ -198,7 +207,6 @@ export async function getPassagesForChapter(req: Request, res: Response) {
       res.status(404).json({ message: 'No passages found for this chapter.' });
       return;
     }
-
     res.json(passages);
   } catch (error) {
     console.error('Error fetching passages:', error);

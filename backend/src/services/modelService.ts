@@ -4,7 +4,19 @@ import path from 'path';
 import prisma from '../config/prisma';
 import { downloadFile } from '../utils/downloadFile';
 
-export async function listModels(type: string) {
+export async function listModels(type: string, profileId?: string) {
+  if (profileId) {
+    return await prisma.aiModel.findMany({
+      where: {
+        type,
+        profiles: {
+          some: {
+            profileId: Number(profileId),
+          },
+        },
+      },
+    });
+  }
   return await prisma.aiModel.findMany({
     where: { type },
   });
@@ -112,7 +124,19 @@ export async function loadModel(
       fileName: modelFileName,
       type: modelData.type,
       description: modelData.description,
-      images: modelData.modelVersions[0]?.images,
+      images: {
+        // Use 'create' to add new images
+        create: modelData.modelVersions[0]?.images.map((image: any) => ({
+          url: image.url,
+          nsfwLevel: image.nsfwLevel,
+          width: image.width,
+          height: image.height,
+          hash: image.hash,
+          type: image.type,
+          hasMeta: image.hasMeta,
+          onSite: image.onSite,
+        })),
+      },
     },
     create: {
       modelId: modelData.id,
@@ -120,7 +144,19 @@ export async function loadModel(
       fileName: modelFileName,
       type: modelData.type,
       description: modelData.description,
-      images: modelData.modelVersions[0]?.images,
+      images: {
+        // Use 'create' to add new images
+        create: modelData.modelVersions[0]?.images.map((image: any) => ({
+          url: image.url,
+          nsfwLevel: image.nsfwLevel,
+          width: image.width,
+          height: image.height,
+          hash: image.hash,
+          type: image.type,
+          hasMeta: image.hasMeta,
+          onSite: image.onSite,
+        })),
+      },
     },
   });
 

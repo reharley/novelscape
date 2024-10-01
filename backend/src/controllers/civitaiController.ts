@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { Request, Response } from 'express';
+import prisma from '../config/prisma';
 import { sanitizeHtml } from '../utils/sanitizer';
 
 // Configuration
@@ -21,8 +22,137 @@ const civitaiAxios = axios.create({
     Authorization: `Bearer ${CIVITAI_API_TOKEN}`,
   },
 });
+interface CivitaiModel {
+  id: number;
+  name: string;
+  description: string;
+  fileName: string;
+  type: string;
+  modelVersions: any[]; // Define more specific types as needed
+}
+interface GenerationMeta {
+  prompt: string;
+  negativePrompt: string;
+  cfgScale: number;
+  steps: number;
+  sampler: string;
+  seed: number;
+  civitaiResources: {
+    type: string;
+    weight?: number;
+    modelVersionId: number;
+    modelVersionName: string;
+  }[];
+  Size: string;
+  'Created Date': string;
+  clipSkip: number;
+}
 
-// Search Models
+interface CivitaiResponse {
+  result: {
+    data: {
+      json: {
+        meta: GenerationMeta;
+      };
+    };
+  };
+}
+function generateUrl(imageId: number): string {
+  const data = {
+    json: {
+      id: imageId,
+      // authed: true,
+    },
+  };
+
+  const jsonString = JSON.stringify(data);
+  const encodedInput = encodeURIComponent(jsonString);
+  const url = `https://civitai.com/api/trpc/image.getGenerationData?input=${encodedInput}`;
+
+  return url;
+}
+async function fetchGenerationData(
+  imageId: number
+): Promise<GenerationMeta | null> {
+  const url = generateUrl(imageId);
+  console.log(`Fetching data from URL: ${url}`);
+
+  try {
+    const response = await axios.get<CivitaiResponse>(url, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (response.status !== 200) {
+      throw new Error(
+        `HTTP error! Status: ${response.status} ${response.statusText}`
+      );
+    }
+
+    const meta: GenerationMeta = response.data.result.data.json.meta;
+    console.log('Generation Data:', meta);
+    return meta;
+  } catch (error: any) {
+    console.error('Error fetching generation data:', error.message || error);
+    return null;
+  }
+}
+
+export async function getGenerationData(req: Request, res: Response) {
+  const { imageId } = req.body;
+
+  if (!imageId || isNaN(Number(imageId))) {
+    res.status(400).json({ error: 'Valid imageId is required.' });
+    return;
+  }
+
+  try {
+    await fetchGenerationData(Number(imageId));
+    res.json({ message: 'Generation data fetched and stored successfully.' });
+  } catch (error: any) {
+    console.error(
+      'Error in fetching and storing generation data:',
+      error.message || error
+    );
+    res
+      .status(500)
+      .json({ error: 'An error occurred while fetching generation data.' });
+  }
+}
+
+export async function getImageGenerationData(req: Request, res: Response) {
+  const { imageId } = req.params;
+
+  if (!imageId || isNaN(Number(imageId))) {
+    res.status(400).json({ error: 'Valid imageId parameter is required.' });
+    return;
+  }
+
+  try {
+    const generationData = await prisma.generationData.findUnique({
+      where: { modelImageId: Number(imageId) },
+      include: {
+        civitaiResources: true,
+      },
+    });
+
+    if (!generationData) {
+      res
+        .status(404)
+        .json({ error: 'Generation data not found for the given image ID.' });
+      return;
+    }
+
+    res.json(generationData);
+  } catch (error: any) {
+    console.error('Error fetching generation data:', error.message || error);
+    res
+      .status(500)
+      .json({ error: 'An error occurred while fetching generation data.' });
+  }
+}
+
 export async function searchModels(req: Request, res: Response) {
   const {
     limit,

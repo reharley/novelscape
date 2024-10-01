@@ -13,40 +13,26 @@ import {
 } from 'antd';
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
-import { Book } from '../../utils/types'; // Import the Book interface
+import {
+  AiModel,
+  Book,
+  Chapter,
+  ModelImage,
+  Passage,
+  Profile,
+} from '../../utils/types';
+import ModelPreview from './ModelPreview';
+import ModelSelectionModal from './ModelSelectionModal';
+import ProfileCard from './ProfileCard';
 
 const { Content } = Layout;
 const { Title, Paragraph, Text } = Typography;
 const { Option } = Select;
 
-interface Profile {
-  id: number;
-  name: string;
-  type: string;
-}
-
-interface Chapter {
-  id: number;
-  order: number;
-  title: string;
-}
-
-interface Passage {
-  id: number;
-  textContent: string;
-  order: number;
-  profiles: Profile[];
-}
-
-interface AiModel {
-  name: string;
-  fileName: string;
-  modelId: number;
-}
-
 const AIEnhancedReaderPage: React.FC = () => {
-  const [books, setBooks] = useState<Book[]>([]); // Updated state type
-  const [selectedBook, setSelectedBook] = useState<Book | null>(null); // Updated state type
+  // Existing state variables
+  const [books, setBooks] = useState<Book[]>([]);
+  const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [selectedChapter, setSelectedChapter] = useState<number | null>(null);
   const [passages, setPassages] = useState<Passage[]>([]);
@@ -59,6 +45,13 @@ const AIEnhancedReaderPage: React.FC = () => {
   const [selectedLoras, setSelectedLoras] = useState<string[]>([]);
   const [loadingPassages, setLoadingPassages] = useState<boolean>(false);
   const [loadingChapters, setLoadingChapters] = useState<boolean>(false);
+
+  // New state variables for modal and preview
+  const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
+  const [isModelModalVisible, setIsModelModalVisible] =
+    useState<boolean>(false);
+  const [isPreviewVisible, setIsPreviewVisible] = useState<boolean>(false);
+  const [previewModel, setPreviewModel] = useState<AiModel | null>(null);
 
   const baseUrl = 'http://localhost:5000/api';
 
@@ -133,7 +126,7 @@ const AIEnhancedReaderPage: React.FC = () => {
         model: selectedModel,
       });
       setGeneratedImage(`data:image/png;base64,${response.data.image}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating image:', error);
       alert('Failed to generate image. Please try again.');
     }
@@ -173,6 +166,72 @@ const AIEnhancedReaderPage: React.FC = () => {
     if (selectedBook) {
       fetchPassages(selectedBook.id, chapterId);
     }
+  };
+
+  const handleProfileClick = (profile: Profile) => {
+    setSelectedProfile(profile);
+    setIsModelModalVisible(true);
+  };
+
+  const handleModelSelect = async (model: AiModel) => {
+    setIsModelModalVisible(false);
+    setPreviewModel(model);
+    setIsPreviewVisible(true);
+
+    // Associate the model with the profile in the backend
+    await associateModelWithProfile(selectedProfile?.id, model.id);
+
+    // Fetch and store generation data for associated images
+    await fetchAndStoreGenerationDataForModel(model.id);
+  };
+
+  const associateModelWithProfile = async (
+    profileId: number | undefined,
+    modelId: number
+  ) => {
+    if (!profileId) return;
+    try {
+      await axios.post(
+        `${baseUrl}/ai-models/profiles/${profileId}/associate-model`,
+        { modelId }
+      );
+      // Optionally, refresh the models list for the profile
+    } catch (error: any) {
+      console.error('Error associating model with profile:', error);
+      alert(
+        error.response?.data?.error || 'Failed to associate model with profile.'
+      );
+    }
+  };
+
+  const fetchAndStoreGenerationDataForModel = async (modelId: number) => {
+    try {
+      // Fetch all images associated with the AiModel
+      const imagesResponse = await axios.get<ModelImage[]>(
+        `${baseUrl}/ai-models/${modelId}/images`
+      );
+      const images = imagesResponse.data;
+
+      // For each image, trigger fetching and storing generation data
+      const fetchPromises = images.map((image) =>
+        axios.post(`${baseUrl}/generation-data/fetch`, { imageId: image.id })
+      );
+
+      await Promise.all(fetchPromises);
+
+      console.log('Generation data fetched and stored for all model images.');
+    } catch (error: any) {
+      console.error(
+        'Error fetching and storing generation data for model:',
+        error.message || error
+      );
+      alert('Failed to fetch and store generation data for the model.');
+    }
+  };
+
+  const handlePreviewClose = () => {
+    setIsPreviewVisible(false);
+    setPreviewModel(null);
   };
 
   const currentPassage = passages[currentPassageIndex];
@@ -238,7 +297,7 @@ const AIEnhancedReaderPage: React.FC = () => {
                 placeholder='Select an AI Model'
               >
                 {downloadedModels.map((model) => (
-                  <Option key={model.modelId} value={model.fileName}>
+                  <Option key={model.id} value={model.id.toString()}>
                     {model.name}
                   </Option>
                 ))}
@@ -256,12 +315,29 @@ const AIEnhancedReaderPage: React.FC = () => {
                 onChange={handleLoraSelection}
               >
                 {downloadedLoras.map((lora) => (
-                  <Option key={lora.modelId} value={lora.fileName}>
+                  <Option key={lora.id} value={lora.id.toString()}>
                     {lora.name}
                   </Option>
                 ))}
               </Select>
             </div>
+
+            {/* Model Selection Modal */}
+            <ModelSelectionModal
+              visible={isModelModalVisible}
+              onCancel={() => setIsModelModalVisible(false)}
+              onSelect={handleModelSelect}
+              profileId={selectedProfile?.id || 0}
+            />
+
+            {/* Model Preview Modal */}
+            {previewModel && (
+              <ModelPreview
+                visible={isPreviewVisible}
+                onClose={handlePreviewClose}
+                model={previewModel}
+              />
+            )}
 
             {/* Passages Section */}
             {selectedChapter && (
@@ -311,16 +387,13 @@ const AIEnhancedReaderPage: React.FC = () => {
                     {currentPassage.profiles.length > 0 && (
                       <div style={{ marginTop: '20px' }}>
                         <Title level={5}>Relevant Profiles</Title>
-                        <Space direction='vertical'>
+                        <Space wrap>
                           {currentPassage.profiles.map((profile) => (
-                            <Card
+                            <ProfileCard
                               key={profile.id}
-                              type='inner'
-                              title={profile.name}
-                              size='small'
-                            >
-                              <Text>Type: {profile.type}</Text>
-                            </Card>
+                              profile={profile}
+                              onClick={handleProfileClick}
+                            />
                           ))}
                         </Space>
                       </div>

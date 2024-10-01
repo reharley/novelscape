@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import prisma from '../config/prisma';
 import {
   listModels,
   loadModel,
@@ -6,8 +7,9 @@ import {
 } from '../services/modelService';
 
 export async function listDownloadedModels(req: Request, res: Response) {
+  const { profileId } = req.query;
   try {
-    const models = await listModels('Checkpoint');
+    const models = await listModels('Checkpoint', profileId as string);
     res.json(models);
   } catch (error) {
     console.error('Error listing models:', error);
@@ -22,6 +24,50 @@ export async function listDownloadedLoras(req: Request, res: Response) {
   } catch (error) {
     console.error('Error listing LoRAs:', error);
     res.status(500).json({ error: 'An error occurred while listing LoRAs.' });
+  }
+}
+
+export async function associateModel(req: Request, res: Response) {
+  const { profileId } = req.params;
+  const { modelId } = req.body;
+
+  if (!modelId || isNaN(Number(modelId))) {
+    res.status(400).json({ error: 'Valid modelId is required.' });
+    return;
+  }
+
+  try {
+    const profileAiModel = await prisma.profileAiModel.create({
+      data: {
+        profile: { connect: { id: Number(profileId) } },
+        aiModel: { connect: { id: Number(modelId) } },
+      },
+    });
+
+    res.json(profileAiModel);
+  } catch (error: any) {
+    console.error(
+      'Error associating model with profile:',
+      error.message || error
+    );
+    res
+      .status(500)
+      .json({ error: 'An error occurred while associating the model.' });
+  }
+}
+
+export async function getModelImages(req: Request, res: Response) {
+  const { modelId } = req.params;
+  try {
+    const images = await prisma.modelImage.findMany({
+      where: { modelId: Number(modelId) },
+    });
+    res.json(images);
+  } catch (error: any) {
+    console.error('Error fetching model images:', error.message || error);
+    res
+      .status(500)
+      .json({ error: 'An error occurred while fetching model images.' });
   }
 }
 

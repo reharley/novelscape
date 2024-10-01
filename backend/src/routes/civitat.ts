@@ -1,13 +1,15 @@
 import express from 'express';
 import {
   getCreators,
+  getGenerationData,
+  getImageGenerationData,
   getImages,
   getModelById,
   getModelVersionByHash,
   getModelVersionById,
   getTags,
   searchModels,
-} from '../controllers/civitai';
+} from '../controllers/civitaiController';
 
 const router = express.Router();
 
@@ -27,5 +29,18 @@ router.get('/model-versions/by-hash/:hash', getModelVersionByHash);
 
 // Tags Routes
 router.get('/tags', getTags);
+
+/**
+ * GET /api/civitai/:imageId
+ * Description: Retrieves generation data for the given image ID.
+ */
+router.get('/images/:imageId', getImageGenerationData);
+
+/**
+ * POST /api/civitai/fetch-generation-data
+ * Body: { imageId: number }
+ * Description: Fetches generation data for the given image ID and stores it in the database.
+ */
+router.post('/fetch-generation-data', getGenerationData);
 
 export default router;

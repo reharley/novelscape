@@ -8,14 +8,14 @@ datasource db {
 }
 
 model Book {
-    id          String        @id // Use the filename as the unique ID
-    title       String
-    chapters    Chapter[]
-    profiles    Profile[]
-    passages    Passage[]
-    createdAt   DateTime      @default(now())
-    updatedAt   DateTime      @updatedAt
-    Description Description[]
+    id           String        @id
+    title        String
+    chapters     Chapter[]
+    profiles     Profile[]
+    passages     Passage[]
+    createdAt    DateTime      @default(now())
+    updatedAt    DateTime      @updatedAt
+    descriptions Description[]
 }
 
 model Chapter {
@@ -25,7 +25,7 @@ model Chapter {
     contents Json
     book     Book      @relation(fields: [bookId], references: [id])
     bookId   String
-    passages Passage[] // Relation to Passage
+    passages Passage[]
 }
 
 model Passage {
@@ -37,24 +37,27 @@ model Passage {
     chapter      Chapter       @relation(fields: [chapterId], references: [id])
     chapterId    Int
     descriptions Description[]
-    profiles     Profile[]     @relation("PassageProfiles") // Implicit many-to-many
+    profiles     Profile[]     @relation("PassageProfiles")
     createdAt    DateTime      @default(now())
     updatedAt    DateTime      @updatedAt
 
-    @@index([chapterId, order]) // Add an index for faster queries based on chapter and order
+    @@index([chapterId, order])
 }
 
 model Profile {
-    id           Int           @id @default(autoincrement())
+    id           Int              @id @default(autoincrement())
     name         String
     type         String
-    descriptions Description[] // A profile has multiple descriptions
-    book         Book          @relation(fields: [bookId], references: [id])
+    imageUrl     String?
+    descriptions Description[]
+    book         Book             @relation(fields: [bookId], references: [id])
     bookId       String
-    passages     Passage[]     @relation("PassageProfiles") // Implicit many-to-many
-    aiModels     AiModel[]     @relation("ProfileAiModels") // Many-to-Many Relation
+    passages     Passage[]        @relation("PassageProfiles")
+    aiModels     ProfileAiModel[]
+    createdAt    DateTime         @default(now())
+    updatedAt    DateTime         @default(now()) @updatedAt
 
-    @@unique([name, bookId]) // Ensure profiles are unique for each book
+    @@unique([name, bookId])
 }
 
 model Description {
@@ -69,15 +72,66 @@ model Description {
 }
 
 model AiModel {
-    id          Int      @id @default(autoincrement())
-    modelId     Int      @unique // The ID from CivitAI
+    id          Int              @id @default(autoincrement())
+    modelId     Int              @unique
     name        String
     fileName    String
     type        String
     description String?
-    images      Json?
-    createdAt   DateTime @default(now())
-    updatedAt   DateTime @updatedAt
+    images      ModelImage[]
+    profiles    ProfileAiModel[]
+    createdAt   DateTime         @default(now())
+    updatedAt   DateTime         @updatedAt
+}
 
-    profiles Profile[] @relation("ProfileAiModels") // Many-to-Many Relation
+model ModelImage {
+    id             Int             @id @default(autoincrement())
+    url            String
+    model          AiModel         @relation(fields: [modelId], references: [id])
+    modelId        Int
+    nsfwLevel      Int
+    width          Int
+    height         Int
+    hash           String
+    type           String
+    hasMeta        Boolean
+    onSite         Boolean
+    createdAt      DateTime        @default(now())
+    updatedAt      DateTime        @updatedAt
+    generationData GenerationData?
+}
+
+model GenerationData {
+    id               Int               @id @default(autoincrement())
+    prompt           String
+    negativePrompt   String
+    cfgScale         Float
+    steps            Int
+    sampler          String
+    seed             Int
+    size             String
+    createdDate      DateTime
+    clipSkip         Int
+    civitaiResources CivitaiResource[]
+    modelImage       ModelImage        @relation(fields: [modelImageId], references: [id])
+    modelImageId     Int               @unique
+}
+
+model CivitaiResource {
+    id               Int            @id @default(autoincrement())
+    type             String
+    weight           Float? // Only applicable for LoRAs
+    modelVersionId   Int
+    modelVersionName String
+    generationData   GenerationData @relation(fields: [generationDataId], references: [id])
+    generationDataId Int
+}
+
+model ProfileAiModel {
+    profile   Profile @relation(fields: [profileId], references: [id])
+    profileId Int
+    aiModel   AiModel @relation(fields: [aiModelId], references: [id])
+    aiModelId Int
+
+    @@id([profileId, aiModelId])
 }

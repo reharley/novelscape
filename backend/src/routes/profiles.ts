@@ -37,18 +37,13 @@ router.post('/:profileId/associate-lora', async (req, res) => {
   }
 
   try {
-    const profile = await prisma.profile.update({
-      where: { id: Number(profileId) },
+    const profileAiModel = await prisma.profileAiModel.create({
       data: {
-        aiModels: {
-          connect: { id: Number(loraId) },
-        },
-      },
-      include: {
-        aiModels: true,
+        profile: { connect: { id: Number(profileId) } },
+        aiModel: { connect: { id: Number(loraId) } },
       },
     });
-    res.json(profile);
+    res.json(profileAiModel);
   } catch (error) {
     console.error('Error associating LORA with Profile:', error);
     res.status(500).json({ error: 'Failed to associate LORA with Profile.' });
@@ -60,18 +55,15 @@ router.delete('/:profileId/disassociate-lora/:loraId', async (req, res) => {
   const { profileId, loraId } = req.params;
 
   try {
-    const profile = await prisma.profile.update({
-      where: { id: Number(profileId) },
-      data: {
-        aiModels: {
-          disconnect: { id: Number(loraId) },
+    const profileAiModel = await prisma.profileAiModel.delete({
+      where: {
+        profileId_aiModelId: {
+          profileId: Number(profileId),
+          aiModelId: Number(loraId),
         },
       },
-      include: {
-        aiModels: true,
-      },
     });
-    res.json(profile);
+    res.json(profileAiModel);
   } catch (error) {
     console.error('Error disassociating LORA from Profile:', error);
     res
