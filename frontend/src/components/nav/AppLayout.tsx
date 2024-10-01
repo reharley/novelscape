@@ -11,7 +11,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const selectedKeys = [location.pathname];
 
   return (
-    <Layout style={{ maxHeight: '100vh' }}>
+    <Layout>
       <Header style={{ position: 'fixed', zIndex: 1, width: '100%' }}>
         {/* You can replace this div with your logo */}
         <div
