@@ -1,3 +1,4 @@
+import { Config, removeBackground } from '@imgly/background-removal-node';
 import { Request, Response } from 'express';
 import openai from '../config/openai';
 import prisma from '../config/prisma';
@@ -251,11 +252,30 @@ export async function generateImagesForPassage(req: Request, res: Response) {
           seed,
           clip_skip: clipSkip,
         });
+        const config: Config = {
+          debug: false,
+          // publicPath:  ...
+          progress: (key: string, current: number, total: number) => {
+            const [type, subtype] = key.split(':');
+            console.log(
+              `${type} ${subtype} ${((current / total) * 100).toFixed(0)}%`
+            );
+          },
+          // model: 'small',
+          model: 'small',
+          output: {
+            quality: 0.8,
+            format: 'image/png', //image/jpeg, image/webp
+          },
+        };
 
+        const uint8Array = base64ToBlob(imageResult.image);
+        const blob = await removeBackground(uint8Array, config);
+        const image64 = await blobToBase64(blob);
         return {
           profileId: profile.id,
           profileName: profile.name,
-          image: imageResult.image, // Base64 string
+          image: image64,
         };
       } catch (error: any) {
         console.error(
@@ -284,6 +304,78 @@ export async function generateImagesForPassage(req: Request, res: Response) {
     });
   }
 }
+
+/**
+ * Converts a Blob to a Base64 encoded Data URL string in Node.js.
+ *
+ * @param blob - The Blob object to convert.
+ * @returns A Promise that resolves to a Base64 encoded Data URL string.
+ */
+async function blobToBase64WithMime(blob: Blob): Promise<string> {
+  // Step 1: Get the ArrayBuffer from the Blob
+  const arrayBuffer = await blob.arrayBuffer();
+
+  // Step 2: Convert ArrayBuffer to Buffer
+  const buffer = Buffer.from(arrayBuffer);
+
+  // Step 3: Convert Buffer to Base64 string
+  const base64String = buffer.toString('base64');
+
+  // Step 4: Prepend Data URL prefix with MIME type
+  const dataURL = `data:${blob.type};base64,${base64String}`;
+
+  return dataURL;
+}
+
+/**
+ * Converts a Blob to a Base64 encoded string in Node.js.
+ *
+ * @param blob - The Blob object to convert.
+ * @returns A Promise that resolves to a Base64 encoded string.
+ */
+async function blobToBase64(blob: Blob): Promise<string> {
+  // Step 1: Get the ArrayBuffer from the Blob
+  const arrayBuffer = await blob.arrayBuffer();
+
+  // Step 2: Convert ArrayBuffer to Buffer
+  const buffer = Buffer.from(arrayBuffer);
+
+  // Step 3: Convert Buffer to Base64 string
+  const base64String = buffer.toString('base64');
+
+  return base64String;
+}
+/**
+ * Converts a Base64 string to a Blob in Node.js.
+ *
+ * @param base64 - The Base64 encoded string.
+ * @param mimeType - (Optional) The MIME type of the resulting Blob. Defaults to 'application/octet-stream'.
+ * @returns A Promise that resolves to a Blob representing the decoded data.
+ */
+function base64ToBlob(
+  base64: string,
+  mimeType: string = 'application/octet-stream'
+): Blob {
+  // Decode the Base64 string into a Buffer
+  const buffer = Buffer.from(base64, 'base64');
+
+  // Convert Buffer to an ArrayBuffer
+  const arrayBuffer = buffer.buffer.slice(
+    buffer.byteOffset,
+    buffer.byteLength + buffer.byteOffset
+  );
+
+  // Create a Blob from the ArrayBuffer
+  const blob = new Blob([arrayBuffer], { type: mimeType });
+
+  return blob;
+}
+/**
+ * Converts a Base64 encoded string to an ArrayBuffer.
+ *
+ * @param base64 - The Base64 encoded string.
+ * @returns The resulting ArrayBuffer.
+ */
 
 /**
  * @desc Generates positive and negative prompts using OpenAI's ChatGPT based on the provided text content, profiles, and book name.
@@ -352,7 +444,7 @@ export async function generateProfilePrompt(
   4. **Book Context**: Utilize the book name to maintain consistency with the book's theme and setting.
   5. **Format**: Provide the output as a JSON object with two fields: "positivePrompt" and "negativePrompt". Do **not** include any Markdown formatting or code block delimiters.
   6. **Format Clues**: Focus on comma separated list of features describing a scene and avoid full sentences
-  7. **Characters**: Only draw 1 character in a scene using positive features 1boy or 1girl and solo for characters and negative for other object types
+  7. **Characters**: Draw character profiles. Only draw 1 character in a scene using positive features 1boy or 1girl and solo for characters and negative for other object types. Avoid describing scenery with characters.
   8. **Examples**: Below are examples of desired output formats to guide your response.
   
   **Example Outputs:**
