@@ -63,7 +63,7 @@ export async function generateImageForProfile(req: Request, res: Response) {
 }
 
 /**
- * @desc Generate images for all profiles linked to a specific passage
+ * @desc Generate images for all profiles linked to a specific passage, including background scenes for non-character profiles.
  * @route POST /api/passages/:passageId/generate-images
  * @access Public
  */
@@ -109,149 +109,235 @@ export async function generateImagesForPassage(req: Request, res: Response) {
       return;
     }
 
-    // Prepare an array to hold image generation promises
-    const imagePromises = profiles.map(async (profile) => {
-      // Retrieve GenerationData via profile.image.generationData
-      const generationData = profile.image?.generationData;
+    const characterProfiles = profiles.filter(
+      (profile) => profile.type.toLowerCase() === 'character'
+    );
+    const nonCharacterProfiles = profiles.filter(
+      (profile) => profile.type.toLowerCase() !== 'character'
+    );
 
-      if (!generationData) {
-        console.warn(
-          `No GenerationData found for profile ID ${profile.id}. Skipping image generation.`
-        );
-        return {
-          profileId: profile.id,
-          profileName: profile.name,
-          image: null, // Indicate that image generation was skipped
-          error: 'No GenerationData available.',
-        };
-      }
+    const characterImagePromises = characterProfiles.map(
+      async (
+        profile
+      ): Promise<{
+        profileId: number;
+        profileName: string;
+        image: string | null;
+        error?: string;
+      }> => {
+        const generationData = profile.image?.generationData;
 
-      const civitaiResources = generationData.civitaiResources;
-
-      if (!civitaiResources || civitaiResources.length === 0) {
-        console.warn(
-          `No CivitaiResources found for profile ID ${profile.id}. Skipping image generation.`
-        );
-        return {
-          profileId: profile.id,
-          profileName: profile.name,
-          image: null,
-          error: 'No CivitaiResources available.',
-        };
-      }
-
-      // Attempt to find a CivitaiResource with modelType 'Checkpoint'
-      const checkpointResource = civitaiResources.find(
-        (resource) => resource.modelType.toLowerCase() === 'checkpoint'
-      );
-      const loraResources = civitaiResources.filter(
-        (resource) => resource.modelType.toLowerCase() === 'lora'
-      );
-
-      let modelFileName: string | null = null;
-
-      if (checkpointResource) {
-        // If 'Checkpoint' modelType exists, use its model's fileName
-        const aiModel = await prisma.aiModel.findUnique({
-          where: { id: checkpointResource.modelId },
-        });
-
-        if (aiModel) {
-          modelFileName = aiModel.fileName;
-        } else {
+        if (!generationData) {
           console.warn(
-            `AiModel with ID ${checkpointResource.modelId} not found for profile ID ${profile.id}.`
+            `No GenerationData found for profile ID ${profile.id}. Skipping image generation.`
           );
+          return {
+            profileId: profile.id,
+            profileName: profile.name,
+            image: null, // Indicate that image generation was skipped
+            error: 'No GenerationData available.',
+          };
         }
-      } else {
-        // If no 'Checkpoint' modelType, use the first available modelType
-        const firstResource = civitaiResources[0];
-        const aiModel = await prisma.aiModel.findFirst({
-          where: { type: 'Checkpoint', baseModel: firstResource.baseModel },
-        });
 
-        if (aiModel) {
-          modelFileName = aiModel.fileName;
-        } else {
+        const civitaiResources = generationData.civitaiResources;
+
+        if (!civitaiResources || civitaiResources.length === 0) {
           console.warn(
-            `No AiModel found with type '${firstResource.modelType}' for profile ID ${profile.id}.`
+            `No CivitaiResources found for profile ID ${profile.id}. Skipping image generation.`
           );
+          return {
+            profileId: profile.id,
+            profileName: profile.name,
+            image: null,
+            error: 'No CivitaiResources available.',
+          };
         }
-      }
 
-      if (!modelFileName) {
-        console.warn(
-          `No suitable AiModel fileName found for profile ID ${profile.id}. Skipping image generation.`
+        // Attempt to find a CivitaiResource with modelType 'Checkpoint'
+        const checkpointResource = civitaiResources.find(
+          (resource) => resource.modelType.toLowerCase() === 'checkpoint'
         );
-        return {
-          profileId: profile.id,
-          profileName: profile.name,
-          image: null,
-          error: 'No suitable AiModel found for image generation.',
-        };
-      }
-
-      // Extract settings from GenerationData
-      const {
-        prompt,
-        steps,
-        cfgScale,
-        sampler,
-        seed,
-        size,
-        clipSkip,
-        negativePrompt,
-      } = generationData;
-
-      let finalPrompt = prompt;
-      let finalNegativePrompt = negativePrompt;
-
-      if (!negativePrompt) {
-        // Gather all profile descriptions
-        const profileDescriptions = profiles.map((p) =>
-          p.descriptions.join(' ')
+        const loraResources = civitaiResources.filter(
+          (resource) => resource.modelType.toLowerCase() === 'lora'
         );
 
-        // Generate prompts using ChatGPT
-        try {
-          const prompts = await generateProfilePrompt(
-            passage.textContent,
-            {
-              name: profile.name,
-              descriptions: profile.descriptions.map((desc) => desc.text),
-            },
-            passage.book.title
-          );
+        let modelFileName: string | null = null;
 
-          finalPrompt = prompts.positivePrompt;
-          finalNegativePrompt = prompts.negativePrompt;
-          console.log(profile.name, prompts);
-        } catch (error: any) {
-          console.error(
-            `Error generating prompts for profile ID ${profile.id}:`,
-            error.message
-          );
-          finalNegativePrompt =
-            'poorly drawn hands, poorly drawn feet, poorly drawn face, out of frame, extra limbs, disfigured, deformed, body out of frame, bad anatomy, watermark, signature, cut off, low contrast, underexposed, overexposed, bad art, beginner, amateur, distorted face, bad quality, land, planet';
-          finalPrompt = finalPrompt || '';
+        if (checkpointResource) {
+          // If 'Checkpoint' modelType exists, use its model's fileName
+          const aiModel = await prisma.aiModel.findUnique({
+            where: { id: checkpointResource.modelId },
+          });
+
+          if (aiModel) {
+            modelFileName = aiModel.fileName;
+          } else {
+            console.warn(
+              `AiModel with ID ${checkpointResource.modelId} not found for profile ID ${profile.id}.`
+            );
+          }
+        } else {
+          // If no 'Checkpoint' modelType, use the first available modelType
+          const firstResource = civitaiResources[0];
+          const aiModel = await prisma.aiModel.findFirst({
+            where: { type: 'Checkpoint', baseModel: firstResource.baseModel },
+          });
+
+          if (aiModel) {
+            modelFileName = aiModel.fileName;
+          } else {
+            console.warn(
+              `No AiModel found with type '${firstResource.modelType}' for profile ID ${profile.id}.`
+            );
+          }
         }
-      }
 
-      try {
-        // Generate the image using GenerationData settings and determined modelFileName
-        const imageResult = await generateImage({
-          prompt: finalPrompt,
-          negative_prompt: finalNegativePrompt,
+        if (!modelFileName) {
+          console.warn(
+            `No suitable AiModel fileName found for profile ID ${profile.id}. Skipping image generation.`
+          );
+          return {
+            profileId: profile.id,
+            profileName: profile.name,
+            image: null,
+            error: 'No suitable AiModel found for image generation.',
+          };
+        }
+
+        // Extract settings from GenerationData
+        const {
+          prompt,
           steps,
-          width: size ? parseInt(size.split('x')[0], 10) : undefined,
-          height: size ? parseInt(size.split('x')[1], 10) : undefined,
-          loras: loraResources.map((lora) => lora.model.fileName),
-          model: modelFileName,
-          cfg_scale: cfgScale,
+          cfgScale,
           sampler,
           seed,
-          clip_skip: clipSkip,
+          size,
+          clipSkip,
+          negativePrompt,
+        } = generationData;
+
+        let finalPrompt = prompt;
+        let finalNegativePrompt = negativePrompt;
+
+        if (!negativePrompt) {
+          try {
+            const prompts = await generateProfilePrompt(
+              passage.textContent,
+              {
+                name: profile.name,
+                descriptions: profile.descriptions.map((desc) => desc.text),
+              },
+              passage.book.title
+            );
+
+            finalPrompt = prompts.positivePrompt;
+            finalNegativePrompt = prompts.negativePrompt;
+            console.log(profile.name, prompts);
+          } catch (error: any) {
+            console.error(
+              `Error generating prompts for profile ID ${profile.id}:`,
+              error.message
+            );
+            finalNegativePrompt =
+              'poorly drawn hands, poorly drawn feet, poorly drawn face, out of frame, extra limbs, disfigured, deformed, body out of frame, bad anatomy, watermark, signature, cut off, low contrast, underexposed, overexposed, bad art, beginner, amateur, distorted face, bad quality, land, planet';
+            finalPrompt = finalPrompt || '';
+          }
+        }
+
+        try {
+          const imageResult = await generateImage({
+            prompt: finalPrompt,
+            negative_prompt: finalNegativePrompt,
+            steps,
+            width: size ? parseInt(size.split('x')[0], 10) : undefined,
+            height: size ? parseInt(size.split('x')[1], 10) : undefined,
+            loras: loraResources.map((lora) => lora.model.fileName),
+            model: modelFileName,
+            cfg_scale: cfgScale,
+            sampler,
+            seed,
+            clip_skip: clipSkip,
+          });
+          const config: Config = {
+            debug: false,
+            progress: (key: string, current: number, total: number) => {
+              const [type, subtype] = key.split(':');
+              console.log(
+                `${type} ${subtype} ${((current / total) * 100).toFixed(0)}%`
+              );
+            },
+            model: 'small',
+            output: {
+              quality: 0.8,
+              format: 'image/png',
+            },
+          };
+
+          const uint8Array = base64ToBlob(imageResult.image);
+          const blob = await removeBackground(uint8Array, config);
+          const image64 = await blobToBase64(blob);
+          return {
+            profileId: profile.id,
+            profileName: profile.name,
+            image: image64,
+          };
+        } catch (error: any) {
+          console.error(
+            `Error generating image for profile ID ${profile.id}:`,
+            error
+          );
+          return {
+            profileId: profile.id,
+            profileName: profile.name,
+            image: null,
+            error: error.message || 'Image generation failed.',
+          };
+        }
+      }
+    );
+
+    const backgroundImagePromise = (async () => {
+      try {
+        const prompts = await generateBackgroundPrompt(
+          passage.textContent,
+          nonCharacterProfiles.map((profile) => ({
+            name: profile.name,
+            descriptions: profile.descriptions.map((desc) => desc.text),
+          })),
+          passage.book.title
+        );
+
+        // Select an appropriate model for background images
+        // This could be customized or selected based on specific criteria
+        const backgroundModel = 'dreamshaper_8.safetensors'; // Replace with actual model selection logic
+
+        // Define GenerationData settings for background image generation
+        const backgroundGenerationData = {
+          prompt: prompts.positivePrompt,
+          negativePrompt: prompts.negativePrompt,
+          steps: 50,
+          cfgScale: 7.0,
+          sampler: 'Euler',
+          seed: Date.now(),
+          size: '1024x768',
+          clipSkip: 1,
+        };
+
+        // Generate the background image
+        const imageResult = await generateImage({
+          prompt: backgroundGenerationData.prompt,
+          negative_prompt: backgroundGenerationData.negativePrompt,
+          steps: backgroundGenerationData.steps,
+          width: parseInt(backgroundGenerationData.size.split('x')[0], 10),
+          height: parseInt(backgroundGenerationData.size.split('x')[1], 10),
+          loras: [], // Add any Lora models if needed
+          model: backgroundModel,
+          cfg_scale: backgroundGenerationData.cfgScale,
+          sampler: backgroundGenerationData.sampler,
+          seed: backgroundGenerationData.seed,
+          clip_skip: backgroundGenerationData.clipSkip,
         });
+
         const config: Config = {
           debug: false,
           // publicPath:  ...
@@ -268,33 +354,29 @@ export async function generateImagesForPassage(req: Request, res: Response) {
             format: 'image/png', //image/jpeg, image/webp
           },
         };
-
-        const uint8Array = base64ToBlob(imageResult.image);
-        const blob = await removeBackground(uint8Array, config);
-        const image64 = await blobToBase64(blob);
         return {
-          profileId: profile.id,
-          profileName: profile.name,
-          image: image64,
+          profileId: 0, // Indicate that this image is for non-character backgrounds
+          profileName: 'Background Scene',
+          image: imageResult.image,
         };
       } catch (error: any) {
-        console.error(
-          `Error generating image for profile ID ${profile.id}:`,
-          error
-        );
+        console.error('Error generating background image:', error);
+        // Even if background image generation fails, provide a fallback or handle accordingly
         return {
-          profileId: profile.id,
-          profileName: profile.name,
+          profileId: 0,
+          profileName: 'Background Scene',
           image: null,
-          error: error.message || 'Image generation failed.',
+          error: error.message || 'Background image generation failed.',
         };
       }
-    });
+    })();
 
-    // Execute all image generation promises concurrently
-    const imageResults = await Promise.all(imagePromises);
+    const characterImageResults = await Promise.all(characterImagePromises);
+    const backgroundImageResult = await backgroundImagePromise;
 
-    res.json({ passageId: passage.id, images: imageResults });
+    const allImageResults = [...characterImageResults];
+    allImageResults.push(backgroundImageResult);
+    res.json({ passageId: passage.id, images: allImageResults });
   } catch (error: any) {
     console.error('Error generating images for passage:', error);
     res.status(500).json({
@@ -371,11 +453,132 @@ function base64ToBlob(
   return blob;
 }
 /**
- * Converts a Base64 encoded string to an ArrayBuffer.
- *
- * @param base64 - The Base64 encoded string.
- * @returns The resulting ArrayBuffer.
+ * @desc Generates positive and negative prompts using OpenAI's ChatGPT based on the provided text content, profiles, and book name.
+ * @param textContent - The main content of the passage.
+ * @param profiles - An array of non-character profiles linked to the passage.
+ * @param bookName - The name of the book to provide additional context.
+ * @returns An object containing both positivePrompt and negativePrompt for background scene generation.
  */
+export async function generateBackgroundPrompt(
+  textContent: string,
+  profiles: {
+    name: string;
+    descriptions: string[];
+  }[],
+  bookName: string
+): Promise<{ positivePrompt: string; negativePrompt: string }> {
+  const examples = [
+    {
+      positivePrompt:
+        'score_9, score_8_up, score_7_up, Diagon Alley promenade, the horror of stars, twilight sunshine, cityscape masterpiece, realistic, best quality, cosmic horror, Style-Volumetric, MJgothic, bright horror, s0lar, castle, blue and purple sky, city streets, spires, stone buildings, (/Harry Potter/)',
+      negativePrompt:
+        'score_4, score_5_up, score_6_up, ng_deepnegative_v1_75t, smeared, blurry, lowres, low quality, med quality, cars, people',
+    },
+    // ... (Include relevant examples for background scenes)
+    {
+      positivePrompt:
+        'A serene landscape depicting a tranquil forest clearing with sunlight filtering through the dense canopy, a gentle stream flowing nearby, and vibrant flora surrounding the area.',
+      negativePrompt:
+        'unsharp, blurry, low resolution, dark shadows, unrealistic colors, distorted shapes, overexposed areas, missing elements, cluttered background',
+    },
+  ];
+
+  const examplesString = JSON.stringify(examples, null, 2);
+
+  const systemPrompt = `
+  You are an expert prompt engineer specializing in generating prompts for standard diffusion image generation. Your task is to create both positive and negative prompts based on the provided passage content, associated non-character profiles (if any), and the book name.
+
+  **Guidelines:**
+
+  1. **Positive Prompt**: Should vividly describe the background scene incorporating elements from all non-character profiles (if any). If there are no non-character profiles, focus solely on the passage content to describe the scene. The prompt should be creative, detailed, and tailored to the context of the passage, profiles, and the book.
+  2. **Negative Prompt**: Should include elements to avoid in the image generation to ensure higher quality and relevance. Focus on common issues like poor anatomy, incorrect proportions, unwanted artifacts, etc.
+  3. **Incorporate Profiles**: Use the profiles' names and descriptions to enrich the prompts, ensuring that the profiles' unique traits are reflected accurately within the scene when profiles are present.
+  4. **Book Context**: Utilize the book name to maintain consistency with the book's theme and setting.
+  5. **Format**: Provide the output as a JSON object with two fields: "positivePrompt" and "negativePrompt". Do **not** include any Markdown formatting or code block delimiters.
+  6. **Format Clues**: Focus on comma-separated list of features describing a scene and avoid full sentences.
+  7. **Characters**: Do **not** include character descriptions; focus solely on the background and non-character elements.
+  8. **Examples**: Below are examples of desired output formats to guide your response.
+
+  **Example Outputs:**
+  ${examplesString}
+
+  **Data Provided:**
+
+  - **Book Name**: "${bookName}"
+
+  - **Passage Content**:
+  \`\`\`
+  ${textContent}
+  \`\`\`
+
+  - **Profiles**:
+  ${
+    profiles.length > 0
+      ? profiles
+          .map(
+            (profile) => `
+  **Profile: ${profile.name}**
+  Descriptions:
+  ${profile.descriptions.map((desc) => `- ${desc}`).join('\n')}
+  `
+          )
+          .join('\n')
+      : 'No non-character profiles provided.'
+  }
+
+  **Please generate the positive and negative prompts for the background scene accordingly.**
+  `;
+
+  let assistantMessage;
+  try {
+    // Make a request to OpenAI's ChatGPT
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4', // Use the latest GPT model
+      messages: [
+        {
+          role: 'system',
+          content: systemPrompt,
+        },
+      ],
+      max_tokens: 700, // Adjust as needed
+      temperature: 0.7, // Creativity level
+    });
+
+    // Extract and parse the response
+    assistantMessage = response.choices[0]?.message?.content;
+
+    if (!assistantMessage) {
+      throw new Error('No response received from OpenAI.');
+    }
+
+    // Remove Markdown code block delimiters if present
+    const jsonString = assistantMessage
+      .replace(/```json\s*|\s*```/g, '')
+      .trim();
+
+    // Attempt to parse the JSON response
+    const prompts = JSON.parse(jsonString);
+
+    // Validate the presence of both prompts
+    if (!prompts.positivePrompt || !prompts.negativePrompt) {
+      throw new Error('Incomplete prompt data received from OpenAI.');
+    }
+
+    return {
+      positivePrompt: prompts.positivePrompt,
+      negativePrompt: prompts.negativePrompt,
+    };
+  } catch (error: any) {
+    console.error('Error generating background prompts:', error.message);
+    if (error instanceof SyntaxError) {
+      console.error(
+        'Failed to parse JSON. Original response:',
+        assistantMessage
+      );
+    }
+    throw new Error('Failed to generate background prompts.');
+  }
+}
 
 /**
  * @desc Generates positive and negative prompts using OpenAI's ChatGPT based on the provided text content, profiles, and book name.
