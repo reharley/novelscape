@@ -70,7 +70,6 @@ export async function generateImagesForPassage(req: Request, res: Response) {
   const { passageId } = req.params;
 
   try {
-    // Fetch the passage with associated profiles, their ModelImage, GenerationData, and CivitaiResources
     const passage = await prisma.passage.findUnique({
       where: { id: Number(passageId) },
       include: {
@@ -352,7 +351,9 @@ export async function generateProfilePrompt(
   3. **Incorporate Profile**: Use the profile's name and descriptions to enrich the prompts, ensuring that the profile's unique traits are reflected accurately.
   4. **Book Context**: Utilize the book name to maintain consistency with the book's theme and setting.
   5. **Format**: Provide the output as a JSON object with two fields: "positivePrompt" and "negativePrompt". Do **not** include any Markdown formatting or code block delimiters.
-  6. **Examples**: Below are examples of desired output formats to guide your response.
+  6. **Format Clues**: Focus on comma separated list of features describing a scene and avoid full sentences
+  7. **Characters**: Only draw 1 character in a scene using positive features 1boy or 1girl and solo for characters and negative for other object types
+  8. **Examples**: Below are examples of desired output formats to guide your response.
   
   **Example Outputs:**
   ${examplesString}
