@@ -22,11 +22,15 @@ export async function listModels(type: string, profileId?: string) {
   });
 }
 
-export async function loadModel(
-  modelId: string,
-  basePath: string,
-  civitaiApiToken: string
-) {
+export async function loadModel(modelId: string, skipLoadModel = false) {
+  const basePath = process.env.MODEL_PATH;
+  const civitaiApiToken = process.env.CIVITAI_API_TOKEN;
+  if (!basePath) {
+    throw new Error('Model path not configured.');
+  }
+  if (!civitaiApiToken) {
+    throw new Error('CivitAI API key not configured.');
+  }
   // Fetch model details from CivitAI
   const modelResponse = await axios.get(
     `https://civitai.com/api/v1/models/${modelId}`
@@ -104,12 +108,12 @@ export async function loadModel(
   }
 
   // Refresh models in Stable Diffusion WebUI if necessary
-  if (refreshEndpoint) {
+  if (refreshEndpoint && !skipLoadModel) {
     await axios.post(`http://localhost:7860${refreshEndpoint}`);
   }
 
   // Set the model as active only if it's a Checkpoint
-  if (modelType === 'Checkpoint') {
+  if (modelType === 'Checkpoint' && !skipLoadModel) {
     // Set the model as the active model
     await axios.post('http://localhost:7860/sdapi/v1/options', {
       sd_model_checkpoint: modelFileName,
@@ -118,45 +122,24 @@ export async function loadModel(
 
   // Upsert the model into the database
   await prisma.aiModel.upsert({
-    where: { modelId: modelData.id },
+    where: { id: modelData.id },
     update: {
       name: modelData.name,
       fileName: modelFileName,
       type: modelData.type,
+      baseModel: modelVersion.baseModel,
+      baseModelType: modelVersion.baseModelType,
       description: modelData.description,
-      images: {
-        // Use 'create' to add new images
-        create: modelData.modelVersions[0]?.images.map((image: any) => ({
-          url: image.url,
-          nsfwLevel: image.nsfwLevel,
-          width: image.width,
-          height: image.height,
-          hash: image.hash,
-          type: image.type,
-          hasMeta: image.hasMeta,
-          onSite: image.onSite,
-        })),
-      },
     },
     create: {
+      id: modelData.id,
       modelId: modelData.id,
       name: modelData.name,
       fileName: modelFileName,
       type: modelData.type,
+      baseModel: modelVersion.baseModel,
+      baseModelType: modelVersion.baseModelType,
       description: modelData.description,
-      images: {
-        // Use 'create' to add new images
-        create: modelData.modelVersions[0]?.images.map((image: any) => ({
-          url: image.url,
-          nsfwLevel: image.nsfwLevel,
-          width: image.width,
-          height: image.height,
-          hash: image.hash,
-          type: image.type,
-          hasMeta: image.hasMeta,
-          onSite: image.onSite,
-        })),
-      },
     },
   });
 

@@ -14,23 +14,12 @@ import {
 } from 'antd';
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
+import { AiModel } from '../../utils/types';
 
 const { Content } = Layout;
 const { Option } = Select;
 const { Search } = Input;
 const { Text, Title } = Typography;
-
-interface AiModel {
-  id: number;
-  modelId: number;
-  name: string;
-  fileName: string;
-  type: string;
-  description?: string;
-  images?: any; // Adjust based on your image data structure
-  createdAt: string;
-  updatedAt: string;
-}
 
 const ModelManagerPage: React.FC = () => {
   const [query, setQuery] = useState('');
@@ -40,7 +29,7 @@ const ModelManagerPage: React.FC = () => {
   const [modelTypeFilter, setModelTypeFilter] = useState<string>('All');
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [downloadedModels, setDownloadedModels] = useState<AiModel[]>([]);
-  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [selectedModel, setSelectedModel] = useState<AiModel>();
   const [downloadedLoras, setDownloadedLoras] = useState<AiModel[]>([]);
   const [selectedLoras, setSelectedLoras] = useState<string[]>([]);
   const [selectedModelDetails, setSelectedModelDetails] =
@@ -58,7 +47,7 @@ const ModelManagerPage: React.FC = () => {
         const models = response.data;
         setDownloadedModels(models);
         if (models.length > 0) {
-          setSelectedModel(models[0].fileName); // Use fileName for selection
+          setSelectedModel(models[0]); // Use fileName for selection
         }
       } catch (error) {
         console.error('Error fetching downloaded models:', error);
@@ -91,7 +80,9 @@ const ModelManagerPage: React.FC = () => {
   };
 
   const handleModelChange = (value: string) => {
-    setSelectedModel(value);
+    const model = downloadedModels.find((m) => m.fileName === value);
+    setSelectedLoras([]);
+    setSelectedModel(model);
   };
 
   const handleSearch = async () => {
@@ -142,7 +133,7 @@ const ModelManagerPage: React.FC = () => {
       const response = await axios.post(`${baseUrl}/generate-image`, {
         prompt,
         loras: selectedLoras, // These are fileNames
-        model: selectedModel, // This is the fileName of the selected model
+        model: selectedModel.fileName, // This is the fileName of the selected model
       });
       setGeneratedImage(`data:image/png;base64,${response.data.image}`);
     } catch (error: any) {
@@ -263,7 +254,7 @@ const ModelManagerPage: React.FC = () => {
           <Title level={2}>Select a Model</Title>
           <Select
             style={{ width: 300 }}
-            value={selectedModel}
+            value={selectedModel?.fileName}
             onChange={handleModelChange}
           >
             {downloadedModels.map((model) => (
@@ -275,22 +266,26 @@ const ModelManagerPage: React.FC = () => {
         </div>
 
         {/* LORA Selection */}
-        <div style={{ marginTop: '20px' }}>
-          <Title level={2}>Select LoRAs to Include</Title>
-          <Select
-            mode='multiple'
-            style={{ width: '100%' }}
-            placeholder='Select LoRAs'
-            value={selectedLoras}
-            onChange={handleLoraSelection}
-          >
-            {downloadedLoras.map((lora) => (
-              <Option key={lora.fileName} value={lora.fileName}>
-                {lora.name}
-              </Option>
-            ))}
-          </Select>
-        </div>
+        {selectedModel ? (
+          <div style={{ marginTop: '20px' }}>
+            <Title level={2}>Select LoRAs to Include</Title>
+            <Select
+              mode='multiple'
+              style={{ width: '100%' }}
+              placeholder='Select LoRAs'
+              value={selectedLoras}
+              onChange={handleLoraSelection}
+            >
+              {downloadedLoras
+                .filter((lora) => lora.baseModel === selectedModel.baseModel)
+                .map((lora) => (
+                  <Option key={lora.fileName} value={lora.fileName}>
+                    {lora.name}
+                  </Option>
+                ))}
+            </Select>
+          </div>
+        ) : null}
 
         {/* Text-to-Image Generation Section */}
         <div style={{ marginTop: '40px' }}>

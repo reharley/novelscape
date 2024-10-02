@@ -54,6 +54,7 @@ model Profile {
     bookId       String
     passages     Passage[]        @relation("PassageProfiles")
     aiModels     ProfileAiModel[]
+    imageId      Int?
     createdAt    DateTime         @default(now())
     updatedAt    DateTime         @default(now()) @updatedAt
 
@@ -72,20 +73,22 @@ model Description {
 }
 
 model AiModel {
-    id          Int              @id @default(autoincrement())
-    modelId     Int              @unique
-    name        String
-    fileName    String
-    type        String
-    description String?
-    images      ModelImage[]
-    profiles    ProfileAiModel[]
-    createdAt   DateTime         @default(now())
-    updatedAt   DateTime         @updatedAt
+    id            Int              @id @default(autoincrement())
+    modelId       Int              @unique
+    name          String
+    fileName      String
+    type          String
+    baseModel     String
+    baseModelType String?
+    description   String?
+    images        ModelImage[]
+    profiles      ProfileAiModel[]
+    createdAt     DateTime         @default(now())
+    updatedAt     DateTime         @updatedAt
 }
 
 model ModelImage {
-    id             Int             @id @default(autoincrement())
+    id             Int             @id
     url            String
     model          AiModel         @relation(fields: [modelId], references: [id])
     modelId        Int
@@ -104,14 +107,14 @@ model ModelImage {
 model GenerationData {
     id               Int               @id @default(autoincrement())
     prompt           String
-    negativePrompt   String
-    cfgScale         Float
     steps            Int
-    sampler          String
-    seed             Int
-    size             String
+    cfgScale         Float
+    negativePrompt   String?
+    sampler          String?
+    seed             Int?
+    size             String?
     createdDate      DateTime
-    clipSkip         Int
+    clipSkip         Int?
     civitaiResources CivitaiResource[]
     modelImage       ModelImage        @relation(fields: [modelImageId], references: [id])
     modelImageId     Int               @unique
@@ -119,12 +122,15 @@ model GenerationData {
 
 model CivitaiResource {
     id               Int            @id @default(autoincrement())
-    type             String
-    weight           Float? // Only applicable for LoRAs
-    modelVersionId   Int
-    modelVersionName String
     generationData   GenerationData @relation(fields: [generationDataId], references: [id])
     generationDataId Int
+    strength         Float?
+    modelId          Int
+    modelName        String
+    modelType        String
+    versionId        Int
+    versionName      String
+    baseModel        String
 }
 
 model ProfileAiModel {

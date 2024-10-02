@@ -82,7 +82,7 @@ export async function loadModelController(req: Request, res: Response) {
   }
 
   try {
-    const result = await loadModel(modelId, basePath, civitaiApiToken || '');
+    const result = await loadModel(modelId);
     res.json(result);
   } catch (error: any) {
     console.error('Error loading model:', error);

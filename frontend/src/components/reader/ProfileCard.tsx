@@ -1,13 +1,14 @@
-import { Card } from 'antd';
+import { Card, Typography } from 'antd';
 import React from 'react';
 import { Profile } from '../../utils/types';
+
+const { Meta } = Card;
+const { Text } = Typography;
 
 interface ProfileCardProps {
   profile: Profile;
   onClick: (profile: Profile) => void;
 }
-
-const { Meta } = Card;
 
 const ProfileCard: React.FC<ProfileCardProps> = ({ profile, onClick }) => {
   return (
@@ -17,7 +18,19 @@ const ProfileCard: React.FC<ProfileCardProps> = ({ profile, onClick }) => {
       cover={
         profile.imageUrl && profile.imageUrl !== '' ? (
           <img alt={profile.name} src={profile.imageUrl} />
-        ) : undefined
+        ) : (
+          <div
+            style={{
+              height: '200px',
+              backgroundColor: '#f0f0f0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Text type='secondary'>No Image</Text>
+          </div>
+        )
       }
       onClick={() => onClick(profile)}
     >

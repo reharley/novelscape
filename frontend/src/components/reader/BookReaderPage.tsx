@@ -1,6 +1,7 @@
 import { Button, Layout, Progress, Select, Space, Typography } from 'antd';
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
+import { Book } from '../../utils/types';
 
 const { Content } = Layout;
 const { Title } = Typography;
@@ -20,7 +21,7 @@ interface ChapterContent {
 }
 
 const BookReaderPage: React.FC = () => {
-  const [books, setBooks] = useState<string[]>([]);
+  const [books, setBooks] = useState<Book[]>([]);
   const [selectedBook, setSelectedBook] = useState<string | null>(null);
   const [chapters, setChapters] = useState<ChapterContent[]>([]);
   const [currentChapterIndex, setCurrentChapterIndex] = useState<number>(0);
@@ -113,6 +114,7 @@ const BookReaderPage: React.FC = () => {
 
   console.log('currentChapter', currentChapter);
   console.log('currentContent', currentContent);
+  console.log(books);
   return (
     <Layout>
       <Content style={{ padding: '50px' }}>
@@ -125,8 +127,8 @@ const BookReaderPage: React.FC = () => {
           }}
         >
           {books.map((book) => (
-            <Option key={book} value={book}>
-              {book}
+            <Option key={book.id} value={book.id}>
+              {book.title}
             </Option>
           ))}
         </Select>

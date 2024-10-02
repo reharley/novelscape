@@ -5,9 +5,18 @@ export interface AiModel {
   fileName: string;
   type: string;
   description?: string;
-  images?: any; // Adjust based on your image data structure
+  baseModel: string;
+  baseModelType: string;
+  images?: any;
   createdAt: string;
+  modelVersions: ModelVersion[];
   updatedAt: string;
+}
+export interface ModelVersion {
+  id: number;
+  name: string;
+  description?: string;
+  images: ModelImage[];
 }
 
 export interface Profile {
@@ -47,17 +56,6 @@ export interface Passage {
   profiles: Profile[];
 }
 
-export interface ModelImage {
-  id: number;
-  url: string;
-  modelId: number;
-  nsfwLevel: number;
-  width: number;
-  height: number;
-  hash: string;
-  type: string;
-}
-
 export interface GenerationData {
   id: number;
   prompt: string;
@@ -79,4 +77,18 @@ export interface CivitaiResource {
   weight?: number;
   modelVersionId: number;
   modelVersionName: string;
+}
+export interface ModelImage {
+  id: number;
+  url: string;
+  nsfwLevel: number;
+  width: number;
+  height: number;
+  hash: string;
+  type: string;
+  hasMeta: boolean;
+  onSite: boolean;
+  createdAt: string;
+  updatedAt: string;
+  modelId: number;
 }

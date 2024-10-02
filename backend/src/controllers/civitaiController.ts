@@ -53,6 +53,17 @@ interface CivitaiResponse {
     data: {
       json: {
         meta: GenerationMeta;
+        resources: {
+          id: number;
+          generationDataId: number;
+          strength?: number;
+          modelId: number;
+          modelName: string;
+          modelType: string;
+          versionId: number;
+          versionName: string;
+          baseModel: string;
+        }[];
       };
     };
   };
@@ -71,7 +82,13 @@ function generateUrl(imageId: number): string {
 
   return url;
 }
-async function fetchGenerationData(
+/**
+ * Fetches generation data from an external API and upserts it into the database.
+ *
+ * @param imageId - The ID of the ModelImage for which to fetch generation data.
+ * @returns The upserted GenerationData or null if an error occurred.
+ */
+export async function fetchGenerationData(
   imageId: number
 ): Promise<GenerationMeta | null> {
   const url = generateUrl(imageId);
@@ -92,6 +109,70 @@ async function fetchGenerationData(
 
     const meta: GenerationMeta = response.data.result.data.json.meta;
     console.log('Generation Data:', meta);
+
+    // Parse createdDate to Date object
+    const createdDate = new Date(meta['Created Date'] ?? null);
+
+    const civitaiResources = response.data.result.data.json.resources || [];
+    // Upsert GenerationData
+    const upsertedGenerationData = await prisma.generationData.upsert({
+      where: { modelImageId: imageId },
+      update: {
+        prompt: meta.prompt,
+        negativePrompt: meta.negativePrompt,
+        cfgScale: meta.cfgScale,
+        steps: meta.steps,
+        sampler: meta.sampler,
+        seed: meta.seed,
+        size: meta.Size,
+        createdDate: createdDate,
+        clipSkip: meta.clipSkip,
+        modelImageId: imageId,
+        // civitaiResources: {
+        //   // deleteMany: {},
+        //   create: civitaiResources.map((resource) => ({
+        //     id: resource.id,
+        //     strength: resource.strength,
+        //     modelId: resource.modelId,
+        //     modelName: resource.modelName,
+        //     modelType: resource.modelType,
+        //     versionId: resource.versionId,
+        //     versionName: resource.versionName,
+        //     baseModel: resource.baseModel,
+        //   })),
+        // },
+      },
+      create: {
+        prompt: meta.prompt,
+        negativePrompt: meta.negativePrompt,
+        cfgScale: meta.cfgScale,
+        steps: meta.steps,
+        sampler: meta.sampler,
+        seed: meta.seed,
+        size: meta.Size,
+        createdDate: createdDate,
+        clipSkip: meta.clipSkip,
+        modelImageId: imageId,
+        civitaiResources: {
+          create: civitaiResources.map((resource: any) => ({
+            id: resource.id,
+            strength: resource.strength,
+            modelId: resource.modelId,
+            modelName: resource.modelName,
+            modelType: resource.modelType,
+            versionId: resource.versionId,
+            versionName: resource.versionName,
+            baseModel: resource.baseModel,
+          })),
+        },
+      },
+      include: {
+        civitaiResources: true,
+      },
+    });
+
+    console.log('Upserted GenerationData:', upsertedGenerationData);
+
     return meta;
   } catch (error: any) {
     console.error('Error fetching generation data:', error.message || error);

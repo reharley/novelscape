@@ -1,5 +1,3 @@
-// src/components/AIEnhancedReaderPage.tsx
-
 import {
   Button,
   Card,
@@ -10,6 +8,7 @@ import {
   Space,
   Spin,
   Typography,
+  message,
 } from 'antd';
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
@@ -173,6 +172,38 @@ const AIEnhancedReaderPage: React.FC = () => {
     setIsModelModalVisible(true);
   };
 
+  // New handler for image selection
+  const handleImageSelect = async (image: ModelImage) => {
+    if (!selectedProfile) {
+      alert('No profile selected.');
+      return;
+    }
+
+    setIsModelModalVisible(false); // Close the modal
+
+    try {
+      const response = await axios.post(`${baseUrl}/profiles/setup-profile`, {
+        profileId: selectedProfile.id,
+        image,
+      });
+
+      message.success(response.data.message || 'Profile setup successfully.');
+
+      // Optionally, update local state with the updated profile
+      if (response.data.profile) {
+        setSelectedProfile(response.data.profile);
+      }
+
+      // Handle model load message if needed
+      if (response.data.modelLoad) {
+        console.log(response.data.modelLoad.message);
+      }
+    } catch (error: any) {
+      console.error('Error setting up profile:', error);
+      message.error(error.response?.data?.error || 'Failed to set up profile.');
+    }
+  };
+
   const handleModelSelect = async (model: AiModel) => {
     setIsModelModalVisible(false);
     setPreviewModel(model);
@@ -191,14 +222,13 @@ const AIEnhancedReaderPage: React.FC = () => {
   ) => {
     if (!profileId) return;
     try {
-      await axios.post(
-        `${baseUrl}/ai-models/profiles/${profileId}/associate-model`,
-        { modelId }
-      );
-      // Optionally, refresh the models list for the profile
+      await axios.post(`${baseUrl}/profiles/${profileId}/associate-lora`, {
+        loraId: modelId,
+      });
+      message.success('Model associated with profile successfully.');
     } catch (error: any) {
       console.error('Error associating model with profile:', error);
-      alert(
+      message.error(
         error.response?.data?.error || 'Failed to associate model with profile.'
       );
     }
@@ -212,20 +242,26 @@ const AIEnhancedReaderPage: React.FC = () => {
       );
       const images = imagesResponse.data;
 
+      if (images.length === 0) {
+        message.info('No images found for this model.');
+        return;
+      }
+
       // For each image, trigger fetching and storing generation data
       const fetchPromises = images.map((image) =>
-        axios.post(`${baseUrl}/generation-data/fetch`, { imageId: image.id })
+        axios.post(`${baseUrl}/getGenerationData`, { imageId: image.id })
       );
 
       await Promise.all(fetchPromises);
 
       console.log('Generation data fetched and stored for all model images.');
+      message.success('Generation data fetched for all images.');
     } catch (error: any) {
       console.error(
         'Error fetching and storing generation data for model:',
         error.message || error
       );
-      alert('Failed to fetch and store generation data for the model.');
+      message.error('Failed to fetch and store generation data for the model.');
     }
   };
 
@@ -326,7 +362,7 @@ const AIEnhancedReaderPage: React.FC = () => {
             <ModelSelectionModal
               visible={isModelModalVisible}
               onCancel={() => setIsModelModalVisible(false)}
-              onSelect={handleModelSelect}
+              onSelectImage={handleImageSelect} // Updated handler
               profileId={selectedProfile?.id || 0}
             />
 
