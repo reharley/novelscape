@@ -48,6 +48,13 @@ const AIEnhancedReaderPage: React.FC = () => {
   const [isPreviewVisible, setIsPreviewVisible] = useState<boolean>(false);
   const [previewModel, setPreviewModel] = useState<AiModel | null>(null);
 
+  // New state variables for profile images
+  const [profileImages, setProfileImages] = useState<{
+    [profileId: number]: string;
+  }>({});
+  const [loadingProfileImages, setLoadingProfileImages] =
+    useState<boolean>(false);
+
   const baseUrl = 'http://localhost:5000/api';
 
   useEffect(() => {
@@ -68,6 +75,7 @@ const AIEnhancedReaderPage: React.FC = () => {
         setPassages([]);
         setCurrentPassageIndex(0);
         setGeneratedImage(null);
+        setProfileImages({}); // Reset profile images when chapters change
       })
       .catch((error) => console.error('Error fetching chapters:', error))
       .finally(() => setLoadingChapters(false));
@@ -83,6 +91,7 @@ const AIEnhancedReaderPage: React.FC = () => {
         setPassages(response.data);
         setCurrentPassageIndex(0);
         setGeneratedImage(null);
+        setProfileImages({}); // Reset profile images when passages change
       })
       .catch((error) => console.error('Error fetching passages:', error))
       .finally(() => setLoadingPassages(false));
@@ -90,25 +99,73 @@ const AIEnhancedReaderPage: React.FC = () => {
 
   const generateImage = async () => {
     const currentPassage = passages[currentPassageIndex];
+    if (!currentPassage) {
+      message.error('No passage selected.');
+      return;
+    }
+
     setLoadingImage(true);
 
     try {
       const response = await axios.post(`${baseUrl}/generate-image`, {
-        prompt,
+        prompt: currentPassage.textContent, // Assuming 'prompt' is the passage text
       });
       setGeneratedImage(`data:image/png;base64,${response.data.image}`);
+      message.success('Image generated successfully.');
     } catch (error: any) {
       console.error('Error generating image:', error);
-      alert('Failed to generate image. Please try again.');
+      message.error('Failed to generate image. Please try again.');
     }
 
     setLoadingImage(false);
+  };
+
+  const generateImagesForPassage = async () => {
+    if (!selectedBook || !selectedChapter) {
+      message.error('Please select a book and a chapter first.');
+      return;
+    }
+
+    const currentPassage = passages[currentPassageIndex];
+    if (!currentPassage) {
+      message.error('No passage selected.');
+      return;
+    }
+
+    setLoadingProfileImages(true);
+
+    try {
+      const response = await axios.post(
+        `${baseUrl}/generate-image/passages/${currentPassage.id}/generate-images`
+      );
+      const { images } = response.data as {
+        passageId: number;
+        images: { profileId: number; profileName: string; image: string }[];
+      };
+
+      // Create a mapping of profileId to image
+      const imagesMap: { [profileId: number]: string } = {};
+      images.forEach((img) => {
+        imagesMap[img.profileId] = `data:image/png;base64,${img.image}`;
+      });
+
+      setProfileImages(imagesMap);
+      message.success('Images generated successfully for all profiles.');
+    } catch (error: any) {
+      console.error('Error generating images for passage:', error);
+      message.error(
+        error.response?.data?.error || 'Failed to generate images for profiles.'
+      );
+    } finally {
+      setLoadingProfileImages(false);
+    }
   };
 
   const handleNextPassage = () => {
     if (currentPassageIndex < passages.length - 1) {
       setCurrentPassageIndex(currentPassageIndex + 1);
       setGeneratedImage(null);
+      setProfileImages({}); // Reset profile images when changing passage
     }
   };
 
@@ -116,12 +173,14 @@ const AIEnhancedReaderPage: React.FC = () => {
     if (currentPassageIndex > 0) {
       setCurrentPassageIndex(currentPassageIndex - 1);
       setGeneratedImage(null);
+      setProfileImages({}); // Reset profile images when changing passage
     }
   };
 
   const handlePassageChange = (passageIndex: number) => {
     setCurrentPassageIndex(passageIndex);
     setGeneratedImage(null);
+    setProfileImages({}); // Reset profile images when changing passage
   };
 
   const handleChapterChange = (chapterId: number) => {
@@ -139,7 +198,7 @@ const AIEnhancedReaderPage: React.FC = () => {
   // New handler for image selection
   const handleImageSelect = async (image: ModelImage) => {
     if (!selectedProfile) {
-      alert('No profile selected.');
+      message.error('No profile selected.');
       return;
     }
 
@@ -173,6 +232,7 @@ const AIEnhancedReaderPage: React.FC = () => {
     setPreviewModel(null);
   };
 
+  // Safely access currentPassage
   const currentPassage = passages[currentPassageIndex];
   const readingProgress = passages.length
     ? Math.round(((currentPassageIndex + 1) / passages.length) * 100)
@@ -271,7 +331,29 @@ const AIEnhancedReaderPage: React.FC = () => {
                   )}
                 </div>
 
-                {/* Generated Image */}
+                {/* Generated Image for Passage */}
+                <Space style={{ marginBottom: '20px' }}>
+                  <Button
+                    type='primary'
+                    onClick={generateImage}
+                    disabled={!currentPassage}
+                    loading={loadingImage}
+                  >
+                    Generate Image
+                  </Button>
+                  <Button
+                    type='primary'
+                    onClick={generateImagesForPassage}
+                    disabled={
+                      !currentPassage || currentPassage.profiles.length === 0
+                    }
+                    loading={loadingProfileImages}
+                  >
+                    Generate Images for Profiles
+                  </Button>
+                </Space>
+
+                {/* Display Generated Image for Passage */}
                 {loadingImage ? (
                   <Spin size='large' />
                 ) : generatedImage ? (
@@ -280,6 +362,7 @@ const AIEnhancedReaderPage: React.FC = () => {
                       src={generatedImage}
                       alt='Generated'
                       style={{ maxWidth: '100%' }}
+                      placeholder={<Spin />}
                     />
                   </div>
                 ) : null}
@@ -287,27 +370,42 @@ const AIEnhancedReaderPage: React.FC = () => {
                 {/* Current Passage */}
                 {currentPassage ? (
                   <Card style={{ marginBottom: '20px' }}>
-                    <Paragraph>{currentPassage.textContent}</Paragraph>
-                    {currentPassage.profiles.length > 0 && (
-                      <div style={{ marginTop: '20px' }}>
-                        <Title level={5}>Relevant Profiles</Title>
-                        <Space wrap>
-                          {currentPassage.profiles.map((profile) => (
-                            <ProfileCard
-                              key={profile.id}
-                              profile={profile}
-                              onClick={handleProfileClick}
-                            />
-                          ))}
-                        </Space>
-                      </div>
-                    )}
+                    <Paragraph style={{ fontSize: '30px' }}>
+                      {currentPassage.textContent}
+                    </Paragraph>
+                    {currentPassage.profiles &&
+                      currentPassage.profiles.length > 0 && (
+                        <div style={{ marginTop: '20px' }}>
+                          <Title level={5}>Relevant Profiles</Title>
+                          <Space wrap>
+                            {currentPassage.profiles.map((profile) => (
+                              <div
+                                key={profile.id}
+                                style={{ textAlign: 'center' }}
+                              >
+                                <ProfileCard
+                                  profile={profile}
+                                  onClick={handleProfileClick}
+                                />
+                                {profileImages[profile.id] ? (
+                                  <Image
+                                    src={profileImages[profile.id]}
+                                    alt={`${profile.name} Image`}
+                                    style={{ width: 200, marginTop: '10px' }}
+                                    placeholder={<Spin />}
+                                  />
+                                ) : null}
+                              </div>
+                            ))}
+                          </Space>
+                        </div>
+                      )}
                   </Card>
                 ) : (
                   <Paragraph>No content available for this passage.</Paragraph>
                 )}
 
-                {/* Navigation and Generate Button */}
+                {/* Navigation and Progress */}
                 <Space>
                   <Button
                     onClick={handlePreviousPassage}
@@ -320,13 +418,6 @@ const AIEnhancedReaderPage: React.FC = () => {
                     disabled={currentPassageIndex === passages.length - 1}
                   >
                     Next
-                  </Button>
-                  <Button
-                    type='primary'
-                    onClick={generateImage}
-                    disabled={!currentPassage}
-                  >
-                    Generate Image
                   </Button>
                 </Space>
 

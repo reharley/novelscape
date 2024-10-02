@@ -55,6 +55,7 @@ model Profile {
     passages     Passage[]        @relation("PassageProfiles")
     aiModels     ProfileAiModel[]
     imageId      Int?
+    image        ModelImage?      @relation(fields: [imageId], references: [id])
     createdAt    DateTime         @default(now())
     updatedAt    DateTime         @default(now()) @updatedAt
 
@@ -73,18 +74,19 @@ model Description {
 }
 
 model AiModel {
-    id            Int              @id @default(autoincrement())
-    modelId       Int              @unique
-    name          String
-    fileName      String
-    type          String
-    baseModel     String
-    baseModelType String?
-    description   String?
-    images        ModelImage[]
-    profiles      ProfileAiModel[]
-    createdAt     DateTime         @default(now())
-    updatedAt     DateTime         @updatedAt
+    id              Int               @id @default(autoincrement())
+    modelId         Int               @unique
+    name            String
+    fileName        String
+    type            String
+    baseModel       String
+    baseModelType   String?
+    description     String?
+    images          ModelImage[]
+    profiles        ProfileAiModel[]
+    createdAt       DateTime          @default(now())
+    updatedAt       DateTime          @updatedAt
+    CivitaiResource CivitaiResource[]
 }
 
 model ModelImage {
@@ -102,6 +104,7 @@ model ModelImage {
     createdAt      DateTime        @default(now())
     updatedAt      DateTime        @updatedAt
     generationData GenerationData?
+    Profile        Profile[]
 }
 
 model GenerationData {
@@ -125,6 +128,7 @@ model CivitaiResource {
     generationData   GenerationData @relation(fields: [generationDataId], references: [id])
     generationDataId Int
     strength         Float?
+    model            AiModel        @relation(fields: [modelId], references: [id])
     modelId          Int
     modelName        String
     modelType        String
