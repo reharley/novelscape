@@ -38,10 +38,6 @@ const AIEnhancedReaderPage: React.FC = () => {
   const [currentPassageIndex, setCurrentPassageIndex] = useState<number>(0);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [loadingImage, setLoadingImage] = useState<boolean>(false);
-  const [downloadedModels, setDownloadedModels] = useState<AiModel[]>([]);
-  const [selectedModel, setSelectedModel] = useState<string>();
-  const [downloadedLoras, setDownloadedLoras] = useState<AiModel[]>([]);
-  const [selectedLoras, setSelectedLoras] = useState<string[]>([]);
   const [loadingPassages, setLoadingPassages] = useState<boolean>(false);
   const [loadingChapters, setLoadingChapters] = useState<boolean>(false);
 
@@ -60,22 +56,6 @@ const AIEnhancedReaderPage: React.FC = () => {
       .get<Book[]>(`${baseUrl}/books`)
       .then((response) => setBooks(response.data))
       .catch((error) => console.error('Error fetching books:', error));
-
-    // Fetch downloaded models
-    axios
-      .get<AiModel[]>(`${baseUrl}/ai-models/list-models`)
-      .then((response) => {
-        setDownloadedModels(response.data);
-      })
-      .catch((error) => console.error('Error fetching models:', error));
-
-    // Fetch downloaded LoRAs
-    axios
-      .get<AiModel[]>(`${baseUrl}/ai-models/list-loras`)
-      .then((response) => {
-        setDownloadedLoras(response.data);
-      })
-      .catch((error) => console.error('Error fetching LoRAs:', error));
   }, [baseUrl]);
 
   const fetchChapters = (bookId: string) => {
@@ -110,19 +90,11 @@ const AIEnhancedReaderPage: React.FC = () => {
 
   const generateImage = async () => {
     const currentPassage = passages[currentPassageIndex];
-    const prompt = currentPassage?.textContent || '';
-    if (!prompt || !selectedModel) {
-      alert('Please select a model and ensure there is passage text.');
-      return;
-    }
-
     setLoadingImage(true);
 
     try {
       const response = await axios.post(`${baseUrl}/generate-image`, {
         prompt,
-        loras: selectedLoras,
-        model: selectedModel,
       });
       setGeneratedImage(`data:image/png;base64,${response.data.image}`);
     } catch (error: any) {
@@ -150,14 +122,6 @@ const AIEnhancedReaderPage: React.FC = () => {
   const handlePassageChange = (passageIndex: number) => {
     setCurrentPassageIndex(passageIndex);
     setGeneratedImage(null);
-  };
-
-  const handleModelChange = (value: string) => {
-    setSelectedModel(value);
-  };
-
-  const handleLoraSelection = (values: string[]) => {
-    setSelectedLoras(values);
   };
 
   const handleChapterChange = (chapterId: number) => {
@@ -201,67 +165,6 @@ const AIEnhancedReaderPage: React.FC = () => {
     } catch (error: any) {
       console.error('Error setting up profile:', error);
       message.error(error.response?.data?.error || 'Failed to set up profile.');
-    }
-  };
-
-  const handleModelSelect = async (model: AiModel) => {
-    setIsModelModalVisible(false);
-    setPreviewModel(model);
-    setIsPreviewVisible(true);
-
-    // Associate the model with the profile in the backend
-    await associateModelWithProfile(selectedProfile?.id, model.id);
-
-    // Fetch and store generation data for associated images
-    await fetchAndStoreGenerationDataForModel(model.id);
-  };
-
-  const associateModelWithProfile = async (
-    profileId: number | undefined,
-    modelId: number
-  ) => {
-    if (!profileId) return;
-    try {
-      await axios.post(`${baseUrl}/profiles/${profileId}/associate-lora`, {
-        loraId: modelId,
-      });
-      message.success('Model associated with profile successfully.');
-    } catch (error: any) {
-      console.error('Error associating model with profile:', error);
-      message.error(
-        error.response?.data?.error || 'Failed to associate model with profile.'
-      );
-    }
-  };
-
-  const fetchAndStoreGenerationDataForModel = async (modelId: number) => {
-    try {
-      // Fetch all images associated with the AiModel
-      const imagesResponse = await axios.get<ModelImage[]>(
-        `${baseUrl}/ai-models/${modelId}/images`
-      );
-      const images = imagesResponse.data;
-
-      if (images.length === 0) {
-        message.info('No images found for this model.');
-        return;
-      }
-
-      // For each image, trigger fetching and storing generation data
-      const fetchPromises = images.map((image) =>
-        axios.post(`${baseUrl}/getGenerationData`, { imageId: image.id })
-      );
-
-      await Promise.all(fetchPromises);
-
-      console.log('Generation data fetched and stored for all model images.');
-      message.success('Generation data fetched for all images.');
-    } catch (error: any) {
-      console.error(
-        'Error fetching and storing generation data for model:',
-        error.message || error
-      );
-      message.error('Failed to fetch and store generation data for the model.');
     }
   };
 
@@ -321,41 +224,6 @@ const AIEnhancedReaderPage: React.FC = () => {
                   ))}
                 </Select>
               )}
-            </div>
-
-            {/* Model Selection */}
-            <div style={{ marginBottom: '20px' }}>
-              <Title level={4}>Select a Model</Title>
-              <Select
-                style={{ width: 300 }}
-                value={selectedModel}
-                onChange={handleModelChange}
-                placeholder='Select an AI Model'
-              >
-                {downloadedModels.map((model) => (
-                  <Option key={model.id} value={model.id.toString()}>
-                    {model.name}
-                  </Option>
-                ))}
-              </Select>
-            </div>
-
-            {/* LORA Selection */}
-            <div style={{ marginBottom: '20px' }}>
-              <Title level={4}>Select LoRAs to Include</Title>
-              <Select
-                mode='multiple'
-                style={{ width: '100%' }}
-                placeholder='Select LoRAs'
-                value={selectedLoras}
-                onChange={handleLoraSelection}
-              >
-                {downloadedLoras.map((lora) => (
-                  <Option key={lora.id} value={lora.id.toString()}>
-                    {lora.name}
-                  </Option>
-                ))}
-              </Select>
             </div>
 
             {/* Model Selection Modal */}
@@ -456,7 +324,7 @@ const AIEnhancedReaderPage: React.FC = () => {
                   <Button
                     type='primary'
                     onClick={generateImage}
-                    disabled={!currentPassage || !selectedModel}
+                    disabled={!currentPassage}
                   >
                     Generate Image
                   </Button>
