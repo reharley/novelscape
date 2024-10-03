@@ -278,8 +278,8 @@ export async function generateImagesForPassage(req: Request, res: Response) {
             },
           };
 
-          const uint8Array = base64ToBlob(imageResult.image);
-          const blob = await removeBackground(uint8Array, config);
+          const imageBlob = base64ToBlob(imageResult.image);
+          const blob = await removeBackground(imageBlob, config);
           const image64 = await blobToBase64(blob);
           return {
             profileId: profile.id,
