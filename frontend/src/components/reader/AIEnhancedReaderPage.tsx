@@ -1,6 +1,6 @@
 import {
   Button,
-  Card,
+  Collapse,
   Image,
   Layout,
   Progress,
@@ -25,8 +25,9 @@ import ModelSelectionModal from './ModelSelectionModal';
 import ProfileCard from './ProfileCard';
 
 const { Content } = Layout;
-const { Title, Paragraph, Text } = Typography;
+const { Title, Paragraph } = Typography;
 const { Option } = Select;
+const { Panel } = Collapse;
 
 const AIEnhancedReaderPage: React.FC = () => {
   // Existing state variables
@@ -218,50 +219,262 @@ const AIEnhancedReaderPage: React.FC = () => {
     : 0;
 
   return (
-    <Layout>
-      <Content style={{ padding: '50px' }}>
+    <Layout style={{ minHeight: '100vh', backgroundColor: '#1a1a1a' }}>
+      <Content
+        style={{
+          padding: '20px',
+          color: '#fff',
+        }}
+      >
         {/* Book Selection */}
-        <Select
-          placeholder='Select a book'
-          style={{ width: 300, marginBottom: '20px' }}
-          onChange={(value: string) => {
-            const book = books.find((b) => b.id === value) || null;
-            setSelectedBook(book);
-            if (book) {
-              fetchChapters(book.id);
-            }
-          }}
-          value={selectedBook?.id || undefined}
-        >
-          {books.map((book) => (
-            <Option key={book.id} value={book.id}>
-              {book.title}
-            </Option>
-          ))}
-        </Select>
+        <div style={{ marginBottom: '20px' }}>
+          <Select
+            placeholder='Select a book'
+            style={{ width: 300, marginBottom: '20px' }}
+            onChange={(value: string) => {
+              const book = books.find((b) => b.id === value) || null;
+              setSelectedBook(book);
+              if (book) {
+                fetchChapters(book.id);
+              }
+            }}
+            value={selectedBook?.id || undefined}
+          >
+            {books.map((book) => (
+              <Option key={book.id} value={book.id}>
+                {book.title}
+              </Option>
+            ))}
+          </Select>
 
-        {selectedBook && (
+          {selectedBook && (
+            <>
+              <Title level={3} style={{ color: '#fff' }}>
+                Current Book: {selectedBook.title}
+              </Title>
+
+              {/* Chapter Selection */}
+              <div style={{ marginBottom: '20px' }}>
+                <Title level={4} style={{ color: '#fff' }}>
+                  Select a Chapter
+                </Title>
+                {loadingChapters ? (
+                  <Spin />
+                ) : (
+                  <Select
+                    placeholder='Select a chapter'
+                    style={{ width: 300 }}
+                    onChange={(value: number) => handleChapterChange(value)}
+                    value={selectedChapter || undefined}
+                  >
+                    {chapters.map((chapter) => (
+                      <Option key={chapter.id} value={chapter.id}>
+                        {`Chapter ${chapter.order + 1}: ${chapter.title}`}
+                      </Option>
+                    ))}
+                  </Select>
+                )}
+              </div>
+
+              {/* Collapsible Profile Cards Moved Here */}
+              {currentPassage && currentPassage.profiles.length > 0 && (
+                <Collapse accordion style={{ marginBottom: '20px' }} ghost>
+                  <Panel header='View Profiles' key='1'>
+                    <Space wrap>
+                      {currentPassage.profiles.map((profile) => (
+                        <ProfileCard
+                          key={profile.id}
+                          profile={profile}
+                          onClick={handleProfileClick}
+                        />
+                      ))}
+                    </Space>
+                  </Panel>
+                </Collapse>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Passages Section */}
+        {selectedChapter && (
           <>
-            <Title level={3}>Current Book: {selectedBook.title}</Title>
-
-            {/* Chapter Selection */}
+            {/* Reading Progress */}
             <div style={{ marginBottom: '20px' }}>
-              <Title level={4}>Select a Chapter</Title>
-              {loadingChapters ? (
+              <Title level={5} style={{ color: '#fff' }}>
+                Reading Progress
+              </Title>
+              <Progress
+                percent={readingProgress}
+                strokeColor='#1890ff'
+                trailColor='#333'
+              />
+            </div>
+
+            {/* Passage Selection */}
+            <div style={{ marginBottom: '20px' }}>
+              <Title level={4} style={{ color: '#fff' }}>
+                Passage {currentPassageIndex + 1} of {passages.length}
+              </Title>
+              {loadingPassages ? (
                 <Spin />
-              ) : (
+              ) : passages.length > 0 ? (
                 <Select
-                  placeholder='Select a chapter'
-                  style={{ width: 300 }}
-                  onChange={(value: number) => handleChapterChange(value)}
-                  value={selectedChapter || undefined}
+                  value={currentPassageIndex}
+                  onChange={(value: number) => handlePassageChange(value)}
+                  style={{ width: 200 }}
                 >
-                  {chapters.map((chapter) => (
-                    <Option key={chapter.id} value={chapter.id}>
-                      {`Chapter ${chapter.order + 1}: ${chapter.title}`}
+                  {passages.map((passage, index) => (
+                    <Option key={passage.id} value={index}>
+                      Passage {index + 1}
                     </Option>
                   ))}
                 </Select>
+              ) : (
+                <Paragraph style={{ color: '#fff' }}>
+                  No passages available in this chapter.
+                </Paragraph>
+              )}
+            </div>
+
+            {/* Navigation and Progress Buttons */}
+            <Space style={{ marginBottom: '20px' }}>
+              <Button
+                onClick={handlePreviousPassage}
+                disabled={currentPassageIndex === 0}
+              >
+                Previous
+              </Button>
+              <Button
+                onClick={handleNextPassage}
+                disabled={currentPassageIndex === passages.length - 1}
+              >
+                Next
+              </Button>
+
+              <Button
+                type='primary'
+                onClick={generateImagesForPassage}
+                disabled={
+                  !currentPassage || currentPassage.profiles.length === 0
+                }
+                loading={loadingProfileImages}
+              >
+                Generate Images for Profiles
+              </Button>
+            </Space>
+
+            {/* Generated Content Area */}
+            <div
+              style={{
+                position: 'relative',
+                width: '100%',
+                height: '500px', // Adjust height as needed
+                backgroundColor: '#000',
+                borderRadius: '10px',
+                overflow: 'hidden',
+                marginBottom: '20px',
+              }}
+            >
+              {/* Background Image */}
+              {backgroundImage && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    backgroundImage: `url(${backgroundImage})`,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                    zIndex: 1,
+                  }}
+                ></div>
+              )}
+
+              {/* Overlay to dim the background for better text readability */}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: '100%',
+                  backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                  zIndex: 2,
+                }}
+              ></div>
+
+              {/* Character Images */}
+              {profileImages && Object.keys(profileImages).length > 0 && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '10%', // Adjust vertical position as needed
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    display: 'flex',
+                    justifyContent: 'space-around',
+                    width: '90%',
+                    zIndex: 3,
+                  }}
+                >
+                  {currentPassage.profiles
+                    .filter((p) => p.type.toLowerCase() === 'character')
+                    .map((profile) => (
+                      <Image
+                        key={profile.id}
+                        src={profileImages[profile.id]}
+                        alt={`${profile.name} Image`}
+                        style={{
+                          width: '350px',
+                          margin: '0 10px',
+                          borderRadius: '10px',
+                          boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+                        }}
+                        placeholder={<Spin />}
+                      />
+                    ))}
+                </div>
+              )}
+
+              {/* Text Box with Passage Text */}
+              {currentPassage && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: '20px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    width: '90%',
+                    maxWidth: '800px',
+                    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                    padding: '20px',
+                    borderRadius: '10px',
+                    color: '#fff',
+                    zIndex: 4,
+                  }}
+                >
+                  <Paragraph style={{ fontSize: '1.2em', margin: 0 }}>
+                    {currentPassage.textContent}
+                  </Paragraph>
+                </div>
+              )}
+
+              {/* Loading Spinner */}
+              {loadingImage && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    zIndex: 5,
+                  }}
+                >
+                  <Spin size='large' />
+                </div>
               )}
             </div>
 
@@ -280,121 +493,6 @@ const AIEnhancedReaderPage: React.FC = () => {
                 onClose={handlePreviewClose}
                 model={previewModel}
               />
-            )}
-
-            {/* Passages Section */}
-            {selectedChapter && (
-              <>
-                {/* Reading Progress */}
-                <div style={{ marginTop: '20px' }}>
-                  <Title level={5}>Reading Progress</Title>
-                  <Progress percent={readingProgress} />
-                </div>
-
-                <div style={{ marginBottom: '20px' }}>
-                  <Title level={4}>
-                    Passage {currentPassageIndex + 1} of {passages.length}
-                  </Title>
-                  {loadingPassages ? (
-                    <Spin />
-                  ) : passages.length > 0 ? (
-                    <Select
-                      value={currentPassageIndex}
-                      onChange={(value: number) => handlePassageChange(value)}
-                      style={{ width: 200 }}
-                    >
-                      {passages.map((passage, index) => (
-                        <Option key={passage.id} value={index}>
-                          Passage {index + 1}
-                        </Option>
-                      ))}
-                    </Select>
-                  ) : (
-                    <Paragraph>
-                      No passages available in this chapter.
-                    </Paragraph>
-                  )}
-                </div>
-
-                {/* Navigation and Progress */}
-                <Space>
-                  <Button
-                    onClick={handlePreviousPassage}
-                    disabled={currentPassageIndex === 0}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    onClick={handleNextPassage}
-                    disabled={currentPassageIndex === passages.length - 1}
-                  >
-                    Next
-                  </Button>
-
-                  <Button
-                    type='primary'
-                    onClick={generateImagesForPassage}
-                    disabled={
-                      !currentPassage || currentPassage.profiles.length === 0
-                    }
-                    loading={loadingProfileImages}
-                  >
-                    Generate Images for Profiles
-                  </Button>
-                </Space>
-
-                {/* Display Generated Image for Passage */}
-                {loadingImage ? (
-                  <Spin size='large' />
-                ) : backgroundImage ? (
-                  <div style={{ marginBottom: '20px' }}>
-                    <Image
-                      src={backgroundImage}
-                      alt='Generated'
-                      style={{ maxWidth: '100%' }}
-                      placeholder={<Spin />}
-                    />
-                  </div>
-                ) : null}
-
-                {/* Current Passage */}
-                {currentPassage ? (
-                  <Card style={{ marginBottom: '20px' }}>
-                    <Paragraph style={{ fontSize: '30px' }}>
-                      {currentPassage.textContent}
-                    </Paragraph>
-                    {currentPassage.profiles &&
-                      currentPassage.profiles.length > 0 && (
-                        <div style={{ marginTop: '20px' }}>
-                          <Title level={5}>Relevant Profiles</Title>
-                          <Space wrap>
-                            {currentPassage.profiles.map((profile) => (
-                              <div
-                                key={profile.id}
-                                style={{ textAlign: 'center' }}
-                              >
-                                <ProfileCard
-                                  profile={profile}
-                                  onClick={handleProfileClick}
-                                />
-                                {profileImages[profile.id] ? (
-                                  <Image
-                                    src={profileImages[profile.id]}
-                                    alt={`${profile.name} Image`}
-                                    style={{ width: 200, marginTop: '10px' }}
-                                    placeholder={<Spin />}
-                                  />
-                                ) : null}
-                              </div>
-                            ))}
-                          </Space>
-                        </div>
-                      )}
-                  </Card>
-                ) : (
-                  <Paragraph>No content available for this passage.</Paragraph>
-                )}
-              </>
             )}
           </>
         )}

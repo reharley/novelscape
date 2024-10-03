@@ -233,14 +233,19 @@ export async function generateImagesForPassage(req: Request, res: Response) {
             finalPrompt = prompts.positivePrompt;
             finalNegativePrompt = prompts.negativePrompt;
             console.log(profile.name, prompts);
+
+            await prisma.generationData.update({
+              where: { id: generationData.id },
+              data: {
+                prompt: prompts.positivePrompt,
+                negativePrompt: prompts.negativePrompt,
+              },
+            });
           } catch (error: any) {
             console.error(
               `Error generating prompts for profile ID ${profile.id}:`,
               error.message
             );
-            finalNegativePrompt =
-              'poorly drawn hands, poorly drawn feet, poorly drawn face, out of frame, extra limbs, disfigured, deformed, body out of frame, bad anatomy, watermark, signature, cut off, low contrast, underexposed, overexposed, bad art, beginner, amateur, distorted face, bad quality, land, planet';
-            finalPrompt = finalPrompt || '';
           }
         }
 
@@ -298,62 +303,46 @@ export async function generateImagesForPassage(req: Request, res: Response) {
 
     const backgroundImagePromise = (async () => {
       try {
-        const prompts = await generateBackgroundPrompt(
-          passage.textContent,
-          nonCharacterProfiles.map((profile) => ({
-            name: profile.name,
-            descriptions: profile.descriptions.map((desc) => desc.text),
-          })),
-          passage.book.title
-        );
+        // first check if theres generation data for background
+        let backgroundGenerationData = await prisma.generationData.findFirst({
+          where: {
+            passageBackgroundId: Number(passageId),
+          },
+        });
 
-        // Select an appropriate model for background images
-        // This could be customized or selected based on specific criteria
-        const backgroundModel = 'dreamshaper_8.safetensors'; // Replace with actual model selection logic
+        if (!backgroundGenerationData) {
+          const prompts = await generateBackgroundPrompt(
+            passage.textContent,
+            nonCharacterProfiles.map((profile) => ({
+              name: profile.name,
+              descriptions: profile.descriptions.map((desc) => desc.text),
+            })),
+            passage.book.title
+          );
 
-        // Define GenerationData settings for background image generation
-        const backgroundGenerationData = {
-          prompt: prompts.positivePrompt,
-          negativePrompt: prompts.negativePrompt,
-          steps: 50,
-          cfgScale: 7.0,
-          sampler: 'Euler',
-          seed: Date.now(),
-          size: '1024x768',
-          clipSkip: 1,
-        };
+          backgroundGenerationData = await prisma.generationData.create({
+            data: {
+              passageBackgroundId: Number(passageId),
+              prompt: prompts.positivePrompt,
+              negativePrompt: prompts.negativePrompt,
+              steps: 20,
+              createdDate: new Date(),
+              cfgScale: 7.0,
+            },
+          });
+        }
+        const backgroundModel = 'dreamshaper_8.safetensors';
 
-        // Generate the background image
         const imageResult = await generateImage({
           prompt: backgroundGenerationData.prompt,
           negative_prompt: backgroundGenerationData.negativePrompt,
           steps: backgroundGenerationData.steps,
-          width: parseInt(backgroundGenerationData.size.split('x')[0], 10),
-          height: parseInt(backgroundGenerationData.size.split('x')[1], 10),
-          loras: [], // Add any Lora models if needed
           model: backgroundModel,
           cfg_scale: backgroundGenerationData.cfgScale,
           sampler: backgroundGenerationData.sampler,
           seed: backgroundGenerationData.seed,
           clip_skip: backgroundGenerationData.clipSkip,
         });
-
-        const config: Config = {
-          debug: false,
-          // publicPath:  ...
-          progress: (key: string, current: number, total: number) => {
-            const [type, subtype] = key.split(':');
-            console.log(
-              `${type} ${subtype} ${((current / total) * 100).toFixed(0)}%`
-            );
-          },
-          // model: 'small',
-          model: 'small',
-          output: {
-            quality: 0.8,
-            format: 'image/png', //image/jpeg, image/webp
-          },
-        };
         return {
           profileId: 0, // Indicate that this image is for non-character backgrounds
           profileName: 'Background Scene',
@@ -533,7 +522,7 @@ export async function generateBackgroundPrompt(
   try {
     // Make a request to OpenAI's ChatGPT
     const response = await openai.chat.completions.create({
-      model: 'gpt-4', // Use the latest GPT model
+      model: 'gpt-3.5-turbo',
       messages: [
         {
           role: 'system',
@@ -673,7 +662,7 @@ export async function generateProfilePrompt(
   try {
     // Make a request to OpenAI's ChatGPT
     const response = await openai.chat.completions.create({
-      model: 'gpt-4', // Use the latest GPT model
+      model: 'gpt-3.5-turbo', // Use the latest GPT model
       messages: [
         {
           role: 'system',

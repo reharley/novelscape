@@ -108,19 +108,20 @@ model ModelImage {
 }
 
 model GenerationData {
-    id               Int               @id @default(autoincrement())
-    prompt           String
-    steps            Int
-    cfgScale         Float
-    negativePrompt   String?
-    sampler          String?
-    seed             Int?
-    size             String?
-    createdDate      DateTime
-    clipSkip         Int?
-    civitaiResources CivitaiResource[]
-    modelImage       ModelImage        @relation(fields: [modelImageId], references: [id])
-    modelImageId     Int               @unique
+    id                  Int               @id @default(autoincrement())
+    passageBackgroundId Int?              @unique
+    prompt              String
+    steps               Int
+    cfgScale            Float
+    negativePrompt      String?
+    sampler             String?
+    seed                Int?
+    size                String?
+    createdDate         DateTime
+    clipSkip            Int?
+    civitaiResources    CivitaiResource[]
+    modelImage          ModelImage?       @relation(fields: [modelImageId], references: [id])
+    modelImageId        Int?              @unique
 }
 
 model CivitaiResource {
