@@ -11,7 +11,8 @@ import {
   message,
 } from 'antd';
 import axios from 'axios';
-import React, { useEffect, useState } from 'react';
+import html2canvas from 'html2canvas';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   AiModel,
   Book,
@@ -57,6 +58,9 @@ const AIEnhancedReaderPage: React.FC = () => {
     useState<boolean>(false);
 
   const baseUrl = 'http://localhost:5000/api';
+
+  // Ref for the passage display area
+  const passageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Fetch list of books
@@ -127,7 +131,7 @@ const AIEnhancedReaderPage: React.FC = () => {
       images.forEach((img) => {
         imagesMap[img.profileId] = `data:image/png;base64,${img.image}`;
       });
-      setBackgroundImage(imagesMap[0]);
+      setBackgroundImage(imagesMap[0]); // Assuming profileId 0 is the background
       setProfileImages(imagesMap);
       message.success('Images generated successfully for all profiles.');
     } catch (error: any) {
@@ -217,6 +221,43 @@ const AIEnhancedReaderPage: React.FC = () => {
   const readingProgress = passages.length
     ? Math.round(((currentPassageIndex + 1) / passages.length) * 100)
     : 0;
+
+  // Handler for downloading the passage image
+  const handleDownload = async () => {
+    if (!passageRef.current) {
+      message.error('Passage area not found.');
+      return;
+    }
+
+    const originalBorderRadius = passageRef.current.style.borderRadius;
+
+    try {
+      passageRef.current.style.borderRadius = '0px';
+
+      const canvas = await html2canvas(passageRef.current, {
+        useCORS: true, // Enable cross-origin images
+        allowTaint: true,
+        logging: true,
+        scale: 2, // Increase resolution
+      });
+      const imgData = canvas.toDataURL('image/png');
+
+      // Create a temporary link to trigger the download
+      const link = document.createElement('a');
+      link.href = imgData;
+      link.download = `passage_${currentPassageIndex + 1}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      message.success('Passage image downloaded successfully!');
+    } catch (error) {
+      console.error('Error generating image:', error);
+      message.error('Failed to download passage image.');
+    } finally {
+      passageRef.current.style.borderRadius = originalBorderRadius;
+    }
+  };
 
   return (
     <Layout style={{ minHeight: '100vh', backgroundColor: '#1a1a1a' }}>
@@ -362,10 +403,20 @@ const AIEnhancedReaderPage: React.FC = () => {
               >
                 Generate Images for Profiles
               </Button>
+
+              {/* Download Button */}
+              <Button
+                onClick={handleDownload}
+                type='default'
+                disabled={!backgroundImage}
+              >
+                Download Passage
+              </Button>
             </Space>
 
             {/* Generated Content Area */}
             <div
+              ref={passageRef}
               style={{
                 position: 'relative',
                 width: '100%',
