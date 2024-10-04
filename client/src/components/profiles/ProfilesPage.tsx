@@ -1,5 +1,3 @@
-// components/profiles/ProfilesPage.tsx
-
 import {
   Button,
   Card,
@@ -7,6 +5,7 @@ import {
   List,
   message,
   Modal,
+  Progress,
   Select,
   Typography,
 } from 'antd';
@@ -24,12 +23,22 @@ interface Profile {
   descriptions: { id: string; text: string }[];
 }
 
+interface ProgressData {
+  status: string;
+  message?: string;
+  phase?: string;
+  completed?: number;
+  total?: number;
+  file?: string;
+}
+
 const ProfilesPage: React.FC = () => {
   const [bookFiles, setBookFiles] = useState<string[]>([]);
   const [selectedBookFile, setSelectedBookFile] = useState<string | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [extractingProfiles, setExtractingProfiles] = useState(false);
+  const [progress, setProgress] = useState<ProgressData | null>(null);
 
   // Fetch available books from the file system
   useEffect(() => {
@@ -63,16 +72,43 @@ const ProfilesPage: React.FC = () => {
     }
 
     setExtractingProfiles(true);
+    setProgress(null); // Reset progress
     try {
-      const response = await axios.post(
+      // Start listening to progress updates
+      const eventSource = new EventSource(
+        `http://localhost:5000/api/books/${selectedBookFile}/extract-profiles/progress`
+      );
+
+      eventSource.onmessage = (event) => {
+        const data: ProgressData = JSON.parse(event.data);
+        setProgress(data);
+
+        if (data.status === 'completed') {
+          message.success(data.message);
+          eventSource.close();
+          setExtractingProfiles(false);
+          // Refresh profiles after extraction
+          fetchProfiles();
+        } else if (data.status === 'error') {
+          message.error(data.message);
+          eventSource.close();
+          setExtractingProfiles(false);
+        }
+      };
+
+      eventSource.onerror = (err) => {
+        console.error('EventSource failed:', err);
+        message.error('Connection to progress stream failed.');
+        eventSource.close();
+        setExtractingProfiles(false);
+      };
+
+      // Trigger profile extraction
+      await axios.post(
         `http://localhost:5000/api/books/${selectedBookFile}/extract-profiles`
       );
-      message.success(response.data.message);
-      // Refresh profiles after passage
-      await fetchProfiles();
     } catch (error) {
       message.error('Error extracting profiles.');
-    } finally {
       setExtractingProfiles(false);
     }
   };
@@ -100,8 +136,7 @@ const ProfilesPage: React.FC = () => {
       },
     });
   };
-  console.log(bookFiles);
-  console.log(selectedBookFile);
+
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Content style={{ padding: '50px' }}>
@@ -110,6 +145,7 @@ const ProfilesPage: React.FC = () => {
           placeholder='Select a book'
           style={{ width: 300, marginBottom: '20px' }}
           onChange={(value) => setSelectedBookFile(value)}
+          value={selectedBookFile || undefined}
         >
           {bookFiles.map((bookFile) => (
             <Option key={bookFile} value={bookFile}>
@@ -131,6 +167,37 @@ const ProfilesPage: React.FC = () => {
             Clear Book and Profiles
           </Button>
         </div>
+
+        {extractingProfiles && progress && (
+          <div style={{ marginBottom: '20px' }}>
+            <Title level={4}>Extraction Progress</Title>
+            {progress.status === 'started' && <Text>{progress.message}</Text>}
+            {progress.status === 'phase' && (
+              <Text>
+                {progress.phase}: {progress.message}
+              </Text>
+            )}
+            {progress.status === 'phase_progress' && (
+              <div>
+                <Text>
+                  {progress.phase}: {progress.completed}/{progress.total}
+                </Text>
+                <Progress
+                  percent={(progress.completed! / progress.total!) * 100}
+                />
+              </div>
+            )}
+            {progress.status === 'file_extracted' && (
+              <Text>Extracted file: {progress.file}</Text>
+            )}
+            {progress.status === 'completed' && (
+              <Text type='success'>{progress.message}</Text>
+            )}
+            {progress.status === 'error' && (
+              <Text type='danger'>{progress.message}</Text>
+            )}
+          </div>
+        )}
 
         {loadingProfiles ? (
           <p>Loading profiles...</p>

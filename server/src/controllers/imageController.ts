@@ -508,7 +508,6 @@ export async function generateBackgroundPrompt(
       negativePrompt:
         'score_4, score_5_up, score_6_up, ng_deepnegative_v1_75t, smeared, blurry, lowres, low quality, med quality, cars, people',
     },
-    // ... (Include relevant examples for background scenes)
     {
       positivePrompt:
         'A serene landscape depicting a tranquil forest clearing with sunlight filtering through the dense canopy, a gentle stream flowing nearby, and vibrant flora surrounding the area.',
@@ -520,12 +519,12 @@ export async function generateBackgroundPrompt(
   const examplesString = JSON.stringify(examples, null, 2);
 
   const systemPrompt = `
-  You are an expert prompt engineer specializing in generating prompts for standard diffusion image generation. Your task is to create both positive and negative prompts based on the provided passage content, associated non-character profiles (if any), and the book name.
+  You are an expert prompt engineer specializing in generating prompts for standard diffusion image generation. Your task is to create both positive and negative prompts based on the provided passage content, associated profiles (if any), and the book name.
 
   **Guidelines:**
 
-  1. **Positive Prompt**: Should vividly describe the background scene incorporating elements from all non-character profiles (if any). If there are no non-character profiles, focus solely on the passage content to describe the scene. The prompt should be creative, detailed, and tailored to the context of the passage, profiles, and the book.
-  2. **Negative Prompt**: Should include elements to avoid in the image generation to ensure higher quality and relevance. Focus on common issues like poor anatomy, incorrect proportions, unwanted artifacts, etc.
+  1. **Positive Prompt**: Should vividly describe the background scene incorporating elements from all profiles (if any). If there are no profiles, focus solely on the passage content to describe the scene. The prompt should be creative, detailed, and tailored to the context of the passage, profiles, and the book. Never focus on the characters directly.
+  2. **Negative Prompt**: Should include elements to avoid in the image generation to ensure higher quality and relevance. Should avoid drawing characters/people unless they are in the background. Focus on common issues like poor anatomy, incorrect proportions, unwanted artifacts, etc.
   3. **Incorporate Profiles**: Use the profiles' names and descriptions to enrich the prompts, ensuring that the profiles' unique traits are reflected accurately within the scene when profiles are present.
   4. **Book Context**: Utilize the book name to maintain consistency with the book's theme and setting.
   5. **Format**: Provide the output as a JSON object with two fields: "positivePrompt" and "negativePrompt". Do **not** include any Markdown formatting or code block delimiters.
@@ -667,7 +666,6 @@ export async function generateProfilePrompt(
         'deformed iris, deformed pupils, semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, anime:1.4), text, close up, cropped, out of frame, worst quality, low quality, jpeg artifacts, ugly, duplicate, morbid, mutilated, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, mutation, deformed, blurry, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers, long neck',
     },
   ];
-
   const examplesString = JSON.stringify(examples, null, 2);
 
   const systemPrompt = `
@@ -675,14 +673,13 @@ export async function generateProfilePrompt(
   
   **Guidelines:**
   
-  1. **Positive Prompt**: Should vividly describe the scene, the specific character from the profile, and key elements to be depicted in the image. It should be creative, detailed, and tailored to the context of the passage, profile, and the book.
-  2. **Negative Prompt**: Should include elements to avoid in the image generation to ensure higher quality and relevance. Focus on common issues like poor anatomy, incorrect proportions, unwanted artifacts, etc.
+  1. **Positive Prompt**: Should vividly describe the specific character from the profile and feature only that character (1boy, 1girl, solo). It should be creative, detailed, and tailored to the context of the passage, profile, and the book. Avoid mentioning other characters or elements not related to the profile.
+  2. **Negative Prompt**: Should include elements to avoid in the image generation to ensure higher quality and relevance. Put negatives on scenery and background attributes. Focus on common issues like poor anatomy, incorrect proportions, unwanted artifacts, etc.
   3. **Incorporate Profile**: Use the profile's name and descriptions to enrich the prompts, ensuring that the profile's unique traits are reflected accurately.
   4. **Book Context**: Utilize the book name to maintain consistency with the book's theme and setting.
   5. **Format**: Provide the output as a JSON object with two fields: "positivePrompt" and "negativePrompt". Do **not** include any Markdown formatting or code block delimiters.
   6. **Format Clues**: Focus on comma separated list of features describing a scene and avoid full sentences
-  7. **Characters**: Draw character profiles. Only draw 1 character in a scene using positive features 1boy or 1girl and solo for characters and negative for other object types. Avoid describing scenery with characters.
-  8. **Examples**: Below are examples of desired output formats to guide your response.
+  7. **Examples**: Below are examples of desired output formats to guide your response.
   
   **Example Outputs:**
   ${examplesString}

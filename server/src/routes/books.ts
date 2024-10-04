@@ -3,6 +3,7 @@ import express from 'express';
 import {
   deleteBook,
   extractProfilesController,
+  extractProfilesProgress,
   getBookContent,
   getChaptersForBook,
   getPassagesForBook,
@@ -61,6 +62,8 @@ router.get('/:bookId', getBookContent);
  * @access Public
  */
 router.post('/:bookId/extract-profiles', extractProfilesController);
+
+router.get('/:bookId/extract-profiles/progress', extractProfilesProgress);
 
 /**
  * @route DELETE /api/books/:bookId

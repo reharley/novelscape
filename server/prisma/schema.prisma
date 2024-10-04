@@ -23,7 +23,6 @@ model Chapter {
     id       Int       @id @default(autoincrement())
     order    Int
     title    String
-    contents Json
     book     Book      @relation(fields: [bookId], references: [id])
     bookId   String
     passages Passage[]

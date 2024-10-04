@@ -1,6 +1,6 @@
+import { Scene } from '@prisma/client';
 import DOMPurify from 'dompurify';
 import EPub from 'epub2';
-import { Response } from 'express';
 import fs from 'fs-extra';
 import { JSDOM } from 'jsdom';
 import pLimit from 'p-limit'; // Import p-limit for concurrency control
@@ -8,6 +8,7 @@ import path from 'path';
 import openai from '../config/openai';
 import prisma from '../config/prisma';
 import { parseChapterContent } from '../utils/parseChapterContent';
+import { progressManager } from '../utils/progressManager';
 
 // Initialize DOMPurify
 const { window } = new JSDOM('<!DOCTYPE html>');
@@ -20,13 +21,122 @@ interface Entity {
   type?: string;
   description?: string;
 }
+export async function extractPassagesAndChapters(
+  bookId: string,
+  epub: EPub,
+  extractedDir: string
+): Promise<void> {
+  const chapters = epub.flow;
 
+  if (chapters.length === 0) {
+    progressManager.sendProgress(bookId, {
+      status: 'error',
+      message: 'No chapters found in the book.',
+    });
+    progressManager.closeAllClients(bookId);
+    throw new Error('No chapters found in the book');
+  }
+
+  progressManager.sendProgress(bookId, {
+    status: 'phase',
+    phase: 'Phase 1: Extracting passages and chapters...',
+  });
+
+  const concurrencyLimit = 5; // Adjust based on your system's capabilities
+  const limit = pLimit(concurrencyLimit);
+
+  // Limit to the first 10 chapters for demonstration; adjust as needed
+  const chaptersToProcess = chapters.slice(0, 10);
+  const totalChapters = chaptersToProcess.length;
+  let processedChapters = 0;
+
+  const tasks = chaptersToProcess.map((chapter) =>
+    limit(async () => {
+      const chapterId = chapter.id;
+      if (!chapterId) return;
+      if (!chapter.order) return;
+
+      try {
+        const text = await getChapterRawAsync(epub, chapterId);
+        if (!text) {
+          console.error(`Error: Chapter ${chapterId} is empty.`);
+          progressManager.sendProgress(bookId, {
+            status: 'error',
+            message: `Chapter ${chapterId} is empty.`,
+          });
+          return;
+        }
+
+        const contents = parseChapterContent(text); // Parses the chapter content
+
+        // Save chapter to the database
+        const chapterRecord = await prisma.chapter.create({
+          data: {
+            order: chapter.order,
+            title: chapter.title || `Chapter ${chapter.order}`,
+            bookId: bookId,
+          },
+        });
+
+        const passageData = contents
+          .filter(
+            (contentItem) =>
+              contentItem.type === 'paragraph' || contentItem.type === 'title'
+          )
+          .map((contentItem, idx) => {
+            const textContent = contentItem.text.trim();
+            if (!textContent) return null;
+
+            return {
+              textContent,
+              order: idx, // Ensure you have an order field
+              chapterId: chapterRecord.id,
+              bookId: bookId,
+            };
+          })
+          .filter((data) => data !== null); // Filter out null values
+
+        if (passageData.length > 0) {
+          await prisma.passage.createMany({
+            data: passageData,
+          });
+        }
+
+        // Update progress after processing each chapter
+        processedChapters += 1;
+        progressManager.sendProgress(bookId, {
+          status: 'phase_progress',
+          phase: 'Phase 1',
+          completed: processedChapters,
+          total: totalChapters,
+        });
+      } catch (chapterError: any) {
+        console.error(
+          `Error processing chapter ${chapterId} in Phase 1:`,
+          chapterError
+        );
+        progressManager.sendProgress(bookId, {
+          status: 'error',
+          message: `Error processing chapter ${chapterId}: ${chapterError.message}`,
+        });
+      }
+    })
+  );
+
+  // Await all chapter processing tasks
+  await Promise.all(tasks);
+
+  progressManager.sendProgress(bookId, {
+    status: 'phase_completed',
+    phase: 'Phase 1',
+    message: 'Passages and chapters extracted successfully.',
+  });
+}
 export async function extractProfiles(
   bookId: string,
   booksDir: string,
-  extractedDir: string,
-  res: Response
-) {
+  extractedDir: string
+): Promise<void> {
   const bookPath = path.join(booksDir, bookId);
 
   // Check if the book exists
@@ -35,7 +145,7 @@ export async function extractProfiles(
   }
 
   // Upsert the book with id as filename
-  const book = await prisma.book.upsert({
+  await prisma.book.upsert({
     where: { id: bookId },
     update: {},
     create: {
@@ -44,418 +154,530 @@ export async function extractProfiles(
     },
   });
 
+  // Initialize and parse the EPUB
   const epub = new EPub(bookPath);
 
   epub.on('end', async () => {
-    const chapters = epub.flow;
+    try {
+      // **Phase 1: Extract Passages and Chapters**
+      await extractPassagesAndChapters(bookId, epub, extractedDir);
 
-    if (chapters.length === 0) {
-      throw new Error('No chapters found in the book');
+      // **Phase 2: Extract Canonical Names**
+      await extractCanonicalNames(bookId);
+
+      // **Phase 3: Process Passages with Context**
+      await processPassagesWithContext(bookId);
+
+      // **Phase 4: Detect Scenes**
+      await detectScenes(bookId);
+
+      // **Finalizing: Extract and Save Book Resources**
+      await extractAndSaveBookResources(epub, bookId, extractedDir);
+
+      // Send completion status
+      progressManager.sendProgress(bookId, {
+        status: 'completed',
+        message: 'All phases completed successfully.',
+      });
+      progressManager.closeAllClients(bookId);
+    } catch (error: any) {
+      console.error(`Error processing book ${bookId}:`, error);
+      progressManager.sendProgress(bookId, {
+        status: 'error',
+        message:
+          error.message || 'An error occurred during profile extraction.',
+      });
+      progressManager.closeAllClients(bookId);
     }
-
-    // **Phase 1: Extract Canonical Names for the Entire Book**
-    console.log('Phase 1: Extracting canonical character names...');
-    const canonicalNames = await extractCanonicalNames(epub, chapters, book);
-    console.log(`Extracted ${canonicalNames.length} canonical names.`);
-
-    // **Phase 2: Process Passages with Context, Alias Handling, and Scene Tracking**
-    console.log(
-      'Phase 2: Processing passages with context and alias handling...'
-    );
-    await processPassagesWithContext(epub, chapters, book, canonicalNames);
-    console.log('Passage processing completed.');
-
-    // **Finalizing: Extract and Save Book Resources**
-    console.log('Finalizing: Extracting book resources...');
-    const manifestItems = Object.values(epub.manifest); // Extract manifest entries as an array
-    const extractPath = path.join(extractedDir, bookId);
-
-    // Use p-limit to control concurrency for file extraction
-    const fileLimit = pLimit(5); // Adjust concurrency as needed
-
-    await Promise.all(
-      manifestItems.map((item) =>
-        fileLimit(async () => {
-          if (!item.id || !item.href) return;
-          try {
-            const data = await getFileAsync(epub, item.id);
-            // Create the appropriate subdirectory if needed
-            const outputPath = path.join(extractPath, item.href);
-            const outputDir = path.dirname(outputPath);
-            await fs.mkdirp(outputDir); // Asynchronously create directories
-
-            // Write file to disk
-            if (data) await fs.writeFile(outputPath, data);
-            console.log(`Extracted: ${item.href}`);
-          } catch (err) {
-            console.error(`Error extracting file ${item.href}:`, err);
-          }
-        })
-      )
-    );
-
-    res.json({ message: 'Entities extracted and saved successfully.' });
   });
 
   epub.parse();
 }
+export async function detectScenes(bookId: string): Promise<void> {
+  progressManager.sendProgress(bookId, {
+    status: 'phase',
+    phase: 'Phase 4: Detecting scenes...',
+  });
 
-// **Phase 1: Extract Canonical Names for the Entire Book**
-async function extractCanonicalNames(
-  epub: EPub,
-  chapters: any[],
-  book: any
-): Promise<string[]> {
-  const canonicalNamesSet = new Set<string>();
+  // Fetch all chapters ordered by their order
+  const chapters = await prisma.chapter.findMany({
+    where: { bookId: bookId },
+    orderBy: { order: 'asc' },
+    include: { passages: { orderBy: { order: 'asc' } } },
+  });
+
+  const totalChapters = chapters.length;
+  let processedChapters = 0;
+  let globalSceneOrder = 1; // To maintain global scene order across chapters
+
   const concurrencyLimit = 5; // Adjust based on your system's capabilities
   const limit = pLimit(concurrencyLimit);
 
-  // Limit to the first 10 chapters for demonstration; adjust as needed
-  const chaptersToProcess = chapters.slice(0, 10);
+  // Function to process each chapter
+  const processChapter = async (chapter: (typeof chapters)[0]) => {
+    const { id: chapterId, order: chapterOrder, passages } = chapter;
 
-  // Map each chapter to a limited async task
-  const tasks = chaptersToProcess.map((chapter) =>
-    limit(async () => {
-      const chapterId = chapter.id;
-      if (!chapterId) return;
-      if (!chapter.order) return;
+    progressManager.sendProgress(bookId, {
+      status: 'phase_progress',
+      phase: 'Phase 4',
+      message: `Processing Chapter ${chapterOrder}: "${chapter.title}"`,
+    });
+
+    let accumulatedPassages: string[] = [];
+    let currentScene: Scene | null = null;
+
+    for (const passage of passages) {
+      accumulatedPassages.push(passage.textContent);
+      const contextText = accumulatedPassages.join('\n\n');
+
+      let isNewScene = false;
       try {
-        const text = await getChapterRawAsync(epub, chapterId);
-        if (!text) {
-          console.error(`Error: Chapter ${chapterId} is empty.`);
-          return;
+        const sceneFlagResponse = await detectNewScene(contextText);
+        isNewScene = sceneFlagResponse.newScene || false;
+      } catch (error: any) {
+        console.error(
+          `Error during scene detection in Chapter ${chapterOrder}:`,
+          error
+        );
+        progressManager.sendProgress(bookId, {
+          status: 'error',
+          message: `Error during scene detection in Chapter ${chapterOrder}: ${error.message}`,
+        });
+        continue; // Skip to the next passage
+      }
+
+      if (isNewScene && accumulatedPassages.length > 1) {
+        // Exclude the last passage which triggered the scene change
+        const passagesToAssign = passages.filter((p, index) => {
+          return (
+            index < passages.findIndex((pass) => pass.id === passage.id) &&
+            accumulatedPassages.includes(p.textContent)
+          );
+        });
+
+        if (passagesToAssign.length > 0) {
+          const scene = await prisma.scene.create({
+            data: {
+              order: globalSceneOrder++,
+              bookId: bookId,
+            },
+          });
+
+          const passageIds = passagesToAssign.map((p) => p.id);
+
+          await prisma.passage.updateMany({
+            where: { id: { in: passageIds } },
+            data: { sceneId: scene.id },
+          });
+
+          progressManager.sendProgress(bookId, {
+            status: 'phase_progress',
+            phase: 'Phase 4',
+            message: `Scene ${scene.order} detected in Chapter ${chapterOrder} and passages assigned.`,
+          });
+
+          // Reset accumulated passages to start a new scene
+          accumulatedPassages = [passage.textContent];
+        }
+      }
+    }
+
+    // Assign any remaining accumulated passages to a new scene
+    if (accumulatedPassages.length > 0) {
+      const remainingPassages = passages.filter((p) =>
+        accumulatedPassages.includes(p.textContent)
+      );
+
+      if (remainingPassages.length > 0) {
+        const scene = await prisma.scene.create({
+          data: {
+            order: globalSceneOrder++,
+            bookId: bookId,
+          },
+        });
+
+        const passageIds = remainingPassages.map((p) => p.id);
+
+        await prisma.passage.updateMany({
+          where: { id: { in: passageIds } },
+          data: { sceneId: scene.id },
+        });
+
+        progressManager.sendProgress(bookId, {
+          status: 'phase_progress',
+          phase: 'Phase 4',
+          message: `Final Scene ${scene.order} detected in Chapter ${chapterOrder} and passages assigned.`,
+        });
+      }
+    }
+
+    // Update progress after processing each chapter
+    processedChapters += 1;
+    progressManager.sendProgress(bookId, {
+      status: 'phase_progress',
+      phase: 'Phase 4',
+      completed: processedChapters,
+      total: totalChapters,
+    });
+  };
+
+  // Limit the number of concurrent chapter processing tasks
+  const chapterTasks = chapters.map((chapter) =>
+    limit(() => processChapter(chapter))
+  );
+
+  // Await all chapter processing tasks
+  await Promise.all(chapterTasks);
+
+  progressManager.sendProgress(bookId, {
+    status: 'phase_completed',
+    phase: 'Phase 4',
+    message: 'Scene detection completed successfully.',
+  });
+}
+
+export async function extractAndSaveBookResources(
+  epub: EPub,
+  bookId: string,
+  extractedDir: string
+): Promise<void> {
+  progressManager.sendProgress(bookId, {
+    status: 'phase',
+    phase: 'Finalizing: Extracting book resources...',
+  });
+
+  const manifestItems = Object.values(epub.manifest); // Extract manifest entries as an array
+  const extractPath = path.join(extractedDir, bookId);
+
+  // Use p-limit to control concurrency for file extraction
+  const fileLimit = pLimit(5); // Adjust concurrency as needed
+
+  const tasks = manifestItems.map((item) =>
+    fileLimit(async () => {
+      if (!item.id || !item.href) return;
+      try {
+        const data = await getFileAsync(epub, item.id);
+        // Create the appropriate subdirectory if needed
+        const outputPath = path.join(extractPath, item.href);
+        const outputDir = path.dirname(outputPath);
+        await fs.mkdirp(outputDir); // Asynchronously create directories
+
+        // Write file to disk
+        if (data) await fs.writeFile(outputPath, data);
+        progressManager.sendProgress(bookId, {
+          status: 'file_extracted',
+          file: item.href,
+        });
+      } catch (err: any) {
+        console.error(`Error extracting file ${item.href}:`, err);
+        progressManager.sendProgress(bookId, {
+          status: 'error',
+          message: `Error extracting file ${item.href}: ${err.message}`,
+        });
+      }
+    })
+  );
+
+  // Await all file extraction tasks
+  await Promise.all(tasks);
+
+  progressManager.sendProgress(bookId, {
+    status: 'phase_completed',
+    phase: 'Finalizing',
+    message: 'Book resources extracted successfully.',
+  });
+}
+
+async function getFileAsync(
+  epub: EPub,
+  fileId: string
+): Promise<Buffer | undefined> {
+  return new Promise((resolve, reject) => {
+    epub.getFile(fileId, (err, data, mimeType) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(data);
+      }
+    });
+  });
+}
+
+export async function extractCanonicalNames(bookId: string): Promise<void> {
+  progressManager.sendProgress(bookId, {
+    status: 'phase',
+    phase: 'Phase 2: Extracting canonical character names...',
+  });
+
+  const concurrencyLimit = 5; // Adjust based on your system's capabilities
+  const limit = pLimit(concurrencyLimit);
+
+  // Fetch all passages for the book
+  const passages = await prisma.passage.findMany({
+    where: { bookId: bookId },
+    select: { textContent: true },
+  });
+
+  const totalPassages = passages.length;
+  let processedPassages = 0;
+
+  const tasks = passages.map((passage) =>
+    limit(async () => {
+      const textContent = passage.textContent.trim();
+      if (!textContent) return;
+
+      try {
+        // Send text to OpenAI API for canonical NER
+        const canonicalResponse = await openai.chat.completions.create({
+          model: 'gpt-3.5-turbo',
+          messages: [
+            {
+              role: 'system',
+              content: `You are an assistant that performs named entity recognition (NER) to identify complete (full) character names. Extract only the entities of type 'Character' with their full names present from the following text and provide them as a JSON array of strings.`,
+            },
+            {
+              role: 'user',
+              content: `Extract full character names from the following text:\n\n${textContent}`,
+            },
+          ],
+          max_tokens: 500,
+        });
+
+        let assistantMessage =
+          canonicalResponse.choices[0].message?.content || '';
+        assistantMessage = sanitizeAssistantMessage(assistantMessage);
+
+        let canonicalEntities: string[] = [];
+        try {
+          canonicalEntities = JSON.parse(assistantMessage);
+        } catch (parseError) {
+          console.error('JSON parse error (canonical):', parseError);
+          const jsonMatch = assistantMessage.match(/\[.*\]/s);
+          if (jsonMatch) {
+            const regex = /\,(?=\s*?[\}\]])/g;
+            const cleanMatch = jsonMatch[0].replace(regex, '');
+            canonicalEntities = JSON.parse(cleanMatch);
+          } else {
+            console.error('Failed to parse canonical entities as JSON.');
+            return; // Skip if unable to parse
+          }
         }
 
-        const contents = parseChapterContent(text); // Parses the chapter content
-
-        // Process each content item asynchronously
-        await Promise.all(
-          contents.map(async (contentItem) => {
+        // Upsert canonical profiles
+        try {
+          for (const entity of canonicalEntities) {
+            if (!entity) {
+              console.log('Skipping entity without a name:', entity);
+              continue;
+            }
+            const titleCheck = entity.toLowerCase();
             if (
-              contentItem.type === 'paragraph' ||
-              contentItem.type === 'title'
-            ) {
-              const textContent = contentItem.text.trim();
-              if (!textContent) return;
+              titleCheck.startsWith('mr. ') ||
+              titleCheck.startsWith('ms. ') ||
+              titleCheck.startsWith('mrs. ') ||
+              titleCheck.startsWith('professor ') ||
+              titleCheck.startsWith('the ') ||
+              titleCheck.startsWith('dr. ') ||
+              titleCheck.startsWith('prof. ') ||
+              titleCheck.startsWith('doctor ') ||
+              titleCheck.startsWith('uncle ') ||
+              titleCheck.startsWith('aunt ')
+            )
+              continue; // Skip titles
+            if (entity.split(' ').length < 2) continue; // Skip single-word names
+            // Check for capitalization for first letter of each word
+            const words = entity.split(' ');
+            let valid = true;
+            for (const word of words) {
+              if (word[0] !== word[0].toUpperCase()) {
+                valid = false;
+                break;
+              }
+            }
+            if (!valid) continue; // Skip if not capitalized
 
+            // Upsert the canonical name into the database
+            await prisma.profile.upsert({
+              where: {
+                name_bookId: {
+                  name: entity,
+                  bookId: bookId,
+                },
+              },
+              update: {},
+              create: {
+                name: entity,
+                type: 'CHARACTER',
+                bookId: bookId,
+              },
+            });
+          }
+        } catch (e) {
+          console.error('Error upserting canonical profiles:', e);
+        }
+        // Update progress after processing each passage
+        processedPassages += 1;
+        progressManager.sendProgress(bookId, {
+          status: 'phase_progress',
+          phase: 'Phase 2',
+          completed: processedPassages,
+          total: totalPassages,
+        });
+      } catch (apiError: any) {
+        console.error('Error with OpenAI API (canonical NER):', apiError);
+        progressManager.sendProgress(bookId, {
+          status: 'error',
+          message: `OpenAI API error during canonical NER: ${apiError.message}`,
+        });
+      }
+    })
+  );
+
+  // Await all passage processing tasks
+  await Promise.all(tasks);
+
+  progressManager.sendProgress(bookId, {
+    status: 'phase_completed',
+    phase: 'Phase 2',
+    message: 'Canonical character names extracted successfully.',
+  });
+}
+
+export async function processPassagesWithContext(
+  bookId: string
+): Promise<void> {
+  progressManager.sendProgress(bookId, {
+    status: 'phase',
+    phase: 'Phase 3: Processing passages with context...',
+  });
+
+  const concurrencyLimit = 7; // Adjust based on your system's capabilities
+  const limit = pLimit(concurrencyLimit);
+
+  // Fetch all passages for the book
+  const passages = await prisma.passage.findMany({
+    where: { bookId: bookId },
+    include: { chapter: true },
+  });
+
+  const totalPassages = passages.length;
+  let processedPassages = 0;
+
+  const tasks = passages.map((passage) =>
+    limit(async () => {
+      const textContent = passage.textContent.trim();
+      if (!textContent) return;
+
+      try {
+        // Fetch canonical names from profiles
+        const canonicalNames = await getCanonicalNames(bookId);
+        const aliases = identifyAliases(textContent, canonicalNames);
+
+        // Send text to OpenAI API for NER with aliases
+        const entities = await performNERWithAliases(textContent, aliases);
+
+        // Handle Entities
+        if (entities && Array.isArray(entities)) {
+          await Promise.all(
+            entities.map(async (entity) => {
+              if ((!entity.fullName && !entity.alias) || !entity.type) return;
+
+              // Handle 'Scene' type separately if needed
+              if (entity.type.toUpperCase() === 'SCENE') {
+                return; // Skipping as scenes are handled via sceneFlag
+              }
+
+              // Determine canonical name
+              const canonicalName = entity.fullName || entity.alias || '';
+
+              // Upsert Profile
+              const profile = await prisma.profile.upsert({
+                where: {
+                  name_bookId: {
+                    name: canonicalName,
+                    bookId: bookId,
+                  },
+                },
+                update: {
+                  type: entity.type.toUpperCase(),
+                },
+                create: {
+                  name: canonicalName,
+                  type: entity.type.toUpperCase(),
+                  bookId: bookId,
+                },
+              });
+
+              // Handle Alias
               try {
-                // Send text to OpenAI API for canonical NER
-                const canonicalResponse = await openai.chat.completions.create({
-                  model: 'gpt-3.5-turbo',
-                  messages: [
-                    {
-                      role: 'system',
-                      content: `You are an assistant that performs named entity recognition (NER) to identify complete (full) character names. Extract only the entities of type 'Character' with their full names present from the following text and provide them as a JSON array of strings.`,
-                    },
-                    {
-                      role: 'user',
-                      content: `Extract full character names from the following text:\n\n${textContent}`,
-                    },
-                  ],
-                  max_tokens: 500,
-                });
-
-                let assistantMessage =
-                  canonicalResponse.choices[0].message?.content || '';
-                assistantMessage = sanitizeAssistantMessage(assistantMessage);
-
-                let canonicalEntities: string[] = [];
-                try {
-                  canonicalEntities = JSON.parse(assistantMessage);
-                } catch (parseError) {
-                  console.error('JSON parse error (canonical):', parseError);
-                  const jsonMatch = assistantMessage.match(/\[.*\]/s);
-                  if (jsonMatch) {
-                    const regex = /\,(?=\s*?[\}\]])/g;
-                    const cleanMatch = jsonMatch[0].replace(regex, '');
-                    canonicalEntities = JSON.parse(cleanMatch);
-                  } else {
-                    console.error(
-                      'Failed to parse canonical entities as JSON.'
-                    );
-                    return; // Skip if unable to parse
-                  }
-                }
-
-                // Upsert canonical profiles
-                for (const entity of canonicalEntities) {
-                  if (!entity) {
-                    console.log('Skipping entity without a name:', entity);
-                    continue;
-                  }
-                  const titleCheck = entity.toLowerCase();
-                  if (
-                    titleCheck.startsWith('mr. ') ||
-                    titleCheck.startsWith('ms. ') ||
-                    titleCheck.startsWith('mrs. ') ||
-                    titleCheck.startsWith('professor ') ||
-                    titleCheck.startsWith('the ') ||
-                    titleCheck.startsWith('dr. ') ||
-                    titleCheck.startsWith('prof. ') ||
-                    titleCheck.startsWith('doctor ') ||
-                    titleCheck.startsWith('uncle ') ||
-                    titleCheck.startsWith('aunt ')
-                  )
-                    continue; // Skip titles
-                  if (entity.split(' ').length < 2) continue; // Skip single-word names
-                  // Check for capitalization for first letter of each word
-                  const words = entity.split(' ');
-                  let valid = true;
-                  for (const word of words) {
-                    if (word[0] !== word[0].toUpperCase()) {
-                      valid = false;
-                      break;
-                    }
-                  }
-                  if (!valid) continue; // Skip if not capitalized
-
-                  canonicalNamesSet.add(entity);
-
-                  await prisma.profile.upsert({
+                if (entity.alias && entity.fullName) {
+                  await prisma.alias.upsert({
                     where: {
-                      name_bookId: {
-                        name: entity,
-                        bookId: book.id,
+                      name_profileId: {
+                        name: entity.alias,
+                        profileId: profile.id,
                       },
                     },
                     update: {},
                     create: {
-                      name: entity,
-                      type: 'CHARACTER',
-                      bookId: book.id,
+                      name: entity.alias,
+                      profileId: profile.id,
                     },
                   });
                 }
-              } catch (apiError) {
-                console.error(
-                  'Error with OpenAI API (canonical NER):',
-                  apiError
-                );
+              } catch (e) {
+                console.error('Error upserting alias:', e);
               }
-            }
-          })
-        );
-      } catch (chapterError) {
-        console.error(
-          `Error processing chapter ${chapterId} in Phase 1:`,
-          chapterError
-        );
-      }
-    })
-  );
 
-  // Await all chapter processing tasks
-  await Promise.all(tasks);
-
-  return Array.from(canonicalNamesSet);
-}
-
-// **Phase 2: Process Passages with Context, Alias Handling, and Scene Tracking**
-async function processPassagesWithContext(
-  epub: EPub,
-  chapters: any[],
-  book: any,
-  canonicalNames: string[]
-) {
-  const concurrencyLimit = 3; // Adjust based on your system's capabilities
-  const limit = pLimit(concurrencyLimit);
-
-  // Limit to the first 10 chapters for demonstration; adjust as needed
-  const chaptersToProcess = chapters.slice(0, 10);
-
-  // Map each chapter to a limited async task
-  const tasks = chaptersToProcess.map((chapter) =>
-    limit(async () => {
-      const chapterId = chapter.id;
-      if (!chapterId) return;
-      if (!chapter.order) return;
-
-      try {
-        const text = await getChapterRawAsync(epub, chapterId);
-        if (!text) {
-          console.error(`Error: Chapter ${chapterId} is empty.`);
-          return;
-        }
-
-        const chapterTitle = chapter.title || `Chapter ${chapter.order}`;
-        const contents = parseChapterContent(text); // Parses the chapter content
-
-        const chapterRecord = await prisma.chapter.create({
-          data: {
-            order: chapter.order,
-            title: chapterTitle,
-            contents: contents, // Assuming contents is a JSON object
-            bookId: book.id,
-          },
-        });
-
-        let passageCounter = 1;
-        let currentScene: any = null;
-        let accumulatedPassages: string[] = []; // For context until a new scene
-
-        // Process each content item sequentially to maintain passage order and scene tracking
-        for (const contentItem of contents) {
-          try {
-            if (
-              contentItem.type === 'paragraph' ||
-              contentItem.type === 'title'
-            ) {
-              const textContent = contentItem.text.trim();
-              if (!textContent) continue;
-
-              // Add current passage to accumulated context
-              accumulatedPassages.push(textContent);
-
-              // Create Passage entry without scene for now
-              const passage = await prisma.passage.create({
-                data: {
-                  textContent,
-                  order: passageCounter++,
-                  bookId: book.id,
-                  chapterId: chapterRecord.id,
-                },
-              });
-
-              // Prepare context: all accumulated passages until newScene
-              const contextText = accumulatedPassages.join('\n\n');
-
-              // Detect if a new scene starts using accumulatedPassages
-              const sceneFlagResponse = await detectNewScene(contextText);
-              const isNewScene = sceneFlagResponse.newScene || false;
-
-              if (isNewScene) {
-                // Create a new Scene
-                currentScene = await prisma.scene.create({
+              // Create Description linked to Profile and Passage
+              if (entity.description) {
+                await prisma.description.create({
                   data: {
-                    order: await getNextSceneOrder(book.id),
-                    bookId: book.id,
+                    text: entity.description,
+                    bookId: bookId,
+                    profileId: profile.id,
+                    passageId: passage.id,
                   },
                 });
-
-                // Associate the passage with the new scene
-                await prisma.passage.update({
-                  where: { id: passage.id },
-                  data: { sceneId: currentScene.id },
-                });
-
-                // Reset accumulated passages
-                accumulatedPassages = [];
-              } else {
-                // Associate with the current scene if exists
-                if (currentScene) {
-                  await prisma.passage.update({
-                    where: { id: passage.id },
-                    data: { sceneId: currentScene.id },
-                  });
-                }
               }
 
-              // Identify aliases in the current passage
-              const aliases = identifyAliases(textContent, canonicalNames);
-              let entities: Entity[] = [];
-              try {
-                // Send text to OpenAI API for NER with aliases
-                entities = await performNERWithAliases(contextText, aliases);
-
-                // Handle Entities
-                if (entities && Array.isArray(entities)) {
-                  await Promise.all(
-                    entities.map(async (entity) => {
-                      if ((!entity.fullName && !entity.alias) || !entity.type)
-                        return;
-
-                      // Handle 'Scene' type separately if needed
-                      if (entity.type.toUpperCase() === 'SCENE') {
-                        return; // Skipping as scenes are handled via sceneFlag
-                      }
-
-                      // Determine canonical name
-                      const canonicalName =
-                        entity.fullName || entity.alias || '';
-
-                      // Upsert Profile
-                      const profile = await prisma.profile.upsert({
-                        where: {
-                          name_bookId: {
-                            name: canonicalName,
-                            bookId: book.id,
-                          },
-                        },
-                        update: {
-                          type: entity.type.toUpperCase(),
-                        },
-                        create: {
-                          name: canonicalName,
-                          type: entity.type.toUpperCase(),
-                          bookId: book.id,
-                        },
-                      });
-
-                      // Handle Alias
-                      if (entity.alias && entity.fullName) {
-                        await prisma.alias.upsert({
-                          where: {
-                            name_profileId: {
-                              name: entity.alias,
-                              profileId: profile.id,
-                            },
-                          },
-                          update: {},
-                          create: {
-                            name: entity.alias,
-                            profileId: profile.id,
-                          },
-                        });
-                      }
-
-                      // Create Description linked to Profile and Passage
-                      if (entity.description) {
-                        await prisma.description.create({
-                          data: {
-                            text: entity.description,
-                            bookId: book.id,
-                            profileId: profile.id,
-                            passageId: passage.id,
-                          },
-                        });
-                      }
-
-                      // Link Profile to Passage
-                      await prisma.passage.update({
-                        where: { id: passage.id },
-                        data: {
-                          profiles: {
-                            connect: { id: profile.id },
-                          },
-                        },
-                      });
-                    })
-                  );
-                }
-              } catch (apiError) {
-                console.error('Error with OpenAI API (NER):', apiError);
-              }
-            }
-          } catch (e) {
-            console.log('Problem with passage:', e);
-          }
+              // Link Profile to Passage
+              await prisma.passage.update({
+                where: { id: passage.id },
+                data: {
+                  profiles: {
+                    connect: { id: profile.id },
+                  },
+                },
+              });
+            })
+          );
         }
-      } catch (chapterError) {
-        console.error(
-          `Error processing chapter ${chapterId} in Phase 2:`,
-          chapterError
-        );
+
+        // Update progress after processing each passage
+        processedPassages += 1;
+        progressManager.sendProgress(bookId, {
+          status: 'phase_progress',
+          phase: 'Phase 3',
+          completed: processedPassages,
+          total: totalPassages,
+        });
+      } catch (apiError: any) {
+        console.error('Error with OpenAI API (NER):', apiError);
       }
     })
   );
 
-  // Await all chapter processing tasks
+  // Await all passage processing tasks
   await Promise.all(tasks);
+
+  progressManager.sendProgress(bookId, {
+    status: 'phase_completed',
+    phase: 'Phase 3',
+    message: 'Passages processed with context successfully.',
+  });
 }
 
-// **Helper Functions**
-
-// **Phase 2: Perform NER with Aliases (Scene Detection Removed)**
 async function performNERWithAliases(
   contextText: string,
   aliases: string[]
@@ -478,7 +700,7 @@ For each entity, provide:
 - type: One of 'Character', 'Building', 'Scene', 'Animal', or 'Object'.
 - description: A brief description of the entity based on the context.
 
-Output legal the result as a JSON array of entities.`,
+Output the result as a JSON array of entities.`,
       },
       {
         role: 'user',
@@ -567,15 +789,12 @@ async function getNextSceneOrder(bookId: string): Promise<number> {
   return lastScene ? lastScene.order + 1 : 1;
 }
 
-// **Identify Aliases**
 function identifyAliases(text: string, canonicalNames: string[]): string[] {
-  // Find partial matches in the text based on known canonical names
   const aliases: string[] = [];
 
   for (const fullName of canonicalNames) {
     const nameParts = fullName.split(' ');
     for (const part of nameParts) {
-      // Enhanced regex to capture aliases with titles like Mr., Mrs., Prof., etc.
       const regex = new RegExp(
         `\\b(?:Mr\\.|Mrs\\.|Ms\\.|Prof\\.|Professor)?\\s*${part}\\b`,
         'i'
@@ -605,18 +824,16 @@ export async function getChapterRawAsync(
   });
 }
 
-// **Get File Asynchronously**
-async function getFileAsync(
-  epub: EPub,
-  fileId: string
-): Promise<Buffer | undefined> {
-  return new Promise((resolve, reject) => {
-    epub.getFile(fileId, (err, data, mimeType) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(data);
-      }
-    });
+export async function getCanonicalNames(bookId: string): Promise<string[]> {
+  const profiles = await prisma.profile.findMany({
+    where: {
+      bookId: bookId,
+      type: 'CHARACTER',
+    },
+    select: {
+      name: true,
+    },
   });
+
+  return profiles.map((profile) => profile.name);
 }

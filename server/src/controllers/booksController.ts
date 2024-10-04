@@ -5,6 +5,7 @@ import path from 'path';
 import prisma from '../config/prisma';
 import { extractProfiles, getChapterRawAsync } from '../services/epubService';
 import { parseChapterContent } from '../utils/parseChapterContent';
+import { progressManager } from '../utils/progressManager';
 
 if (!process.env.BOOKS_PATH) {
   console.error('Books path not configured.');
@@ -135,13 +136,50 @@ export async function extractProfilesController(req: Request, res: Response) {
   const { bookId } = req.params;
 
   try {
-    await extractProfiles(bookId, booksDir, extractedDir, res);
+    // Start profile extraction asynchronously
+    extractProfiles(bookId, booksDir, extractedDir)
+      .then(() => {
+        // Extraction completed successfully
+        // Progress updates are handled within extractProfiles via progressManager
+      })
+      .catch((error) => {
+        console.error(`Error extracting profiles for book ${bookId}:`, error);
+        // Send error via progressManager
+        progressManager.sendProgress(bookId, {
+          status: 'error',
+          message: error.message,
+        });
+        progressManager.closeAllClients(bookId);
+      });
+
+    // Immediately respond to acknowledge the request
+    res.status(202).json({ message: 'Profile extraction started.' });
   } catch (error: any) {
-    console.error('Error extracting profiles:', error);
+    console.error('Error starting profile extraction:', error);
     res
       .status(500)
-      .json({ error: error.message || 'Failed to extract profiles.' });
+      .json({ error: error.message || 'Failed to start profile extraction.' });
   }
+}
+
+export async function extractProfilesProgress(req: Request, res: Response) {
+  const { bookId } = req.params;
+
+  // Set headers for SSE
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+  res.flushHeaders();
+
+  // Add client to ProgressManager
+  progressManager.addClient(bookId, res);
+
+  // Handle client disconnect
+  req.on('close', () => {
+    progressManager.removeClient(bookId, res);
+  });
 }
 
 export async function getPassagesForBook(req: Request, res: Response) {
