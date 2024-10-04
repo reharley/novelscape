@@ -63,7 +63,7 @@ export async function generateImageForProfile(req: Request, res: Response) {
 }
 
 /**
- * @desc Generate images for all profiles linked to a specific passage, including background scenes for non-character profiles.
+ * @desc Generate images for all profiles linked to a specific passage, including background scenes for the entire scene.
  * @route POST /api/passages/:passageId/generate-images
  * @access Public
  */
@@ -72,10 +72,12 @@ export async function generateImagesForPassage(req: Request, res: Response) {
   const { forceRegenerate } = req.body; // Extract the forceRegenerate flag
 
   try {
+    // Fetch the current passage along with its scene and related profiles
     const passage = await prisma.passage.findUnique({
       where: { id: Number(passageId) },
       include: {
         book: true,
+        scene: true, // Include the scene to access other passages in the same scene
         profiles: {
           include: {
             descriptions: true,
@@ -102,6 +104,33 @@ export async function generateImagesForPassage(req: Request, res: Response) {
       res.status(404).json({ error: 'Passage not found.' });
       return;
     }
+
+    const sceneId = passage.scene?.id;
+    // **Added Null Check for passage.scene**
+    if (!sceneId) {
+      res
+        .status(400)
+        .json({ error: 'Passage is not associated with any scene.' });
+      return;
+    }
+
+    // Fetch all passages within the same scene as the current passage
+    const allPassagesInScene = await prisma.passage.findMany({
+      where: { sceneId: sceneId },
+      select: { textContent: true },
+    });
+
+    if (allPassagesInScene.length === 0) {
+      res
+        .status(400)
+        .json({ error: 'No passages found in the current scene.' });
+      return;
+    }
+
+    // Combine textContent from all passages in the scene to generate a comprehensive background prompt
+    const combinedSceneText = allPassagesInScene
+      .map((p) => p.textContent)
+      .join(' ');
 
     const profiles = passage.profiles;
 
@@ -305,17 +334,17 @@ export async function generateImagesForPassage(req: Request, res: Response) {
 
     const backgroundImagePromise = (async () => {
       try {
-        // first check if theres generation data for background
+        // **New Step**: Associate background generation data with the scene instead of a single passage
         let backgroundGenerationData = await prisma.generationData.findFirst({
           where: {
-            passageBackgroundId: Number(passageId),
+            sceneBackgroundId: sceneId, // Assuming 'sceneBackgroundId' is a field in generationData
           },
         });
 
         if (!backgroundGenerationData || forceRegenerate) {
-          // Include forceRegenerate
+          // **New Step**: Use combinedSceneText to generate the background prompt
           const prompts = await generateBackgroundPrompt(
-            passage.textContent,
+            combinedSceneText, // Use the aggregated text from all passages in the scene
             nonCharacterProfiles.map((profile) => ({
               name: profile.name,
               descriptions: profile.descriptions.map((desc) => desc.text),
@@ -323,8 +352,9 @@ export async function generateImagesForPassage(req: Request, res: Response) {
             passage.book.title
           );
 
+          // **New Step**: Upsert generationData associated with the scene
           backgroundGenerationData = await prisma.generationData.upsert({
-            where: { passageBackgroundId: Number(passageId) },
+            where: { sceneBackgroundId: sceneId }, // Upsert based on sceneBackgroundId
             update: {
               prompt: prompts.positivePrompt,
               negativePrompt: prompts.negativePrompt,
@@ -332,7 +362,7 @@ export async function generateImagesForPassage(req: Request, res: Response) {
               cfgScale: 7.0,
             },
             create: {
-              passageBackgroundId: Number(passageId),
+              sceneBackgroundId: sceneId, // Link to the scene
               prompt: prompts.positivePrompt,
               negativePrompt: prompts.negativePrompt,
               steps: 20,
@@ -342,6 +372,7 @@ export async function generateImagesForPassage(req: Request, res: Response) {
           });
         }
 
+        // You might want to dynamically determine the background model or keep it static
         const backgroundModel = 'dreamshaper_8.safetensors';
 
         const imageResult = await generateImage({
@@ -354,8 +385,9 @@ export async function generateImagesForPassage(req: Request, res: Response) {
           seed: backgroundGenerationData.seed,
           clip_skip: backgroundGenerationData.clipSkip,
         });
+
         return {
-          profileId: 0, // Indicate that this image is for non-character backgrounds
+          profileId: 0, // Indicate that this image is for the scene's background
           profileName: 'Background Scene',
           image: imageResult.image,
         };
@@ -371,9 +403,11 @@ export async function generateImagesForPassage(req: Request, res: Response) {
       }
     })();
 
+    // Execute all image generation promises in parallel
     const characterImageResults = await Promise.all(characterImagePromises);
     const backgroundImageResult = await backgroundImagePromise;
 
+    // Combine all image results, including the background
     const allImageResults = [...characterImageResults];
     allImageResults.push(backgroundImageResult);
     res.json({ passageId: passage.id, images: allImageResults });

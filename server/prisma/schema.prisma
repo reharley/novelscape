@@ -123,6 +123,7 @@ model ModelImage {
 model GenerationData {
     id                  Int               @id @default(autoincrement())
     passageBackgroundId Int?              @unique
+    sceneBackgroundId   Int?              @unique
     prompt              String
     steps               Int
     cfgScale            Float

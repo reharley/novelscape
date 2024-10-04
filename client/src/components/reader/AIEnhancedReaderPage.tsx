@@ -63,6 +63,11 @@ const AIEnhancedReaderPage: React.FC = () => {
   // New state variable for force regenerate checkbox
   const [forceRegenerate, setForceRegenerate] = useState<boolean>(false);
 
+  // New state for scene passage ranges
+  const [scenePassageRanges, setScenePassageRanges] = useState<{
+    [sceneOrder: number]: { start: number; end: number };
+  }>({});
+
   const baseUrl = 'http://localhost:5000/api';
 
   // Ref for the passage display area
@@ -90,6 +95,7 @@ const AIEnhancedReaderPage: React.FC = () => {
         setCurrentPassageIndex(0);
         setBackgroundImage(null);
         setProfileImages({}); // Reset profile images when chapters change
+        setScenePassageRanges({}); // Reset scene passage ranges
       })
       .catch((error) => {
         console.error('Error fetching chapters:', error);
@@ -110,6 +116,42 @@ const AIEnhancedReaderPage: React.FC = () => {
         setCurrentPassageIndex(0);
         setBackgroundImage(null);
         setProfileImages({}); // Reset profile images when passages change
+
+        // Calculate scene passage ranges
+        if (response.data.length > 0) {
+          const ranges: {
+            [sceneOrder: number]: { start: number; end: number };
+          } = {};
+          let currentSceneOrder: number | undefined = undefined;
+          let startIndex = 0;
+
+          response.data.forEach((passage, index) => {
+            const sceneOrder = passage.scene?.order;
+
+            if (sceneOrder !== currentSceneOrder) {
+              if (currentSceneOrder !== undefined) {
+                // Set the end index for the previous scene
+                ranges[currentSceneOrder] = {
+                  start: startIndex,
+                  end: index - 1,
+                };
+              }
+              // Update to the new scene
+              currentSceneOrder = sceneOrder;
+              startIndex = index;
+            }
+
+            // If it's the last passage, set the end index
+            if (
+              index === response.data.length - 1 &&
+              currentSceneOrder !== undefined
+            ) {
+              ranges[currentSceneOrder] = { start: startIndex, end: index };
+            }
+          });
+
+          setScenePassageRanges(ranges);
+        }
       })
       .catch((error) => {
         console.error('Error fetching passages:', error);
@@ -425,13 +467,32 @@ const AIEnhancedReaderPage: React.FC = () => {
               </Tooltip>
             </div>
 
-            {/* Display Current Scene Number */}
-            {currentPassage && currentPassage.scene && (
+            {/* Display Current Scene Number and Passage Range */}
+            {currentPassage && currentPassage.scene ? (
               <div style={{ marginBottom: '20px' }}>
                 <Title level={4} style={{ color: '#fff' }}>
                   Scene {currentPassage.scene.order}
                 </Title>
+                {scenePassageRanges[currentPassage.scene.order] && (
+                  <Paragraph style={{ color: '#fff' }}>
+                    Passages{' '}
+                    {scenePassageRanges[currentPassage.scene.order].start + 1} -{' '}
+                    {scenePassageRanges[currentPassage.scene.order].end + 1} of{' '}
+                    {passages.length}
+                  </Paragraph>
+                )}
               </div>
+            ) : (
+              currentPassage && (
+                <div style={{ marginBottom: '20px' }}>
+                  <Title level={4} style={{ color: '#fff' }}>
+                    No Scene Assigned
+                  </Title>
+                  <Paragraph style={{ color: '#fff' }}>
+                    This passage is not assigned to any scene.
+                  </Paragraph>
+                </div>
+              )
             )}
 
             {/* Navigation and Progress Buttons */}
