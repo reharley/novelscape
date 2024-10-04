@@ -54,6 +54,20 @@ export interface Passage {
   textContent: string;
   order: number;
   profiles: Profile[];
+  bookId: string;
+  chapterId: number;
+  createdAt: string;
+  updatedAt: string;
+  descriptions: Description[];
+  scene?: Scene;
+}
+export interface Scene {
+  id: number;
+  order: number;
+  bookId: string;
+  imageUrl?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface GenerationData {

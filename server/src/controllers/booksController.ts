@@ -189,6 +189,7 @@ export async function getPassagesForChapter(req: Request, res: Response) {
         id: true,
         textContent: true,
         order: true,
+        scene: true,
         profiles: {
           select: {
             id: true,
@@ -243,32 +244,48 @@ export async function deleteBook(req: Request, res: Response) {
   const { bookId } = req.params;
 
   try {
-    // Manually delete related passages and profiles before deleting the book
-    await prisma.description.deleteMany({
-      where: { bookId },
-    });
+    await prisma.$transaction([
+      prisma.description.deleteMany({
+        where: { bookId },
+      }),
 
-    await prisma.passage.deleteMany({
-      where: { bookId },
-    });
+      prisma.alias.deleteMany({
+        where: {
+          profile: {
+            bookId,
+          },
+        },
+      }),
 
-    await prisma.profile.deleteMany({
-      where: { bookId },
-    });
+      prisma.passage.deleteMany({
+        where: { bookId },
+      }),
 
-    await prisma.chapter.deleteMany({
-      where: { bookId },
-    });
+      prisma.scene.deleteMany({
+        where: { bookId },
+      }),
 
-    // Finally, delete the book
-    await prisma.book.delete({
-      where: { id: bookId },
-    });
+      prisma.profile.deleteMany({
+        where: { bookId },
+      }),
 
-    res.json({ message: 'Book and associated profiles deleted successfully.' });
+      prisma.chapter.deleteMany({
+        where: { bookId },
+      }),
+
+      prisma.book.delete({
+        where: { id: bookId },
+      }),
+    ]);
+
+    // Respond with a success message upon successful deletion
+    res.json({ message: 'Book and all associated data deleted successfully.' });
   } catch (error) {
     console.error('Error deleting book:', error);
-    res.status(500).json({ error: 'Failed to delete book.' });
+    // Respond with an error message if deletion fails
+    res
+      .status(500)
+      .json({ error: 'Failed to delete the book. Please try again later.' });
   }
 }
 

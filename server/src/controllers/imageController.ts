@@ -69,6 +69,7 @@ export async function generateImageForProfile(req: Request, res: Response) {
  */
 export async function generateImagesForPassage(req: Request, res: Response) {
   const { passageId } = req.params;
+  const { forceRegenerate } = req.body; // Extract the forceRegenerate flag
 
   try {
     const passage = await prisma.passage.findUnique({
@@ -219,7 +220,8 @@ export async function generateImagesForPassage(req: Request, res: Response) {
         let finalPrompt = prompt;
         let finalNegativePrompt = negativePrompt;
 
-        if (!negativePrompt) {
+        // Modify condition to include forceRegenerate
+        if (forceRegenerate || !negativePrompt) {
           try {
             const prompts = await generateProfilePrompt(
               passage.textContent,
@@ -310,7 +312,8 @@ export async function generateImagesForPassage(req: Request, res: Response) {
           },
         });
 
-        if (!backgroundGenerationData) {
+        if (!backgroundGenerationData || forceRegenerate) {
+          // Include forceRegenerate
           const prompts = await generateBackgroundPrompt(
             passage.textContent,
             nonCharacterProfiles.map((profile) => ({
@@ -320,17 +323,25 @@ export async function generateImagesForPassage(req: Request, res: Response) {
             passage.book.title
           );
 
-          backgroundGenerationData = await prisma.generationData.create({
-            data: {
+          backgroundGenerationData = await prisma.generationData.upsert({
+            where: { passageBackgroundId: Number(passageId) },
+            update: {
+              prompt: prompts.positivePrompt,
+              negativePrompt: prompts.negativePrompt,
+              steps: 20,
+              cfgScale: 7.0,
+            },
+            create: {
               passageBackgroundId: Number(passageId),
               prompt: prompts.positivePrompt,
               negativePrompt: prompts.negativePrompt,
               steps: 20,
-              createdDate: new Date(),
               cfgScale: 7.0,
+              createdDate: new Date(),
             },
           });
         }
+
         const backgroundModel = 'dreamshaper_8.safetensors';
 
         const imageResult = await generateImage({

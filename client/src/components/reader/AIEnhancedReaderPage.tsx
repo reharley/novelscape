@@ -1,14 +1,17 @@
+import { InfoCircleOutlined } from '@ant-design/icons';
 import {
   Button,
+  Checkbox,
   Collapse,
   Image,
   Layout,
+  message,
   Progress,
   Select,
   Space,
   Spin,
+  Tooltip,
   Typography,
-  message,
 } from 'antd';
 import axios from 'axios';
 import html2canvas from 'html2canvas';
@@ -57,6 +60,9 @@ const AIEnhancedReaderPage: React.FC = () => {
   const [loadingProfileImages, setLoadingProfileImages] =
     useState<boolean>(false);
 
+  // New state variable for force regenerate checkbox
+  const [forceRegenerate, setForceRegenerate] = useState<boolean>(false);
+
   const baseUrl = 'http://localhost:5000/api';
 
   // Ref for the passage display area
@@ -67,7 +73,10 @@ const AIEnhancedReaderPage: React.FC = () => {
     axios
       .get<Book[]>(`${baseUrl}/books`)
       .then((response) => setBooks(response.data))
-      .catch((error) => console.error('Error fetching books:', error));
+      .catch((error) => {
+        console.error('Error fetching books:', error);
+        message.error('Failed to fetch books.');
+      });
   }, [baseUrl]);
 
   const fetchChapters = (bookId: string) => {
@@ -82,7 +91,10 @@ const AIEnhancedReaderPage: React.FC = () => {
         setBackgroundImage(null);
         setProfileImages({}); // Reset profile images when chapters change
       })
-      .catch((error) => console.error('Error fetching chapters:', error))
+      .catch((error) => {
+        console.error('Error fetching chapters:', error);
+        message.error('Failed to fetch chapters.');
+      })
       .finally(() => setLoadingChapters(false));
   };
 
@@ -93,12 +105,16 @@ const AIEnhancedReaderPage: React.FC = () => {
         `${baseUrl}/books/${bookId}/chapters/${chapterId}/passages`
       )
       .then((response) => {
+        console.log('Fetched Passages:', response.data); // Log the fetched passages
         setPassages(response.data);
         setCurrentPassageIndex(0);
         setBackgroundImage(null);
         setProfileImages({}); // Reset profile images when passages change
       })
-      .catch((error) => console.error('Error fetching passages:', error))
+      .catch((error) => {
+        console.error('Error fetching passages:', error);
+        message.error('Failed to fetch passages.');
+      })
       .finally(() => setLoadingPassages(false));
   };
 
@@ -119,19 +135,29 @@ const AIEnhancedReaderPage: React.FC = () => {
 
     try {
       const response = await axios.post(
-        `${baseUrl}/generate-image/passages/${currentPassage.id}/generate-images`
+        `${baseUrl}/generate-image/passages/${currentPassage.id}/generate-images`,
+        {
+          forceRegenerate, // Include the flag in the request body
+        }
       );
       const { images } = response.data as {
         passageId: number;
-        images: { profileId: number; profileName: string; image: string }[];
+        images: {
+          profileId: number;
+          profileName: string;
+          image: string | null;
+          error?: string;
+        }[];
       };
 
       // Create a mapping of profileId to image
       const imagesMap: { [profileId: number]: string } = {};
       images.forEach((img) => {
-        imagesMap[img.profileId] = `data:image/png;base64,${img.image}`;
+        if (img.image) {
+          imagesMap[img.profileId] = `data:image/png;base64,${img.image}`;
+        }
       });
-      setBackgroundImage(imagesMap[0]); // Assuming profileId 0 is the background
+      setBackgroundImage(imagesMap[0] || null); // Assuming profileId 0 is the background
       setProfileImages(imagesMap);
       message.success('Images generated successfully for all profiles.');
     } catch (error: any) {
@@ -217,7 +243,8 @@ const AIEnhancedReaderPage: React.FC = () => {
   };
 
   // Safely access currentPassage
-  const currentPassage = passages[currentPassageIndex];
+  const currentPassage =
+    passages.length > 0 ? passages[currentPassageIndex] : null;
   const readingProgress = passages.length
     ? Math.round(((currentPassageIndex + 1) / passages.length) * 100)
     : 0;
@@ -317,7 +344,7 @@ const AIEnhancedReaderPage: React.FC = () => {
                 )}
               </div>
 
-              {/* Collapsible Profile Cards Moved Here */}
+              {/* Collapsible Profile Cards */}
               {currentPassage && currentPassage.profiles.length > 0 && (
                 <Collapse accordion style={{ marginBottom: '20px' }} ghost>
                   <Panel header='View Profiles' key='1'>
@@ -377,6 +404,35 @@ const AIEnhancedReaderPage: React.FC = () => {
                 </Paragraph>
               )}
             </div>
+
+            {/* Force Regenerate Checkbox */}
+            <div
+              style={{
+                marginBottom: '20px',
+                display: 'flex',
+                alignItems: 'center',
+              }}
+            >
+              <Checkbox
+                checked={forceRegenerate}
+                onChange={(e) => setForceRegenerate(e.target.checked)}
+                style={{ color: '#fff' }}
+              >
+                Force Regenerate Prompts
+              </Checkbox>
+              <Tooltip title='Check this box to regenerate the positive and negative prompts even if they already exist.'>
+                <InfoCircleOutlined style={{ marginLeft: 8, color: '#fff' }} />
+              </Tooltip>
+            </div>
+
+            {/* Display Current Scene Number */}
+            {currentPassage && currentPassage.scene && (
+              <div style={{ marginBottom: '20px' }}>
+                <Title level={4} style={{ color: '#fff' }}>
+                  Scene {currentPassage.scene.order}
+                </Title>
+              </div>
+            )}
 
             {/* Navigation and Progress Buttons */}
             <Space style={{ marginBottom: '20px' }}>
@@ -471,22 +527,23 @@ const AIEnhancedReaderPage: React.FC = () => {
                     zIndex: 3,
                   }}
                 >
-                  {currentPassage.profiles
-                    .filter((p) => p.type.toLowerCase() === 'character')
-                    .map((profile) => (
-                      <Image
-                        key={profile.id}
-                        src={profileImages[profile.id]}
-                        alt={`${profile.name} Image`}
-                        style={{
-                          width: '350px',
-                          margin: '0 10px',
-                          borderRadius: '10px',
-                          boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
-                        }}
-                        placeholder={<Spin />}
-                      />
-                    ))}
+                  {currentPassage &&
+                    currentPassage.profiles
+                      .filter((p) => p.type.toLowerCase() === 'character')
+                      .map((profile) => (
+                        <Image
+                          key={profile.id}
+                          src={profileImages[profile.id]}
+                          alt={`${profile.name} Image`}
+                          style={{
+                            width: '350px',
+                            margin: '0 10px',
+                            borderRadius: '10px',
+                            boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+                          }}
+                          placeholder={<Spin />}
+                        />
+                      ))}
                 </div>
               )}
 

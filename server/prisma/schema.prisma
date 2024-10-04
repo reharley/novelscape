@@ -13,6 +13,7 @@ model Book {
     chapters     Chapter[]
     profiles     Profile[]
     passages     Passage[]
+    scenes       Scene[]
     createdAt    DateTime      @default(now())
     updatedAt    DateTime      @updatedAt
     descriptions Description[]
@@ -38,6 +39,8 @@ model Passage {
     chapterId    Int
     descriptions Description[]
     profiles     Profile[]     @relation("PassageProfiles")
+    scene        Scene?        @relation(fields: [sceneId], references: [id])
+    sceneId      Int?
     createdAt    DateTime      @default(now())
     updatedAt    DateTime      @updatedAt
 
@@ -56,10 +59,20 @@ model Profile {
     aiModels     ProfileAiModel[]
     imageId      Int?
     image        ModelImage?      @relation(fields: [imageId], references: [id])
+    aliases      Alias[] // Relation to Alias
     createdAt    DateTime         @default(now())
-    updatedAt    DateTime         @default(now()) @updatedAt
+    updatedAt    DateTime         @updatedAt
 
     @@unique([name, bookId])
+}
+
+model Alias {
+    id        Int     @id @default(autoincrement())
+    name      String
+    profile   Profile @relation(fields: [profileId], references: [id])
+    profileId Int
+
+    @@unique([name, profileId])
 }
 
 model Description {
@@ -90,7 +103,7 @@ model AiModel {
 }
 
 model ModelImage {
-    id             Int             @id
+    id             Int             @id @default(autoincrement())
     url            String
     model          AiModel         @relation(fields: [modelId], references: [id])
     modelId        Int
@@ -117,7 +130,7 @@ model GenerationData {
     sampler             String?
     seed                Int?
     size                String?
-    createdDate         DateTime
+    createdDate         DateTime          @default(now())
     clipSkip            Int?
     civitaiResources    CivitaiResource[]
     modelImage          ModelImage?       @relation(fields: [modelImageId], references: [id])
@@ -145,4 +158,15 @@ model ProfileAiModel {
     aiModelId Int
 
     @@id([profileId, aiModelId])
+}
+
+model Scene {
+    id        Int       @id @default(autoincrement())
+    order     Int
+    book      Book      @relation(fields: [bookId], references: [id])
+    bookId    String
+    passages  Passage[]
+    imageUrl  String? // Optional: URL to the generated background image
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
 }
