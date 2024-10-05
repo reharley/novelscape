@@ -46,7 +46,7 @@ export async function extractPassagesAndChapters(
   const limit = pLimit(concurrencyLimit);
 
   // Limit to the first 10 chapters for demonstration; adjust as needed
-  const chaptersToProcess = chapters.slice(0, 10);
+  const chaptersToProcess = chapters.slice(0, chapters.length);
   const totalChapters = chaptersToProcess.length;
   let processedChapters = 0;
 
@@ -57,7 +57,9 @@ export async function extractPassagesAndChapters(
       if (!chapter.order) return;
 
       try {
-        const text = await getChapterRawAsync(epub, chapterId);
+        const text = await epub.getChapterAsync(chapterId);
+        // const text = await getChapterRawAsync(epub, chapterId);
+
         if (!text) {
           console.error(`Error: Chapter ${chapterId} is empty.`);
           progressManager.sendProgress(bookId, {
@@ -217,12 +219,6 @@ export async function detectScenes(bookId: string): Promise<void> {
   const processChapter = async (chapter: (typeof chapters)[0]) => {
     const { id: chapterId, order: chapterOrder, passages } = chapter;
 
-    progressManager.sendProgress(bookId, {
-      status: 'phase_progress',
-      phase: 'Phase 4',
-      message: `Processing Chapter ${chapterOrder}: "${chapter.title}"`,
-    });
-
     let accumulatedPassages: string[] = [];
     let currentScene: Scene | null = null;
 
@@ -269,13 +265,6 @@ export async function detectScenes(bookId: string): Promise<void> {
             where: { id: { in: passageIds } },
             data: { sceneId: scene.id },
           });
-
-          progressManager.sendProgress(bookId, {
-            status: 'phase_progress',
-            phase: 'Phase 4',
-            message: `Scene ${scene.order} detected in Chapter ${chapterOrder} and passages assigned.`,
-          });
-
           // Reset accumulated passages to start a new scene
           accumulatedPassages = [passage.textContent];
         }
@@ -301,12 +290,6 @@ export async function detectScenes(bookId: string): Promise<void> {
         await prisma.passage.updateMany({
           where: { id: { in: passageIds } },
           data: { sceneId: scene.id },
-        });
-
-        progressManager.sendProgress(bookId, {
-          status: 'phase_progress',
-          phase: 'Phase 4',
-          message: `Final Scene ${scene.order} detected in Chapter ${chapterOrder} and passages assigned.`,
         });
       }
     }
@@ -690,14 +673,14 @@ async function performNERWithAliases(
     messages: [
       {
         role: 'system',
-        content: `You are an assistant that performs named entity recognition (NER) on a given text. Identify and extract all named entities, categorizing them as one of the following types: 'Character', 'Building', 'Scene', 'Animal', 'Object'. For entities that are aliases of known characters, provide both the full name and the alias.
+        content: `You are an assistant that performs named entity recognition (NER) on a given text. Identify and extract all named entities, categorizing them as one of the following types: 'Character', 'Building', 'Scene', 'Animal', 'Object'. For entities that are aliases of known characters, provide both the full name and the alias. Only tag Family entities if they are clearly identified as such (Potters, The Potters, Dursleys, The Dursleys), not individuals (Mr. Potter, Mr. Dursley).
 
 Include the following known aliases in your analysis: ${aliasList}.
 
 For each entity, provide:
 - fullName: The canonical name of the entity (if applicable).
 - alias: The alias used in the text (if applicable).
-- type: One of 'Character', 'Building', 'Scene', 'Animal', or 'Object'.
+- type: One of 'Character', 'Family', 'Building', 'Scene', 'Animal', or 'Object'.
 - description: A brief description of the entity based on the context.
 
 Output the result as a JSON array of entities.`,
@@ -814,7 +797,7 @@ export async function getChapterRawAsync(
   chapterId: string
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    epub.getChapterRaw(chapterId, (err, text) => {
+    epub.getChapter(chapterId, (err, text) => {
       if (err) {
         reject(err);
       } else {

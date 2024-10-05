@@ -4,6 +4,7 @@ import {
   Checkbox,
   Collapse,
   Image,
+  InputNumber,
   Layout,
   message,
   Progress,
@@ -29,7 +30,7 @@ import ModelSelectionModal from './ModelSelectionModal';
 import ProfileCard from './ProfileCard';
 
 const { Content } = Layout;
-const { Title, Paragraph } = Typography;
+const { Title, Text, Paragraph } = Typography;
 const { Option } = Select;
 const { Panel } = Collapse;
 
@@ -53,10 +54,6 @@ const AIEnhancedReaderPage: React.FC = () => {
   const [isPreviewVisible, setIsPreviewVisible] = useState<boolean>(false);
   const [previewModel, setPreviewModel] = useState<AiModel | null>(null);
 
-  // New state variables for profile images
-  const [profileImages, setProfileImages] = useState<{
-    [profileId: number]: string;
-  }>({});
   const [loadingProfileImages, setLoadingProfileImages] =
     useState<boolean>(false);
 
@@ -67,6 +64,11 @@ const AIEnhancedReaderPage: React.FC = () => {
   const [scenePassageRanges, setScenePassageRanges] = useState<{
     [sceneOrder: number]: { start: number; end: number };
   }>({});
+
+  // New state for multiple scenes
+  const [numberOfScenes, setNumberOfScenes] = useState<number>(1);
+  const [loadingMultipleScenes, setLoadingMultipleScenes] =
+    useState<boolean>(false);
 
   const baseUrl = 'http://localhost:5000/api';
 
@@ -94,7 +96,6 @@ const AIEnhancedReaderPage: React.FC = () => {
         setPassages([]);
         setCurrentPassageIndex(0);
         setBackgroundImage(null);
-        setProfileImages({}); // Reset profile images when chapters change
         setScenePassageRanges({}); // Reset scene passage ranges
       })
       .catch((error) => {
@@ -113,9 +114,8 @@ const AIEnhancedReaderPage: React.FC = () => {
       .then((response) => {
         console.log('Fetched Passages:', response.data); // Log the fetched passages
         setPassages(response.data);
-        setCurrentPassageIndex(0);
+        // setCurrentPassageIndex(0);
         setBackgroundImage(null);
-        setProfileImages({}); // Reset profile images when passages change
 
         // Calculate scene passage ranges
         if (response.data.length > 0) {
@@ -191,17 +191,9 @@ const AIEnhancedReaderPage: React.FC = () => {
           error?: string;
         }[];
       };
+      fetchPassages(selectedBook.id, selectedChapter);
 
-      // Create a mapping of profileId to image
-      const imagesMap: { [profileId: number]: string } = {};
-      images.forEach((img) => {
-        if (img.image) {
-          imagesMap[img.profileId] = `data:image/png;base64,${img.image}`;
-        }
-      });
-      setBackgroundImage(imagesMap[0] || null); // Assuming profileId 0 is the background
-      setProfileImages(imagesMap);
-      message.success('Images generated successfully for all profiles.');
+      message.success('Images generated and updated successfully.');
     } catch (error: any) {
       console.error('Error generating images for passage:', error);
       message.error(
@@ -213,11 +205,105 @@ const AIEnhancedReaderPage: React.FC = () => {
     }
   };
 
+  const generateImagesForScene = async (sceneId: number) => {
+    setLoadingImage(true);
+    try {
+      const response = await axios.post(
+        `${baseUrl}/generate-image/scenes/${sceneId}/generate-images`,
+        {
+          forceRegenerate,
+        }
+      );
+      const { images } = response.data as {
+        sceneId: number;
+        images: {
+          profileId: number;
+          profileName: string;
+          image: string | null;
+          error?: string;
+        }[];
+      };
+      if (selectedBook && selectedChapter)
+        fetchPassages(selectedBook.id, selectedChapter);
+
+      message.success(
+        'Images generated and updated successfully for the scene.'
+      );
+    } catch (error: any) {
+      console.error('Error generating images for scene:', error);
+      message.error(
+        error.response?.data?.error ||
+          'Failed to generate images for the scene.'
+      );
+    } finally {
+      setLoadingImage(false);
+    }
+  };
+
+  const generateImagesForMultipleScenes = async () => {
+    if (!selectedBook || !selectedChapter) {
+      message.error('Please select a book and a chapter first.');
+      return;
+    }
+
+    const currentPassage = passages[currentPassageIndex];
+    if (!currentPassage || !currentPassage.scene) {
+      message.error('No scene associated with the current passage.');
+      return;
+    }
+
+    setLoadingMultipleScenes(true);
+
+    try {
+      const response = await axios.post(
+        `${baseUrl}/generate-image/scenes/generate-images`,
+        {
+          startSceneId: currentPassage.scene.id,
+          numberOfScenes: numberOfScenes,
+          forceRegenerate,
+        }
+      );
+      const { successScenes, failedScenes } = response.data as {
+        successScenes: number[];
+        failedScenes: { sceneId: number; error: string }[];
+      };
+
+      if (successScenes.length > 0) {
+        message.success(
+          `Images generated successfully for scenes: ${successScenes.join(
+            ', '
+          )}.`
+        );
+      }
+
+      if (failedScenes.length > 0) {
+        failedScenes.forEach((fail) =>
+          message.error(
+            `Failed to generate images for scene ${fail.sceneId}: ${fail.error}`
+          )
+        );
+      }
+
+      // Fetch the updated passages to get the new image URLs
+      if (selectedBook && selectedChapter) {
+        fetchPassages(selectedBook.id, selectedChapter);
+      }
+    } catch (error: any) {
+      console.error('Error generating images for multiple scenes:', error);
+      message.error(
+        error.response?.data?.error ||
+          'Failed to generate images for multiple scenes.'
+      );
+    } finally {
+      setLoadingMultipleScenes(false);
+    }
+  };
+
   const handleNextPassage = () => {
     if (currentPassageIndex < passages.length - 1) {
       setCurrentPassageIndex(currentPassageIndex + 1);
       setBackgroundImage(null);
-      setProfileImages({}); // Reset profile images when changing passage
+      // setProfileImages({}); // Reset profile images when changing passage
     }
   };
 
@@ -225,15 +311,16 @@ const AIEnhancedReaderPage: React.FC = () => {
     if (currentPassageIndex > 0) {
       setCurrentPassageIndex(currentPassageIndex - 1);
       setBackgroundImage(null);
-      setProfileImages({}); // Reset profile images when changing passage
+      // setProfileImages({}); // Reset profile images when changing passage
     }
   };
 
   const handlePassageChange = (passageIndex: number) => {
     setCurrentPassageIndex(passageIndex);
     setBackgroundImage(null);
-    setProfileImages({}); // Reset profile images when changing passage
+    // setProfileImages({}); // Reset profile images when changing passage
   };
+  console.log('backgroundImage:', backgroundImage);
 
   const handleChapterChange = (chapterId: number) => {
     setSelectedChapter(chapterId);
@@ -327,7 +414,7 @@ const AIEnhancedReaderPage: React.FC = () => {
       passageRef.current.style.borderRadius = originalBorderRadius;
     }
   };
-
+  console.log('currentPassage:', currentPassage);
   return (
     <Layout style={{ minHeight: '100vh', backgroundColor: '#1a1a1a' }}>
       <Content
@@ -467,6 +554,44 @@ const AIEnhancedReaderPage: React.FC = () => {
               </Tooltip>
             </div>
 
+            {/* New Buttons for Scene Image Generation */}
+            <div style={{ marginBottom: '20px' }}>
+              <Space>
+                <Button
+                  type='primary'
+                  onClick={() => {
+                    if (currentPassage?.scene?.id) {
+                      generateImagesForScene(currentPassage.scene.id);
+                    } else {
+                      message.error(
+                        'Current passage is not associated with any scene.'
+                      );
+                    }
+                  }}
+                  loading={loadingImage}
+                >
+                  Generate Images for Current Scene
+                </Button>
+
+                <InputNumber
+                  min={1}
+                  value={numberOfScenes}
+                  onChange={(value) =>
+                    value !== null && setNumberOfScenes(value)
+                  }
+                  style={{ width: 120 }}
+                  placeholder='Number of Scenes'
+                />
+                <Button
+                  type='primary'
+                  onClick={generateImagesForMultipleScenes}
+                  loading={loadingMultipleScenes}
+                >
+                  Generate Images for Next N Scenes
+                </Button>
+              </Space>
+            </div>
+
             {/* Display Current Scene Number and Passage Range */}
             {currentPassage && currentPassage.scene ? (
               <div style={{ marginBottom: '20px' }}>
@@ -545,7 +670,7 @@ const AIEnhancedReaderPage: React.FC = () => {
               }}
             >
               {/* Background Image */}
-              {backgroundImage && (
+              {currentPassage && currentPassage.scene?.imageUrl && (
                 <div
                   style={{
                     position: 'absolute',
@@ -553,7 +678,7 @@ const AIEnhancedReaderPage: React.FC = () => {
                     left: 0,
                     width: '100%',
                     height: '100%',
-                    backgroundImage: `url(${backgroundImage})`,
+                    backgroundImage: `url(${currentPassage.scene.imageUrl})`,
                     backgroundSize: 'cover',
                     backgroundPosition: 'center',
                     zIndex: 1,
@@ -575,7 +700,7 @@ const AIEnhancedReaderPage: React.FC = () => {
               ></div>
 
               {/* Character Images */}
-              {profileImages && Object.keys(profileImages).length > 0 && (
+              {currentPassage && currentPassage.profiles.length > 0 && (
                 <div
                   style={{
                     position: 'absolute',
@@ -588,23 +713,30 @@ const AIEnhancedReaderPage: React.FC = () => {
                     zIndex: 3,
                   }}
                 >
-                  {currentPassage &&
-                    currentPassage.profiles
-                      .filter((p) => p.type.toLowerCase() === 'character')
-                      .map((profile) => (
-                        <Image
-                          key={profile.id}
-                          src={profileImages[profile.id]}
-                          alt={`${profile.name} Image`}
-                          style={{
-                            width: '350px',
-                            margin: '0 10px',
-                            borderRadius: '10px',
-                            boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
-                          }}
-                          placeholder={<Spin />}
-                        />
-                      ))}
+                  {currentPassage.profiles
+                    .filter((p) => p.type.toLowerCase() === 'character')
+                    .map((profile) => (
+                      <>
+                        <Space
+                          direction='vertical'
+                          style={{ textAlign: 'center' }}
+                        >
+                          <Text style={{ color: '#fff' }}>{profile.name}</Text>
+                          <Image
+                            key={profile.id}
+                            src={profile.imageUrl}
+                            alt={`${profile.name} Image`}
+                            style={{
+                              width: '150px',
+                              margin: '0 10px',
+                              borderRadius: '10px',
+                              boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+                            }}
+                            placeholder={<Spin />}
+                          />
+                        </Space>
+                      </>
+                    ))}
                 </div>
               )}
 

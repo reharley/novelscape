@@ -183,7 +183,9 @@ const ProfilesPage: React.FC = () => {
                   {progress.phase}: {progress.completed}/{progress.total}
                 </Text>
                 <Progress
-                  percent={(progress.completed! / progress.total!) * 100}
+                  percent={Number(
+                    ((progress.completed! / progress.total!) * 100).toFixed(2)
+                  )}
                 />
               </div>
             )}

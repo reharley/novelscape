@@ -1,9 +1,18 @@
-import { Config, removeBackground } from '@imgly/background-removal-node';
+import { Config } from '@imgly/background-removal-node';
 import { Request, Response } from 'express';
 import openai from '../config/openai';
 import prisma from '../config/prisma';
 import { generateImage } from '../services/imageService';
+import { ProfileWithRelations } from '../utils/types';
 
+const characterImageSize = {
+  width: 350,
+  height: 700,
+};
+const backgroundSceneSize = {
+  width: 1000,
+  height: 500,
+};
 export async function generateImageController(req: Request, res: Response) {
   const { prompt, negative_prompt, steps, width, height, loras, model } =
     req.body;
@@ -47,10 +56,9 @@ export async function generateImageForProfile(req: Request, res: Response) {
       prompt,
       negative_prompt: '', // Add any default negative prompts if necessary
       steps: 20, // Default steps
-      width: 512, // Default width
-      height: 512, // Default height
+      ...characterImageSize,
       loras: [], // Default or extract loras if associated with profile
-      model: null, // Default or extract model if associated with profile
+      model: 'dreamshaper_8.safetensors', // Default or extract model if associated with profile
     });
 
     res.json(imageResult);
@@ -155,7 +163,7 @@ export async function generateImagesForPassage(req: Request, res: Response) {
         image: string | null;
         error?: string;
       }> => {
-        const generationData = profile.image?.generationData;
+        let generationData = profile.image?.generationData;
 
         if (!generationData) {
           console.warn(
@@ -285,37 +293,26 @@ export async function generateImagesForPassage(req: Request, res: Response) {
             prompt: finalPrompt,
             negative_prompt: finalNegativePrompt,
             steps,
-            width: size ? parseInt(size.split('x')[0], 10) : undefined,
-            height: size ? parseInt(size.split('x')[1], 10) : undefined,
+            ...characterImageSize,
             loras: loraResources.map((lora) => lora.model.fileName),
             model: modelFileName,
-            cfg_scale: cfgScale,
-            sampler,
-            seed,
-            clip_skip: clipSkip,
+            removeBackground: true,
+            // cfg_scale: cfgScale,
+            // sampler,
+            // seed,
+            // clip_skip: clipSkip,
           });
-          const config: Config = {
-            debug: false,
-            progress: (key: string, current: number, total: number) => {
-              const [type, subtype] = key.split(':');
-              console.log(
-                `${type} ${subtype} ${((current / total) * 100).toFixed(0)}%`
-              );
+          // update image url in database
+          await prisma.profile.update({
+            where: { id: profile.id },
+            data: {
+              imageUrl: imageResult.imageUrl,
             },
-            model: 'small',
-            output: {
-              quality: 0.8,
-              format: 'image/png',
-            },
-          };
-
-          const imageBlob = base64ToBlob(imageResult.image);
-          const blob = await removeBackground(imageBlob, config);
-          const image64 = await blobToBase64(blob);
+          });
           return {
             profileId: profile.id,
             profileName: profile.name,
-            image: image64,
+            image: imageResult.imageUrl,
           };
         } catch (error: any) {
           console.error(
@@ -380,16 +377,25 @@ export async function generateImagesForPassage(req: Request, res: Response) {
           negative_prompt: backgroundGenerationData.negativePrompt,
           steps: backgroundGenerationData.steps,
           model: backgroundModel,
-          cfg_scale: backgroundGenerationData.cfgScale,
-          sampler: backgroundGenerationData.sampler,
-          seed: backgroundGenerationData.seed,
-          clip_skip: backgroundGenerationData.clipSkip,
+          ...backgroundSceneSize,
+          // cfg_scale: backgroundGenerationData.cfgScale,
+          // sampler: backgroundGenerationData.sampler,
+          // seed: backgroundGenerationData.seed,
+          // clip_skip: backgroundGenerationData.clipSkip,
+        });
+
+        // update scene image url in database
+        await prisma.scene.update({
+          where: { id: sceneId },
+          data: {
+            imageUrl: imageResult.imageUrl,
+          },
         });
 
         return {
           profileId: 0, // Indicate that this image is for the scene's background
           profileName: 'Background Scene',
-          image: imageResult.image,
+          image: imageResult.imageUrl,
         };
       } catch (error: any) {
         console.error('Error generating background image:', error);
@@ -666,14 +672,16 @@ export async function generateProfilePrompt(
         'deformed iris, deformed pupils, semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, anime:1.4), text, close up, cropped, out of frame, worst quality, low quality, jpeg artifacts, ugly, duplicate, morbid, mutilated, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, mutation, deformed, blurry, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers, long neck',
     },
   ];
-  const examplesString = JSON.stringify(examples, null, 2);
+  const examplesString = examples
+    .map((e) => JSON.stringify(e, null, 2))
+    .join('\n\n');
 
   const systemPrompt = `
   You are an expert prompt engineer specializing in generating prompts for standard diffusion image generation. Your task is to create both positive and negative prompts based on the provided passage content, associated profile, and the book name.
   
   **Guidelines:**
   
-  1. **Positive Prompt**: Should vividly describe the specific character from the profile and feature only that character (1boy, 1girl, solo). It should be creative, detailed, and tailored to the context of the passage, profile, and the book. Avoid mentioning other characters or elements not related to the profile.
+  1. **Positive Prompt**: Should vividly describe the portrait of the specific character from the profile and feature only that character (1boy, 1girl, solo). It should be creative, detailed, and tailored to the context of the passage, profile, and the book. Avoid mentioning other characters or elements not related to the profile.
   2. **Negative Prompt**: Should include elements to avoid in the image generation to ensure higher quality and relevance. Put negatives on scenery and background attributes. Focus on common issues like poor anatomy, incorrect proportions, unwanted artifacts, etc.
   3. **Incorporate Profile**: Use the profile's name and descriptions to enrich the prompts, ensuring that the profile's unique traits are reflected accurately.
   4. **Book Context**: Utilize the book name to maintain consistency with the book's theme and setting.
@@ -735,10 +743,13 @@ export async function generateProfilePrompt(
       throw new Error('Incomplete prompt data received from OpenAI.');
     }
 
-    return {
+    const promptObj = {
       positivePrompt: prompts.positivePrompt,
       negativePrompt: prompts.negativePrompt,
     };
+
+    console.log(`Generated prompts for ${profile.name}:`, promptObj);
+    return promptObj;
   } catch (error: any) {
     console.error('Error generating prompts:', error.message);
     if (error instanceof SyntaxError) {
@@ -748,5 +759,645 @@ export async function generateProfilePrompt(
       );
     }
     throw new Error('Failed to generate prompts.');
+  }
+}
+
+export async function generateImagesForScene(req: Request, res: Response) {
+  const { sceneId } = req.params;
+  const { forceRegenerate } = req.body;
+
+  try {
+    // Fetch the scene with its passages and profiles
+    const scene = await prisma.scene.findUnique({
+      where: { id: Number(sceneId) },
+      include: {
+        book: true,
+        passages: {
+          include: {
+            profiles: {
+              include: {
+                descriptions: true,
+                image: {
+                  include: {
+                    generationData: {
+                      include: {
+                        civitaiResources: {
+                          include: {
+                            model: true,
+                          },
+                        },
+                      },
+                    },
+                    model: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!scene) {
+      res.status(404).json({ error: 'Scene not found.' });
+      return;
+    }
+
+    // Aggregate all passages' textContent in the scene
+    const combinedSceneText = scene.passages
+      .map((p) => p.textContent)
+      .join(' ');
+
+    // Collect unique profiles across all passages
+    const uniqueProfilesMap: { [profileId: number]: ProfileWithRelations } = {};
+    scene.passages.forEach((passage) => {
+      passage.profiles.forEach((profile) => {
+        uniqueProfilesMap[profile.id] = profile;
+      });
+    });
+    const uniqueProfiles = Object.values(uniqueProfilesMap);
+
+    if (uniqueProfiles.length === 0) {
+      res.status(400).json({ error: 'No profiles linked to this scene.' });
+      return;
+    }
+
+    // Generate background prompt
+    const backgroundPrompt = await generateBackgroundPrompt(
+      combinedSceneText,
+      uniqueProfiles
+        .filter((p) => p.type.toLowerCase() !== 'character')
+        .map((profile) => ({
+          name: profile.name,
+          descriptions: profile.descriptions.map((desc) => desc.text),
+        })),
+      scene.book.title
+    );
+
+    // Generate background image
+    let backgroundImageBase64: string | null = null;
+    if (forceRegenerate || !scene.imageUrl) {
+      try {
+        const backgroundImageResult = await generateImage({
+          prompt: backgroundPrompt.positivePrompt,
+          negative_prompt: backgroundPrompt.negativePrompt,
+          steps: 20,
+          ...backgroundSceneSize,
+          loras: [],
+          model: 'dreamshaper_8.safetensors',
+        });
+
+        // Optionally remove background
+        const config: Config = {
+          debug: false,
+          progress: (key: string, current: number, total: number) => {
+            const [type, subtype] = key.split(':');
+            console.log(
+              `${type} ${subtype} ${((current / total) * 100).toFixed(0)}%`
+            );
+          },
+          model: 'small',
+          output: {
+            quality: 0.8,
+            format: 'image/png',
+          },
+        };
+
+        // Update Scene.imageUrl in the database
+        await prisma.scene.update({
+          where: { id: Number(sceneId) },
+          data: { imageUrl: backgroundImageResult.imageUrl },
+        });
+      } catch (error: any) {
+        console.error('Error generating background image:', error);
+        backgroundImageBase64 = null;
+      }
+    } else {
+      backgroundImageBase64 = scene.imageUrl;
+    }
+
+    // Generate images for each unique profile
+    const profileImagePromises = uniqueProfiles.map(async (profile) => {
+      if (!profile.image || !profile.image.generationData) {
+        return {
+          profileId: profile.id,
+          profileName: profile.name,
+          image: null,
+          error: 'No GenerationData available.',
+        };
+      }
+
+      const generationData = profile.image.generationData;
+      const civitaiResources = generationData.civitaiResources;
+
+      if (!civitaiResources || civitaiResources.length === 0) {
+        return {
+          profileId: profile.id,
+          profileName: profile.name,
+          image: null,
+          error: 'No CivitaiResources available.',
+        };
+      }
+
+      // Determine model file name
+      const checkpointResource = civitaiResources.find(
+        (resource) => resource.modelType.toLowerCase() === 'checkpoint'
+      );
+      const loraResources = civitaiResources.filter(
+        (resource) => resource.modelType.toLowerCase() === 'lora'
+      );
+
+      let modelFileName: string | null = null;
+
+      if (checkpointResource) {
+        const aiModel = await prisma.aiModel.findUnique({
+          where: { id: checkpointResource.modelId },
+        });
+
+        if (aiModel) {
+          modelFileName = aiModel.fileName;
+        }
+      } else if (civitaiResources.length > 0) {
+        const firstResource = civitaiResources[0];
+        const aiModel = await prisma.aiModel.findFirst({
+          where: { type: 'Checkpoint', baseModel: firstResource.baseModel },
+        });
+
+        if (aiModel) {
+          modelFileName = aiModel.fileName;
+        }
+      }
+
+      if (!modelFileName) {
+        return {
+          profileId: profile.id,
+          profileName: profile.name,
+          image: null,
+          error: 'No suitable AiModel found for image generation.',
+        };
+      }
+
+      // Determine prompts
+      let finalPrompt = generationData.prompt;
+      let finalNegativePrompt = generationData.negativePrompt;
+
+      if (forceRegenerate || !generationData.negativePrompt) {
+        try {
+          const prompts = await generateProfilePrompt(
+            scene.passages.map((p) => p.textContent).join(' '),
+            {
+              name: profile.name,
+              descriptions: profile.descriptions.map((desc) => desc.text),
+            },
+            scene.book.title
+          );
+
+          finalPrompt = prompts.positivePrompt;
+          finalNegativePrompt = prompts.negativePrompt;
+
+          // Update GenerationData in the database
+          await prisma.generationData.update({
+            where: { id: generationData.id },
+            data: {
+              prompt: prompts.positivePrompt,
+              negativePrompt: prompts.negativePrompt,
+            },
+          });
+        } catch (error: any) {
+          console.error(
+            `Error generating prompts for profile ID ${profile.id}:`,
+            error.message
+          );
+        }
+      }
+
+      try {
+        const imageResult = await generateImage({
+          prompt: finalPrompt,
+          negative_prompt: finalNegativePrompt,
+          steps: generationData.steps,
+          ...characterImageSize,
+          loras: loraResources.map((lora) => lora.model.fileName),
+          model: modelFileName,
+          removeBackground: true,
+          // cfg_scale: generationData.cfgScale,
+          // sampler: generationData.sampler,
+          // seed: generationData.seed,
+          // clip_skip: generationData.clipSkip,
+        });
+
+        // Update Profile.imageUrl in the database
+        await prisma.profile.update({
+          where: { id: profile.id },
+          data: { imageUrl: imageResult.imageUrl },
+        });
+
+        return {
+          profileId: profile.id,
+          profileName: profile.name,
+          image: imageResult.imageUrl,
+        };
+      } catch (error: any) {
+        console.error(
+          `Error generating image for profile ID ${profile.id}:`,
+          error
+        );
+        return {
+          profileId: profile.id,
+          profileName: profile.name,
+          image: null,
+          error: error.message || 'Image generation failed.',
+        };
+      }
+    });
+
+    const profileImageResults = await Promise.all(profileImagePromises);
+
+    // Prepare response
+    const responseImages = [
+      {
+        profileId: 0, // Background image
+        profileName: 'Background Scene',
+        image: backgroundImageBase64,
+      },
+      ...profileImageResults,
+    ];
+
+    res.json({ sceneId: scene.id, images: responseImages });
+  } catch (error: any) {
+    console.error('Error generating images for scene:', error);
+    res
+      .status(500)
+      .json({ error: error.message || 'Failed to generate images for scene.' });
+  }
+}
+export async function generateImagesForMultipleScenes(
+  req: Request,
+  res: Response
+) {
+  const { startSceneId, numberOfScenes, forceRegenerate } = req.body;
+
+  if (!startSceneId || !numberOfScenes || numberOfScenes < 1) {
+    res.status(400).json({ error: 'Invalid parameters.' });
+    return;
+  }
+
+  try {
+    // Fetch the starting scene
+    const startScene = await prisma.scene.findUnique({
+      where: { id: Number(startSceneId) },
+    });
+
+    if (!startScene) {
+      res.status(404).json({ error: 'Starting scene not found.' });
+      return;
+    }
+
+    // Fetch next N scenes based on order
+    const scenes = await prisma.scene.findMany({
+      where: {
+        bookId: startScene.bookId,
+        order: {
+          gt: startScene.order,
+        },
+      },
+      orderBy: { order: 'asc' },
+      take: numberOfScenes,
+    });
+
+    if (scenes.length === 0) {
+      res.status(400).json({ error: 'No subsequent scenes found.' });
+      return;
+    }
+
+    const successScenes: number[] = [];
+    const failedScenes: { sceneId: number; error: string }[] = [];
+
+    // Iterate through each scene and generate images
+    for (const scene of scenes) {
+      try {
+        await generateImagesForSceneLogic(scene.id, forceRegenerate);
+        successScenes.push(scene.id);
+      } catch (error: any) {
+        console.error(`Error generating images for scene ${scene.id}:`, error);
+        failedScenes.push({
+          sceneId: scene.id,
+          error: error.message || 'Image generation failed.',
+        });
+      }
+    }
+
+    res.json({ successScenes, failedScenes });
+  } catch (error: any) {
+    console.error('Error generating images for multiple scenes:', error);
+    res.status(500).json({
+      error:
+        error.message ||
+        'An error occurred while generating images for multiple scenes.',
+    });
+  }
+}
+// Helper function to generate images for a single scene
+async function generateImagesForSceneLogic(
+  sceneId: number,
+  forceRegenerate: boolean
+) {
+  // Reuse the generateImagesForScene logic
+  // This function can be imported or duplicated as needed
+  // For simplicity, assuming it's similar to generateImagesForScene without the HTTP response
+
+  // Fetch the scene with its passages and profiles
+  const scene = await prisma.scene.findUnique({
+    where: { id: Number(sceneId) },
+    include: {
+      book: true,
+      passages: true,
+    },
+  });
+
+  if (!scene) {
+    throw new Error('Scene not found.');
+  }
+
+  // Aggregate all passages' textContent in the scene
+  const combinedSceneText = scene.passages.map((p) => p.textContent).join(' ');
+
+  // Collect unique profiles across all passages
+  const uniqueProfilesMap: { [profileId: number]: ProfileWithRelations } = {};
+  const passageIds = scene.passages.map((p) => p.id);
+  // find all profiles linked to passages from the descriptionIds
+  const descriptions = await prisma.description.findMany({
+    where: {
+      passageId: {
+        in: passageIds,
+      },
+    },
+    include: {
+      profile: {
+        include: {
+          descriptions: true,
+          image: {
+            include: {
+              generationData: {
+                include: {
+                  civitaiResources: {
+                    include: {
+                      model: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  descriptions.forEach((desc) => {
+    uniqueProfilesMap[desc?.profile?.id] = desc.profile;
+  });
+  const uniqueProfiles = Object.values(uniqueProfilesMap);
+
+  if (uniqueProfiles.length === 0) {
+    throw new Error('No profiles linked to this scene.');
+  }
+
+  // Generate background prompt
+  const backgroundPrompt = await generateBackgroundPrompt(
+    combinedSceneText,
+    uniqueProfiles
+      .filter((p) => p.type.toLowerCase() !== 'character')
+      .map((profile) => ({
+        name: profile.name,
+        descriptions: profile.descriptions.map((desc) => desc.text),
+      })),
+    scene.book.title
+  );
+
+  // Generate background image
+  let backgroundImageBase64: string | null = null;
+  if (forceRegenerate || !scene.imageUrl) {
+    try {
+      const backgroundImageResult = await generateImage({
+        prompt: backgroundPrompt.positivePrompt,
+        negative_prompt: backgroundPrompt.negativePrompt,
+        steps: 20,
+        ...backgroundSceneSize,
+        loras: [],
+        model: 'dreamshaper_8.safetensors',
+      });
+
+      // Optionally remove background
+      const config: Config = {
+        debug: false,
+        progress: (key: string, current: number, total: number) => {
+          const [type, subtype] = key.split(':');
+          console.log(
+            `${type} ${subtype} ${((current / total) * 100).toFixed(0)}%`
+          );
+        },
+        model: 'small',
+        output: { quality: 0.8, format: 'image/png' },
+      };
+
+      // Update Scene.imageUrl in the database
+      await prisma.scene.update({
+        where: { id: Number(sceneId) },
+        data: { imageUrl: backgroundImageResult.imageUrl },
+      });
+    } catch (error: any) {
+      console.error('Error generating background image:', error);
+      backgroundImageBase64 = null;
+    }
+  } else {
+    backgroundImageBase64 = scene.imageUrl;
+  }
+
+  // Generate images for each unique profile
+  const profileImagePromises = uniqueProfiles.map(async (profile) => {
+    if (!profile.image || !profile.image.generationData) {
+      return {
+        profileId: profile.id,
+        profileName: profile.name,
+        image: null,
+        error: 'No GenerationData available.',
+      };
+    }
+
+    const generationData = profile.image.generationData;
+    const civitaiResources = generationData.civitaiResources;
+
+    if (!civitaiResources || civitaiResources.length === 0) {
+      return {
+        profileId: profile.id,
+        profileName: profile.name,
+        image: null,
+        error: 'No CivitaiResources available.',
+      };
+    }
+
+    // Determine model file name
+    const checkpointResource = civitaiResources.find(
+      (resource) => resource.modelType.toLowerCase() === 'checkpoint'
+    );
+    const loraResources = civitaiResources.filter(
+      (resource) => resource.modelType.toLowerCase() === 'lora'
+    );
+
+    let modelFileName: string | null = null;
+
+    if (checkpointResource) {
+      const aiModel = await prisma.aiModel.findUnique({
+        where: { id: checkpointResource.modelId },
+      });
+
+      if (aiModel) {
+        modelFileName = aiModel.fileName;
+      }
+    } else if (civitaiResources.length > 0) {
+      const firstResource = civitaiResources[0];
+      const aiModel = await prisma.aiModel.findFirst({
+        where: { type: 'Checkpoint', baseModel: firstResource.baseModel },
+      });
+
+      if (aiModel) {
+        modelFileName = aiModel.fileName;
+      }
+    }
+
+    if (!modelFileName) {
+      return {
+        profileId: profile.id,
+        profileName: profile.name,
+        image: null,
+        error: 'No suitable AiModel found for image generation.',
+      };
+    }
+
+    // Determine prompts
+    let finalPrompt = generationData.prompt;
+    let finalNegativePrompt = generationData.negativePrompt;
+
+    if (forceRegenerate || !generationData.negativePrompt) {
+      try {
+        const prompts = await generateProfilePrompt(
+          scene.passages.map((p) => p.textContent).join(' '),
+          {
+            name: profile.name,
+            descriptions: profile.descriptions.map((desc) => desc.text),
+          },
+          scene.book.title
+        );
+
+        finalPrompt = prompts.positivePrompt;
+        finalNegativePrompt = prompts.negativePrompt;
+
+        // Update GenerationData in the database
+        await prisma.generationData.update({
+          where: { id: generationData.id },
+          data: {
+            prompt: prompts.positivePrompt,
+            negativePrompt: prompts.negativePrompt,
+          },
+        });
+      } catch (error: any) {
+        console.error(
+          `Error generating prompts for profile ID ${profile.id}:`,
+          error.message
+        );
+      }
+    }
+
+    try {
+      const imageResult = await generateImage({
+        prompt: finalPrompt,
+        negative_prompt: finalNegativePrompt,
+        steps: generationData.steps,
+        ...characterImageSize,
+        loras: loraResources.map((lora) => lora.model.fileName),
+        model: modelFileName,
+        removeBackground: true,
+        // cfg_scale: generationData.cfgScale,
+        // sampler: generationData.sampler,
+        // seed: generationData.seed,
+        // clip_skip: generationData.clipSkip,
+      });
+
+      // Update Profile.imageUrl in the database
+      await prisma.profile.update({
+        where: { id: profile.id },
+        data: { imageUrl: imageResult.imageUrl },
+      });
+
+      return {
+        profileId: profile.id,
+        profileName: profile.name,
+        image: imageResult.imageUrl,
+      };
+    } catch (error: any) {
+      console.error(
+        `Error generating image for profile ID ${profile.id}:`,
+        error
+      );
+      return {
+        profileId: profile.id,
+        profileName: profile.name,
+        image: null,
+        error: error.message || 'Image generation failed.',
+      };
+    }
+  });
+
+  const profileImageResults = await Promise.all(profileImagePromises);
+
+  // Prepare response
+  const responseImages = [
+    {
+      profileId: 0, // Background image
+      profileName: 'Background Scene',
+      image: backgroundImageBase64,
+    },
+    ...profileImageResults,
+  ];
+
+  return responseImages;
+}
+
+// Update Scene.imageUrl
+export async function updateSceneImageUrl(req: Request, res: Response) {
+  const { sceneId } = req.params;
+  const { imageUrl } = req.body;
+
+  try {
+    const scene = await prisma.scene.update({
+      where: { id: Number(sceneId) },
+      data: { imageUrl },
+    });
+
+    res.json({ message: 'Scene imageUrl updated successfully.', scene });
+  } catch (error: any) {
+    console.error('Error updating scene imageUrl:', error);
+    res.status(500).json({
+      error: error.message || 'Failed to update scene imageUrl.',
+    });
+  }
+}
+export async function updateProfileImageUrl(req: Request, res: Response) {
+  const { profileId } = req.params;
+  const { imageUrl } = req.body;
+
+  try {
+    const profile = await prisma.profile.update({
+      where: { id: Number(profileId) },
+      data: { imageUrl },
+    });
+
+    res.json({ message: 'Profile imageUrl updated successfully.', profile });
+  } catch (error: any) {
+    console.error('Error updating profile imageUrl:', error);
+    res.status(500).json({
+      error: error.message || 'Failed to update profile imageUrl.',
+    });
   }
 }

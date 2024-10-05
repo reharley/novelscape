@@ -60,6 +60,7 @@ export interface Passage {
   updatedAt: string;
   descriptions: Description[];
   scene?: Scene;
+  sceneId?: number;
 }
 export interface Scene {
   id: number;

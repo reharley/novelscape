@@ -11,6 +11,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@azure/storage-blob": "^12.25.0",
     "@imgly/background-removal-node": "^1.4.5",
     "@prisma/client": "^5.20.0",
     "axios": "^1.7.7",
