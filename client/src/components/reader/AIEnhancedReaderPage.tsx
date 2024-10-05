@@ -650,7 +650,7 @@ const AIEnhancedReaderPage: React.FC = () => {
               <Button
                 onClick={handleDownload}
                 type='default'
-                disabled={!backgroundImage}
+                disabled={!currentPassage}
               >
                 Download Passage
               </Button>

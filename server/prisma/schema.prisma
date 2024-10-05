@@ -102,7 +102,7 @@ model AiModel {
 }
 
 model ModelImage {
-    id             Int             @id @default(autoincrement())
+    id             Int             @id
     url            String
     model          AiModel         @relation(fields: [modelId], references: [id])
     modelId        Int

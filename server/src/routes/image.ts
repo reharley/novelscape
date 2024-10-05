@@ -1,4 +1,3 @@
-// imageRoutes.ts
 import express from 'express';
 import {
   generateImageController,
