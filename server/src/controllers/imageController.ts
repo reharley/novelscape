@@ -51,7 +51,7 @@ async function ensureGenerationDataForProfile(
         // randomId: '', // Optional random
         id: randomId, // Random ID
         url: '', // Placeholder
-        modelId: 1, // Or some default modelId
+        modelId: 4384, // Or some default modelId
         nsfwLevel: 0,
         width: characterImageSize.width,
         height: characterImageSize.height,
@@ -158,6 +158,147 @@ export async function generateImageForProfile(req: Request, res: Response) {
     console.error('Error generating image for profile:', error);
     res.status(500).json({
       error: error.message || 'Failed to generate image for profile.',
+    });
+  }
+}
+
+export async function generateImagesForChapter(req: Request, res: Response) {
+  const { chapterId } = req.params;
+  const { forceRegenerate } = req.body;
+
+  if (!chapterId) {
+    res.status(400).json({ error: 'Chapter ID is required.' });
+    return;
+  }
+
+  try {
+    // Fetch the chapter with its scenes
+    const chapter = await prisma.chapter.findUnique({
+      where: { id: Number(chapterId) },
+      include: {
+        book: true,
+        scenes: {
+          include: {
+            passages: true,
+          },
+        },
+      },
+    });
+
+    if (!chapter) {
+      res.status(404).json({ error: 'Chapter not found.' });
+      return;
+    }
+
+    // Collect all scene IDs in the chapter
+    const sceneIds = chapter.scenes.map((scene) => scene.id);
+
+    if (sceneIds.length === 0) {
+      res.status(400).json({ error: 'No scenes found in this chapter.' });
+      return;
+    }
+
+    // Create a new job
+    const job = await prisma.imageGenerationJob.create({
+      data: {
+        type: 'chapter',
+        targetId: chapter.id,
+        status: 'in_progress',
+        totalTasks: sceneIds.length,
+        progress: 0.0,
+      },
+    });
+
+    // Return the job ID to the client
+    res.json({ jobId: job.id, message: 'Image generation job started.' });
+
+    // Process scenes asynchronously
+    (async () => {
+      for (const [index, sceneId] of sceneIds.entries()) {
+        try {
+          await generateImagesForSceneLogic(sceneId, forceRegenerate);
+
+          // Update job progress
+          await prisma.imageGenerationJob.update({
+            where: { id: job.id },
+            data: {
+              completedTasks: { increment: 1 },
+              progress: ((index + 1) / sceneIds.length) * 100,
+            },
+          });
+        } catch (error: any) {
+          console.error(`Error generating images for scene ${sceneId}:`, error);
+
+          // Update job with failed task
+          await prisma.imageGenerationJob.update({
+            where: { id: job.id },
+            data: {
+              failedTasks: { increment: 1 },
+            },
+          });
+        }
+      }
+
+      // Finalize job status
+      const finalJob = await prisma.imageGenerationJob.findUnique({
+        where: { id: job.id },
+      });
+      const finalStatus = finalJob?.failedTasks
+        ? 'completed_with_errors'
+        : 'completed';
+
+      await prisma.imageGenerationJob.update({
+        where: { id: job.id },
+        data: {
+          status: finalStatus,
+          progress: 100.0,
+        },
+      });
+    })();
+  } catch (error: any) {
+    console.error('Error generating images for chapter:', error);
+    res.status(500).json({
+      error:
+        error.message ||
+        'An error occurred while generating images for the chapter.',
+    });
+  }
+}
+
+export async function getJobStatus(req: Request, res: Response) {
+  const { jobId } = req.params;
+
+  try {
+    const job = await prisma.imageGenerationJob.findUnique({
+      where: { id: Number(jobId) },
+    });
+
+    if (!job) {
+      res.status(404).json({ error: 'Job not found.' });
+      return;
+    }
+
+    res.json(job);
+  } catch (error: any) {
+    console.error('Error fetching job status:', error);
+    res.status(500).json({
+      error: error.message || 'Failed to fetch job status.',
+    });
+  }
+}
+
+export async function listJobs(req: Request, res: Response) {
+  try {
+    const jobs = await prisma.imageGenerationJob.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 20, // Fetch last 20 jobs
+    });
+
+    res.json(jobs);
+  } catch (error: any) {
+    console.error('Error fetching jobs:', error);
+    res.status(500).json({
+      error: error.message || 'Failed to fetch jobs.',
     });
   }
 }

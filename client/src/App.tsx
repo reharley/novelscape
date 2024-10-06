@@ -12,6 +12,7 @@ import ModelManagerPage from './components/models/ModelManagerPage';
 import ProfilesPage from './components/profiles/ProfilesPage';
 import AIEnhancedReaderPage from './components/reader/AIEnhancedReaderPage.tsx';
 import BookReaderPage from './components/reader/BookReaderPage';
+import ChapterImageGenerator from './pages/ImageGenerationPage.tsx';
 import LoraAssociationPage from './pages/LoraAssociationPage.tsx';
 
 const LayoutRoute = () => (
@@ -31,6 +32,7 @@ const router = createBrowserRouter(
         <Route path='ai-reader' element={<AIEnhancedReaderPage />} />
         <Route path='profiles' element={<ProfilesPage />} />
         <Route path='associate-loras' element={<LoraAssociationPage />} />
+        <Route path='chapter-generation' element={<ChapterImageGenerator />} />
       </Route>
       {/* </Route> */}
     </>

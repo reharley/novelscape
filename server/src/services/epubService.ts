@@ -254,6 +254,7 @@ export async function detectScenes(bookId: string): Promise<void> {
         if (passagesToAssign.length > 0) {
           const scene = await prisma.scene.create({
             data: {
+              chapterId,
               order: globalSceneOrder++,
               bookId: bookId,
             },
@@ -280,6 +281,7 @@ export async function detectScenes(bookId: string): Promise<void> {
       if (remainingPassages.length > 0) {
         const scene = await prisma.scene.create({
           data: {
+            chapterId: chapterId,
             order: globalSceneOrder++,
             bookId: bookId,
           },

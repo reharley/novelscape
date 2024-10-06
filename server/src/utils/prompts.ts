@@ -62,10 +62,10 @@ export async function generateProfilePrompt(
     
     **Guidelines:**
     
-    1. **Positive Prompt**: Should vividly describe the portrait of the specific character from the profile and feature only that character (1boy, 1girl, solo). It should be creative, detailed, and tailored to the context of the passage, profile, and the book. Avoid mentioning other characters or elements not related to the profile.
-    2. **Negative Prompt**: Should include elements to avoid in the image generation to ensure higher quality and relevance. Put negatives on scenery and background attributes. Focus on common issues like poor anatomy, incorrect proportions, unwanted artifacts, etc.
-    3. **Incorporate Profile**: Use the profile's name and descriptions to enrich the prompts, ensuring that the profile's unique traits are reflected accurately.
-    4. **Book Context**: Utilize the book name to maintain consistency with the book's theme and setting.
+    1. **Positive Prompt**: Should vividly describe the portrait of the specific character from the profile and feature only that character (1boy, 1girl, solo). It should be creative, detailed, and tailored to the context of the profile first, the passage. Avoid mentioning other characters or elements not related to the profile.
+    2. **Negative Prompt**: Should include elements to avoid in the image generation to ensure higher quality and relevance. Put negatives on scenery and background attributes. Focus on common issues like poor anatomy, incorrect proportions, unwanted artifacts, split frame, out of frame, cropped, multiple frame, split panel, multi panel, etc.
+    3. **Incorporate Profile**: Use the profile's name and descriptions to enrich the prompts, ensuring that the profile's unique traits are reflected accurately in the portrait.
+    4. **Book Context**: Utilize the book name or world to maintain consistency with the book's theme and setting when appropriate.
     5. **Format**: Provide the output as a JSON object with two fields: "positivePrompt" and "negativePrompt". Do **not** include any Markdown formatting or code block delimiters.
     6. **Format Clues**: Focus on comma separated list of features describing a scene and avoid full sentences
     7. **Examples**: Below are examples of desired output formats to guide your response.
@@ -129,7 +129,7 @@ export async function generateProfilePrompt(
       negativePrompt: prompts.negativePrompt,
     };
 
-    console.log(`Generated prompts for ${profile.name}:`, promptObj);
+    console.log(`Generated character prompts for ${profile.name}:`, promptObj);
     return promptObj;
   } catch (error: any) {
     console.error('Error generating prompts:', error.message);

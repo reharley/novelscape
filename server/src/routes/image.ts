@@ -2,9 +2,12 @@ import express from 'express';
 import {
   generateImageController,
   generateImageForProfile,
+  generateImagesForChapter,
   generateImagesForMultipleScenes,
   generateImagesForPassage,
   generateImagesForScene,
+  getJobStatus,
+  listJobs,
   updateProfileImageUrl,
   updateSceneImageUrl,
 } from '../controllers/imageController';
@@ -59,5 +62,26 @@ router.put('/scenes/:sceneId/image', updateSceneImageUrl);
  * @access Public
  */
 router.put('/profiles/:profileId', updateProfileImageUrl);
+
+/**
+ * @route POST /api/chapters/:chapterId/generate-images
+ * @desc Generate images for all scenes in a specific chapter
+ * @access Public
+ */
+router.post('/chapters/:chapterId/generate-images', generateImagesForChapter);
+
+/**
+ * @route GET /api/jobs/:jobId
+ * @desc Get the status of a specific image generation job
+ * @access Public
+ */
+router.get('/jobs/:jobId', getJobStatus);
+
+/**
+ * @route GET /api/jobs
+ * @desc List recent image generation jobs
+ * @access Public
+ */
+router.get('/jobs', listJobs);
 
 export default router;

@@ -26,6 +26,7 @@ model Chapter {
     book     Book      @relation(fields: [bookId], references: [id])
     bookId   String
     passages Passage[]
+    scenes   Scene[]
 }
 
 model Passage {
@@ -165,8 +166,23 @@ model Scene {
     order     Int
     book      Book      @relation(fields: [bookId], references: [id])
     bookId    String
+    chapter   Chapter?  @relation(fields: [chapterId], references: [id])
+    chapterId Int
     passages  Passage[]
-    imageUrl  String? // Optional: URL to the generated background image
+    imageUrl  String?
     createdAt DateTime  @default(now())
     updatedAt DateTime  @updatedAt
+}
+
+model ImageGenerationJob {
+    id             Int      @id @default(autoincrement())
+    type           String // 'chapter', 'scene', etc.
+    targetId       Int // ID of the chapter, scene, or passage
+    status         String   @default("pending") // 'pending', 'in_progress', 'completed', 'failed'
+    totalTasks     Int      @default(0)
+    completedTasks Int      @default(0)
+    failedTasks    Int      @default(0)
+    progress       Float    @default(0.0)
+    createdAt      DateTime @default(now())
+    updatedAt      DateTime @updatedAt
 }
