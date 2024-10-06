@@ -11,6 +11,7 @@ export async function generateProfilePrompt(
   textContent: string,
   profile: {
     name: string;
+    gender: string | null;
     descriptions: string[];
   },
   bookName: string

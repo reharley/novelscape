@@ -675,7 +675,7 @@ async function performNERWithAliases(
     messages: [
       {
         role: 'system',
-        content: `You are an assistant that performs named entity recognition (NER) on a given text. Identify and extract all named entities, categorizing them as one of the following types: 'Character', 'Building', 'Scene', 'Animal', 'Object'. For entities that are aliases of known characters, provide both the full name and the alias. Only tag Family entities if they are clearly identified as such (Potters, The Potters, Dursleys, The Dursleys), not individuals (Mr. Potter, Mr. Dursley).
+        content: `You are an assistant that performs named entity recognition (NER) on a given text. Identify and extract all named entities, categorizing them as one of the following types: 'Character', 'Building', 'Scene', 'Animal', 'Object'. For entities that are aliases of known characters, provide both the full name and the alias. Only tag Family entities if they are clearly identified as such (Potters, The Potters, Dursleys, The Dursleys), not individuals (Mr. Potter, Mr. Dursley). Do your best to identify Characters that are referred to with their last name only (Potter, Mr. Potter) as their full name (one of Harry Potter or James Potter).
 
 Include the following known aliases in your analysis: ${aliasList}.
 
@@ -683,6 +683,7 @@ For each entity, provide:
 - fullName: The canonical name of the entity (if applicable).
 - alias: The alias used in the text (if applicable).
 - type: One of 'Character', 'Family', 'Building', 'Scene', 'Animal', or 'Object'.
+- gender: Male, Female, Unknown, or null
 - description: A brief description of the entity based on the context.
 
 Output the result as a JSON array of entities.`,

@@ -104,7 +104,6 @@ export async function generateImage(
       });
       finalPrompt = `${loraPrompts.join(' ')} ${prompt}`;
     }
-
     // Send request to Stable Diffusion WebUI API
     const response = await axios.post(
       'http://localhost:7860/sdapi/v1/txt2img',

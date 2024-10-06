@@ -370,6 +370,7 @@ async function generateImageForProfileHelper(
           {
             name: profile.name,
             descriptions: profile.descriptions.map((desc) => desc.text),
+            gender: profile.gender,
           },
           bookTitle
         );

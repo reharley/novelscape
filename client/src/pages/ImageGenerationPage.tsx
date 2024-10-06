@@ -112,7 +112,7 @@ const ChapterImageGenerationPage: React.FC = () => {
     setGenerating(true);
     try {
       const response = await axios.post<{ jobId: number }>(
-        `${baseUrl}/chapters/${selectedChapterId}/generate-images`,
+        `${baseUrl}/generate-image/chapters/${selectedChapterId}/generate-images`,
         {
           forceRegenerate: true, // Include this if your backend supports it
         }

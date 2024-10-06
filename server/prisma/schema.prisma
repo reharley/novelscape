@@ -52,6 +52,7 @@ model Profile {
     name         String
     type         String
     imageUrl     String?
+    gender       String?
     descriptions Description[]
     book         Book             @relation(fields: [bookId], references: [id])
     bookId       String
