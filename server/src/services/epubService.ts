@@ -547,6 +547,7 @@ export async function processPassagesWithContext(
 
   const totalPassages = passages.length;
   let processedPassages = 0;
+  const canonicalNames = await getCanonicalNames(bookId);
 
   const tasks = passages.map((passage) =>
     limit(async () => {
@@ -555,7 +556,6 @@ export async function processPassagesWithContext(
 
       try {
         // Fetch canonical names from profiles
-        const canonicalNames = await getCanonicalNames(bookId);
         const aliases = identifyAliases(textContent, canonicalNames);
 
         // Send text to OpenAI API for NER with aliases
@@ -677,7 +677,7 @@ async function performNERWithAliases(
         role: 'system',
         content: `You are an assistant that performs named entity recognition (NER) on a given text. Identify and extract all named entities, categorizing them as one of the following types: 'Character', 'Building', 'Scene', 'Animal', 'Object'. For entities that are aliases of known characters, provide both the full name and the alias. Only tag Family entities if they are clearly identified as such (Potters, The Potters, Dursleys, The Dursleys), not individuals (Mr. Potter, Mr. Dursley). Do your best to identify Characters that are referred to with their last name only (Potter, Mr. Potter) as their full name (one of Harry Potter or James Potter).
 
-Include the following known aliases in your analysis: ${aliasList}.
+Include the following known possible aliases in your analysis: ${aliasList}.
 
 For each entity, provide:
 - fullName: The canonical name of the entity (if applicable).

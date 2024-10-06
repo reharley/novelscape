@@ -37,7 +37,10 @@ interface GenerateImageParams {
   steps?: number;
   width?: number;
   height?: number;
-  loras?: string[];
+  positive_loras?: { name: string; weight: number }[];
+  negative_loras?: { name: string; weight: number }[];
+  embeddings?: string[];
+  negative_embeddings?: string[];
   model?: string;
   removeBackground?: boolean;
 }
@@ -57,7 +60,10 @@ export async function generateImage(
     steps,
     width,
     height,
-    loras,
+    positive_loras,
+    negative_loras,
+    embeddings,
+    negative_embeddings,
     model,
     removeBackground: doRemoveBackground,
   } = data;
@@ -92,17 +98,32 @@ export async function generateImage(
 
     // Construct prompt with correct LORA references
     let finalPrompt = prompt;
-    if (loras && loras.length > 0) {
-      const loraPrompts = loras.map((loraFilename: string) => {
-        const loraAlias = filenameToAliasMap[loraFilename];
-        if (loraAlias) {
-          return `<lora:${loraAlias}:1>`;
-        } else {
-          console.warn(`LORA alias not found for filename: ${loraFilename}`);
-          return '';
-        }
-      });
-      finalPrompt = `${loraPrompts.join(' ')} ${prompt}`;
+    let finalNegativePrompt = negative_prompt || '';
+
+    // Handle embeddings
+    if (embeddings && embeddings.length > 0) {
+      finalPrompt = `${embeddings.join(' ')} ${finalPrompt}`;
+    }
+    if (negative_embeddings && negative_embeddings.length > 0) {
+      finalNegativePrompt = `${negative_embeddings.join(
+        ' '
+      )} ${finalNegativePrompt}`;
+    }
+
+    // Handle LoRAs
+    if (positive_loras && positive_loras.length > 0) {
+      const loraPrompts = positive_loras.map(
+        (lora) => `<lora:${lora.name}:${lora.weight}>`
+      );
+      finalPrompt = `${loraPrompts.join(' ')} ${finalPrompt}`;
+    }
+    if (negative_loras && negative_loras.length > 0) {
+      const negativeLoraPrompts = negative_loras.map(
+        (lora) => `<lora:${lora.name}:${lora.weight}>`
+      );
+      finalNegativePrompt = `${negativeLoraPrompts.join(
+        ' '
+      )} ${finalNegativePrompt}`;
     }
     // Send request to Stable Diffusion WebUI API
     const response = await axios.post(

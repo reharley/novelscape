@@ -59,12 +59,12 @@ export async function generateProfilePrompt(
     .join('\n\n');
 
   const systemPrompt = `
-    You are an expert prompt engineer specializing in generating prompts for standard diffusion image generation. Your task is to create both positive and negative prompts based on the provided passage content, associated profile, and the book name.
+    You are an expert prompt engineer specializing in generating full body portrait prompts for standard diffusion image generation. Your task is to create both positive and negative prompts based on the provided passage content, associated profile, and the book name.
     
     **Guidelines:**
     
-    1. **Positive Prompt**: Should vividly describe the portrait of the specific character from the profile and feature only that character (1boy, 1girl, solo). It should be creative, detailed, and tailored to the context of the profile first, the passage. Avoid mentioning other characters or elements not related to the profile.
-    2. **Negative Prompt**: Should include elements to avoid in the image generation to ensure higher quality and relevance. Put negatives on scenery and background attributes. Focus on common issues like poor anatomy, incorrect proportions, unwanted artifacts, split frame, out of frame, cropped, multiple frame, split panel, multi panel, etc.
+    1. **Positive Prompt**: Should vividly describe the full body portrait as a comma separated list of attributes of the specific character from the profile and feature only that character (1boy, 1girl, solo). It should be creative, detailed, and tailored to the context of the profile first, the passage. Do not mention other characters or elements that are not focused on the individual. Do not reference relationships or interactions with other characters.
+    2. **Negative Prompt**: Focus on common issues like split frame, out of frame, cropped, multiple frame, split panel, multi panel, poor anatomy, incorrect proportions, unwanted artifacts,  etc. Should include elements to avoid in the image generation to ensure higher quality and relevance. Put negatives on scenery and background attributes. 
     3. **Incorporate Profile**: Use the profile's name and descriptions to enrich the prompts, ensuring that the profile's unique traits are reflected accurately in the portrait.
     4. **Book Context**: Utilize the book name or world to maintain consistency with the book's theme and setting when appropriate.
     5. **Format**: Provide the output as a JSON object with two fields: "positivePrompt" and "negativePrompt". Do **not** include any Markdown formatting or code block delimiters.
@@ -85,6 +85,7 @@ export async function generateProfilePrompt(
     
     - **Profile**:
     **Profile: ${profile.name}**
+    Gender: ${profile.gender || 'Not specified'}
     Descriptions:
     ${profile.descriptions.map((desc) => `- ${desc}`).join('\n')}
     

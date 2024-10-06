@@ -61,6 +61,7 @@ export interface Passage {
   descriptions: Description[];
   scene?: Scene;
   sceneId?: number;
+  splitId?: string;
 }
 export interface Scene {
   id: number;

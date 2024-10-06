@@ -105,6 +105,46 @@ const AIEnhancedReaderPage: React.FC = () => {
       .finally(() => setLoadingChapters(false));
   };
 
+  const splitPassage = (passage: Passage): Passage[] => {
+    const text = passage.textContent;
+    if (text.length <= 280) {
+      return [passage];
+    }
+
+    const sentences = text.match(/[^.!?]+[.!?]+|\s*[^.!?]+$/g) || [text];
+
+    const newPassages: Passage[] = [];
+    let currentText = '';
+    let splitIndex = 0;
+
+    sentences.forEach((sentence) => {
+      const trimmedSentence = sentence.trim();
+      if ((currentText + ' ' + trimmedSentence).trim().length <= 280) {
+        currentText = (currentText + ' ' + trimmedSentence).trim();
+      } else {
+        if (currentText.length > 0) {
+          newPassages.push({
+            ...passage,
+            textContent: currentText,
+            splitId: `${passage.id}-${splitIndex}`,
+          });
+          splitIndex++;
+        }
+        currentText = trimmedSentence;
+      }
+    });
+
+    if (currentText.length > 0) {
+      newPassages.push({
+        ...passage,
+        textContent: currentText,
+        splitId: `${passage.id}-${splitIndex}`,
+      });
+    }
+
+    return newPassages;
+  };
+
   const fetchPassages = (bookId: string, chapterId: number) => {
     setLoadingPassages(true);
     axios
@@ -112,20 +152,27 @@ const AIEnhancedReaderPage: React.FC = () => {
         `${baseUrl}/books/${bookId}/chapters/${chapterId}/passages`
       )
       .then((response) => {
-        console.log('Fetched Passages:', response.data); // Log the fetched passages
-        setPassages(response.data);
-        // setCurrentPassageIndex(0);
+        console.log('Fetched Passages:', response.data);
+        const fetchedPassages = response.data;
+        const processedPassages: Passage[] = [];
+
+        fetchedPassages.forEach((passage) => {
+          const splitPassages = splitPassage(passage);
+          processedPassages.push(...splitPassages);
+        });
+
+        setPassages(processedPassages);
         setBackgroundImage(null);
 
         // Calculate scene passage ranges
-        if (response.data.length > 0) {
+        if (processedPassages.length > 0) {
           const ranges: {
             [sceneOrder: number]: { start: number; end: number };
           } = {};
           let currentSceneOrder: number | undefined = undefined;
           let startIndex = 0;
 
-          response.data.forEach((passage, index) => {
+          processedPassages.forEach((passage, index) => {
             const sceneOrder = passage.scene?.order;
 
             if (sceneOrder !== currentSceneOrder) {
@@ -143,10 +190,13 @@ const AIEnhancedReaderPage: React.FC = () => {
 
             // If it's the last passage, set the end index
             if (
-              index === response.data.length - 1 &&
+              index === processedPassages.length - 1 &&
               currentSceneOrder !== undefined
             ) {
-              ranges[currentSceneOrder] = { start: startIndex, end: index };
+              ranges[currentSceneOrder] = {
+                start: startIndex,
+                end: index,
+              };
             }
           });
 
@@ -522,7 +572,7 @@ const AIEnhancedReaderPage: React.FC = () => {
                   style={{ width: 200 }}
                 >
                   {passages.map((passage, index) => (
-                    <Option key={passage.id} value={index}>
+                    <Option key={`${passage.id}-${index}`} value={index}>
                       Passage {index + 1}
                     </Option>
                   ))}

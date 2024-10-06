@@ -33,7 +33,7 @@ const JobCard: React.FC<JobCardProps> = ({ job }) => {
       <Text strong>Status: </Text>
       {getStatusBadge(job.status)}
       <Progress
-        percent={job.progress}
+        percent={parseFloat(job.progress.toFixed(2))}
         status={
           job.status === 'completed_with_errors'
             ? 'exception'

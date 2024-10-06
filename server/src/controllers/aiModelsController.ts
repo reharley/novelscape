@@ -1,10 +1,73 @@
 import { Request, Response } from 'express';
+import fs from 'fs';
+import path from 'path';
 import prisma from '../config/prisma';
 import {
   listModels,
   loadModel,
   setActiveModel,
 } from '../services/modelService';
+
+// List Checkpoints
+export async function listCheckpoints(req: Request, res: Response) {
+  const basePath = process.env.MODEL_PATH;
+  if (!basePath) {
+    throw new Error('Model path not configured.');
+  }
+  const checkpointPath = path.join(basePath, 'models/Stable-diffusion');
+  try {
+    const files = fs.readdirSync(checkpointPath);
+    const checkpoints = files.filter(
+      (file) => file.endsWith('.ckpt') || file.endsWith('.safetensors')
+    );
+    res.json(checkpoints);
+  } catch (error) {
+    console.error('Error listing checkpoints:', error);
+    res
+      .status(500)
+      .json({ error: 'An error occurred while listing checkpoints.' });
+  }
+}
+
+// List LoRAs
+export async function listLoras(req: Request, res: Response) {
+  const basePath = process.env.MODEL_PATH;
+  if (!basePath) {
+    throw new Error('Model path not configured.');
+  }
+  const loraPath = path.join(basePath, 'models/Lora');
+  try {
+    const files = fs.readdirSync(loraPath);
+    const loras = files.filter(
+      (file) => file.endsWith('.pt') || file.endsWith('.safetensors')
+    );
+    res.json(loras);
+  } catch (error) {
+    console.error('Error listing LoRAs:', error);
+    res.status(500).json({ error: 'An error occurred while listing LoRAs.' });
+  }
+}
+
+// List Embeddings
+export async function listEmbeddings(req: Request, res: Response) {
+  const basePath = process.env.MODEL_PATH;
+  if (!basePath) {
+    throw new Error('Model path not configured.');
+  }
+  const embeddingPath = path.join(basePath, 'embeddings');
+  try {
+    const files = fs.readdirSync(embeddingPath);
+    const embeddings = files.filter(
+      (file) => file.endsWith('.bin') || file.endsWith('.pt')
+    );
+    res.json(embeddings);
+  } catch (error) {
+    console.error('Error listing embeddings:', error);
+    res
+      .status(500)
+      .json({ error: 'An error occurred while listing embeddings.' });
+  }
+}
 
 export async function listDownloadedModels(req: Request, res: Response) {
   const { profileId } = req.query;

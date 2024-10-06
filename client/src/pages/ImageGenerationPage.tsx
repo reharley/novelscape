@@ -1,8 +1,10 @@
 import {
   Button,
+  Col,
   Divider,
   Layout,
   List,
+  Row,
   Select,
   Spin,
   Typography,
@@ -11,6 +13,7 @@ import {
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
 import JobCard from '../components/JobCard';
+import LoraSelector from '../components/LoraSelector';
 import { Book, Chapter, ImageGenerationJob } from '../utils/types';
 
 const { Content } = Layout;
@@ -28,9 +31,60 @@ const ChapterImageGenerationPage: React.FC = () => {
   const [loadingChapters, setLoadingChapters] = useState<boolean>(false);
   const [generating, setGenerating] = useState<boolean>(false);
   const [jobs, setJobs] = useState<ImageGenerationJob[]>([]);
+  // New state variables for generation options
+  const [checkpoints, setCheckpoints] = useState<string[]>([]);
+  const [loras, setLoras] = useState<string[]>([]);
+  const [embeddings, setEmbeddings] = useState<string[]>([]);
+  const [selectedProfileCheckpoint, setSelectedProfileCheckpoint] = useState<
+    string | null
+  >(null);
+  const [selectedBackgroundCheckpoint, setSelectedBackgroundCheckpoint] =
+    useState<string | null>(null);
+  const [selectedProfileLoras, setSelectedProfileLoras] = useState<
+    { name: string; weight: number }[]
+  >([]);
+  const [selectedBackgroundLoras, setSelectedBackgroundLoras] = useState<
+    { name: string; weight: number }[]
+  >([]);
+  const [selectedProfileEmbeddings, setSelectedProfileEmbeddings] = useState<
+    string[]
+  >([]);
+  const [selectedBackgroundEmbeddings, setSelectedBackgroundEmbeddings] =
+    useState<string[]>([]);
+  // Negative counterparts
+  const [selectedProfileNegativeLoras, setSelectedProfileNegativeLoras] =
+    useState<{ name: string; weight: number }[]>([]);
+  const [selectedBackgroundNegativeLoras, setSelectedBackgroundNegativeLoras] =
+    useState<{ name: string; weight: number }[]>([]);
+  const [
+    selectedProfileNegativeEmbeddings,
+    setSelectedProfileNegativeEmbeddings,
+  ] = useState<string[]>([]);
+  const [
+    selectedBackgroundNegativeEmbeddings,
+    setSelectedBackgroundNegativeEmbeddings,
+  ] = useState<string[]>([]);
 
   const baseUrl = 'http://localhost:5000/api'; // Adjust as needed
-
+  // Fetch models and resources
+  useEffect(() => {
+    const fetchResources = async () => {
+      try {
+        const [checkpointsRes, lorasRes, embeddingsRes] = await Promise.all([
+          axios.get<string[]>(`${baseUrl}/ai-models/models/checkpoints`),
+          axios.get<string[]>(`${baseUrl}/ai-models/models/loras`),
+          axios.get<string[]>(`${baseUrl}/ai-models/models/embeddings`),
+        ]);
+        setCheckpoints(checkpointsRes.data);
+        setLoras(lorasRes.data);
+        setEmbeddings(embeddingsRes.data);
+      } catch (error) {
+        console.error('Error fetching resources:', error);
+        message.error('Failed to fetch generation resources.');
+      }
+    };
+    fetchResources();
+  }, [baseUrl]);
   // Fetch books on component mount
   useEffect(() => {
     const fetchBooks = async () => {
@@ -114,7 +168,21 @@ const ChapterImageGenerationPage: React.FC = () => {
       const response = await axios.post<{ jobId: number }>(
         `${baseUrl}/generate-image/chapters/${selectedChapterId}/generate-images`,
         {
-          forceRegenerate: true, // Include this if your backend supports it
+          forceRegenerate: false,
+          profileOptions: {
+            checkpoint: selectedProfileCheckpoint,
+            positiveLoras: selectedProfileLoras,
+            negativeLoras: selectedProfileNegativeLoras,
+            embeddings: selectedProfileEmbeddings,
+            negativeEmbeddings: selectedProfileNegativeEmbeddings,
+          },
+          backgroundOptions: {
+            checkpoint: selectedBackgroundCheckpoint,
+            positiveLoras: selectedBackgroundLoras,
+            negativeLoras: selectedBackgroundNegativeLoras,
+            embeddings: selectedBackgroundEmbeddings,
+            negativeEmbeddings: selectedBackgroundNegativeEmbeddings,
+          },
         }
       );
 
@@ -186,6 +254,140 @@ const ChapterImageGenerationPage: React.FC = () => {
                 ))}
               </Select>
             )}
+          </div>
+        )}
+        {/* Generation Options */}
+        {selectedChapterId && (
+          <div style={{ marginBottom: '24px' }}>
+            <Title level={4}>Generation Options</Title>
+            <Row gutter={16}>
+              <Col span={12}>
+                <Text strong>Profile Checkpoint:</Text>
+                <Select
+                  placeholder='Select checkpoint'
+                  style={{ width: '100%', marginBottom: '8px' }}
+                  onChange={(value) => setSelectedProfileCheckpoint(value)}
+                  value={selectedProfileCheckpoint || undefined}
+                >
+                  {checkpoints.map((ckpt) => (
+                    <Option key={ckpt} value={ckpt}>
+                      {ckpt}
+                    </Option>
+                  ))}
+                </Select>
+
+                <Text strong>Positive LoRAs for Profiles:</Text>
+                <LoraSelector
+                  loras={loras}
+                  selectedLoras={selectedProfileLoras}
+                  setSelectedLoras={setSelectedProfileLoras}
+                  placeholder='Select positive LoRAs'
+                />
+
+                <Text strong>Negative LoRAs for Profiles:</Text>
+                <LoraSelector
+                  loras={loras}
+                  selectedLoras={selectedProfileNegativeLoras}
+                  setSelectedLoras={setSelectedProfileNegativeLoras}
+                  placeholder='Select negative LoRAs'
+                />
+
+                <Text strong>Embeddings for Profiles:</Text>
+                <Select
+                  mode='multiple'
+                  placeholder='Select embeddings'
+                  style={{ width: '100%', marginBottom: '8px' }}
+                  onChange={(values) => setSelectedProfileEmbeddings(values)}
+                  value={selectedProfileEmbeddings}
+                >
+                  {embeddings.map((embedding) => (
+                    <Option key={embedding} value={embedding}>
+                      {embedding}
+                    </Option>
+                  ))}
+                </Select>
+
+                <Text strong>Negative Embeddings for Profiles:</Text>
+                <Select
+                  mode='multiple'
+                  placeholder='Select negative embeddings'
+                  style={{ width: '100%', marginBottom: '8px' }}
+                  onChange={(values) =>
+                    setSelectedProfileNegativeEmbeddings(values)
+                  }
+                  value={selectedProfileNegativeEmbeddings}
+                >
+                  {embeddings.map((embedding) => (
+                    <Option key={embedding} value={embedding}>
+                      {embedding}
+                    </Option>
+                  ))}
+                </Select>
+              </Col>
+              <Col span={12}>
+                <Text strong>Background Checkpoint:</Text>
+                <Select
+                  placeholder='Select checkpoint'
+                  style={{ width: '100%', marginBottom: '8px' }}
+                  onChange={(value) => setSelectedBackgroundCheckpoint(value)}
+                  value={selectedBackgroundCheckpoint || undefined}
+                >
+                  {checkpoints.map((ckpt) => (
+                    <Option key={ckpt} value={ckpt}>
+                      {ckpt}
+                    </Option>
+                  ))}
+                </Select>
+
+                <Text strong>Positive LoRAs for Backgrounds:</Text>
+                <LoraSelector
+                  loras={loras}
+                  selectedLoras={selectedBackgroundLoras}
+                  setSelectedLoras={setSelectedBackgroundLoras}
+                  placeholder='Select positive LoRAs'
+                />
+
+                <Text strong>Negative LoRAs for Backgrounds:</Text>
+                <LoraSelector
+                  loras={loras}
+                  selectedLoras={selectedBackgroundNegativeLoras}
+                  setSelectedLoras={setSelectedBackgroundNegativeLoras}
+                  placeholder='Select negative LoRAs'
+                />
+
+                <Text strong>Embeddings for Backgrounds:</Text>
+                <Select
+                  mode='multiple'
+                  placeholder='Select embeddings'
+                  style={{ width: '100%', marginBottom: '8px' }}
+                  onChange={(values) => setSelectedBackgroundEmbeddings(values)}
+                  value={selectedBackgroundEmbeddings}
+                >
+                  {embeddings.map((embedding) => (
+                    <Option key={embedding} value={embedding}>
+                      {embedding}
+                    </Option>
+                  ))}
+                </Select>
+
+                <Text strong>Negative Embeddings for Backgrounds:</Text>
+                <Select
+                  mode='multiple'
+                  placeholder='Select negative embeddings'
+                  style={{ width: '100%', marginBottom: '8px' }}
+                  onChange={(values) =>
+                    setSelectedBackgroundNegativeEmbeddings(values)
+                  }
+                  value={selectedBackgroundNegativeEmbeddings}
+                >
+                  {embeddings.map((embedding) => (
+                    <Option key={embedding} value={embedding}>
+                      {embedding}
+                    </Option>
+                  ))}
+                </Select>
+              </Col>
+            </Row>
           </div>
         )}
 

@@ -2,14 +2,20 @@ import express from 'express';
 import {
   associateModel,
   getModelImages,
+  listCheckpoints,
   listDownloadedLoras,
   listDownloadedModels,
+  listEmbeddings,
+  listLoras,
   loadModelController,
   setActiveModelController,
 } from '../controllers/aiModelsController';
 
 const router = express.Router();
 
+router.get('/models/checkpoints', listCheckpoints);
+router.get('/models/loras', listLoras);
+router.get('/models/embeddings', listEmbeddings);
 router.get('/list-models', listDownloadedModels);
 router.get('/list-loras', listDownloadedLoras);
 router.post('/load-model', loadModelController);

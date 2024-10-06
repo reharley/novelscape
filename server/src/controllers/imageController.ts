@@ -26,7 +26,7 @@ export async function generateImageController(req: Request, res: Response) {
       steps,
       width,
       height,
-      loras,
+      positive_loras: loras,
       model,
     });
     res.json(imageResult);
@@ -59,14 +59,6 @@ async function ensureGenerationDataForProfile(
         type: 'default',
         hasMeta: false,
         onSite: false,
-        // generationData: {
-        //   create: {
-        //     prompt: '', // Will be filled later
-        //     steps: 20,
-        //     cfgScale: 7.0,
-        //     createdDate: new Date(),
-        //   },
-        // },
       },
     });
     // Update profile to link to the new image
@@ -150,7 +142,8 @@ export async function generateImageForProfile(req: Request, res: Response) {
       passageText,
       bookTitle,
       forceRegenerate,
-      characterImageSize
+      characterImageSize,
+      null
     );
 
     res.json(result);
@@ -164,7 +157,7 @@ export async function generateImageForProfile(req: Request, res: Response) {
 
 export async function generateImagesForChapter(req: Request, res: Response) {
   const { chapterId } = req.params;
-  const { forceRegenerate } = req.body;
+  const { forceRegenerate, profileOptions, backgroundOptions } = req.body;
 
   if (!chapterId) {
     res.status(400).json({ error: 'Chapter ID is required.' });
@@ -216,7 +209,12 @@ export async function generateImagesForChapter(req: Request, res: Response) {
     (async () => {
       for (const [index, sceneId] of sceneIds.entries()) {
         try {
-          await generateImagesForSceneLogic(sceneId, forceRegenerate);
+          await generateImagesForSceneLogic(
+            sceneId,
+            forceRegenerate,
+            profileOptions,
+            backgroundOptions
+          );
 
           // Update job progress
           await prisma.imageGenerationJob.update({
@@ -303,13 +301,14 @@ export async function listJobs(req: Request, res: Response) {
   }
 }
 
-// Helper function to generate image for a profile
+// Modify the function signature to accept profileOptions
 async function generateImageForProfileHelper(
   profile: ProfileWithRelations,
   passageText: string,
   bookTitle: string,
   forceRegenerate: boolean,
-  characterImageSize: { width: number; height: number }
+  characterImageSize: { width: number; height: number },
+  profileOptions: any // Add this parameter
 ): Promise<{
   profileId: number;
   profileName: string;
@@ -323,24 +322,27 @@ async function generateImageForProfileHelper(
 
     // Determine model file name
     let modelFileName: string | null = null;
-    const checkpointResource = civitaiResources?.find(
-      (resource) => resource?.modelType.toLowerCase() === 'checkpoint'
-    );
-    const loraResources =
-      civitaiResources?.filter(
-        (resource) => resource?.modelType.toLowerCase() === 'lora'
-      ) || [];
 
-    if (checkpointResource) {
-      const aiModel = await prisma.aiModel.findUnique({
-        where: { id: checkpointResource.modelId },
-      });
-      if (aiModel) {
-        modelFileName = aiModel.fileName;
-      }
+    // Use the checkpoint from profileOptions if provided
+    if (profileOptions?.checkpoint) {
+      modelFileName = profileOptions.checkpoint;
     } else {
-      // Use default model if no checkpointResource
-      modelFileName = 'dreamshaper_8.safetensors'; // Replace with your default model
+      // Existing logic to determine the model
+      const checkpointResource = civitaiResources?.find(
+        (resource) => resource?.modelType.toLowerCase() === 'checkpoint'
+      );
+
+      if (checkpointResource) {
+        const aiModel = await prisma.aiModel.findUnique({
+          where: { id: checkpointResource.modelId },
+        });
+        if (aiModel) {
+          modelFileName = aiModel.fileName;
+        }
+      } else {
+        // Use default model if no checkpointResource
+        modelFileName = 'dreamshaper_8.safetensors'; // Replace with your default model
+      }
     }
 
     if (!modelFileName) {
@@ -394,13 +396,21 @@ async function generateImageForProfileHelper(
       }
     }
 
+    // Handle LoRAs
+    const positiveLoras = profileOptions?.positiveLoras || [];
+    const negativeLoras = profileOptions?.negativeLoras || [];
+
     // Generate image
     const imageResult = await generateImage({
       prompt: finalPrompt,
       negative_prompt: finalNegativePrompt,
       steps: generationData.steps,
       ...characterImageSize,
-      loras: loraResources.filter((l) => l).map((lora) => lora!.model.fileName),
+      // Pass the options to generateImage
+      positive_loras: positiveLoras,
+      negative_loras: negativeLoras,
+      embeddings: profileOptions?.embeddings,
+      negative_embeddings: profileOptions?.negativeEmbeddings,
       model: modelFileName,
       removeBackground: true,
       // cfg_scale: generationData.cfgScale,
@@ -436,13 +446,14 @@ async function generateImageForProfileHelper(
   }
 }
 
-// Helper function to generate background image for a scene
+// Modify the function signature to accept backgroundOptions
 async function generateBackgroundImageForScene(
   scene: SceneWithRelations,
   combinedSceneText: string,
   bookTitle: string,
   forceRegenerate: boolean,
-  backgroundSceneSize: { width: number; height: number }
+  backgroundSceneSize: { width: number; height: number },
+  backgroundOptions: any // Add this parameter
 ): Promise<{ image: string | null; error?: string }> {
   try {
     // Ensure GenerationData exists for the scene background
@@ -492,14 +503,33 @@ async function generateBackgroundImageForScene(
       generationData.negativePrompt = prompts.negativePrompt;
     }
 
+    let finalPrompt = generationData.prompt;
+    let finalNegativePrompt = generationData.negativePrompt;
+
+    // Handle LoRAs
+    const positiveLoras = backgroundOptions?.positiveLoras || [];
+    const negativeLoras = backgroundOptions?.negativeLoras || [];
+
+    // Determine model file name
+    let modelFileName = 'dreamshaper_8.safetensors'; // Replace with your default model
+
+    // Use the checkpoint from backgroundOptions if provided
+    if (backgroundOptions?.checkpoint) {
+      modelFileName = backgroundOptions.checkpoint;
+    }
+
     // Generate image
     const imageResult = await generateImage({
-      prompt: generationData.prompt,
-      negative_prompt: generationData.negativePrompt,
+      prompt: finalPrompt,
+      negative_prompt: finalNegativePrompt,
       steps: generationData.steps,
       ...backgroundSceneSize,
-      loras: [], // No loras for background
-      model: 'dreamshaper_8.safetensors', // Use your default background model
+      // Pass the options to generateImage
+      positive_loras: positiveLoras,
+      negative_loras: negativeLoras,
+      embeddings: backgroundOptions?.embeddings,
+      negative_embeddings: backgroundOptions?.negativeEmbeddings,
+      model: modelFileName,
       // Additional params if needed
     });
 
@@ -605,7 +635,8 @@ export async function generateImagesForPassage(req: Request, res: Response) {
         passage.textContent,
         passage.book.title,
         forceRegenerate,
-        characterImageSize
+        characterImageSize,
+        null
       )
     );
 
@@ -615,7 +646,8 @@ export async function generateImagesForPassage(req: Request, res: Response) {
       combinedSceneText,
       passage.book.title,
       forceRegenerate,
-      backgroundSceneSize
+      backgroundSceneSize,
+      null
     ).then((result) => ({
       profileId: 0,
       profileName: 'Background Scene',
@@ -707,7 +739,8 @@ export async function generateImagesForScene(req: Request, res: Response) {
         combinedSceneText,
         scene.book.title,
         forceRegenerate,
-        characterImageSize
+        characterImageSize,
+        null
       )
     );
 
@@ -717,7 +750,8 @@ export async function generateImagesForScene(req: Request, res: Response) {
       combinedSceneText,
       scene.book.title,
       forceRegenerate,
-      backgroundSceneSize
+      backgroundSceneSize,
+      null
     );
 
     // Prepare response
@@ -787,7 +821,12 @@ export async function generateImagesForMultipleScenes(
     for (const scene of scenes) {
       try {
         // Reuse generateImagesForScene logic
-        await generateImagesForSceneLogic(scene.id, forceRegenerate);
+        await generateImagesForSceneLogic(
+          scene.id,
+          forceRegenerate,
+          null,
+          null
+        );
         successScenes.push(scene.id);
       } catch (error: any) {
         console.error(`Error generating images for scene ${scene.id}:`, error);
@@ -812,7 +851,9 @@ export async function generateImagesForMultipleScenes(
 // Helper function to generate images for a single scene without HTTP response
 async function generateImagesForSceneLogic(
   sceneId: number,
-  forceRegenerate: boolean
+  forceRegenerate: boolean,
+  profileOptions: any,
+  backgroundOptions: any
 ) {
   // Fetch the scene with its passages and profiles
   const scene = await prisma.scene.findUnique({
@@ -862,7 +903,7 @@ async function generateImagesForSceneLogic(
   const uniqueProfiles = Object.values(uniqueProfilesMap);
 
   if (uniqueProfiles.length === 0) {
-    throw new Error('No profiles linked to this scene.');
+    console.log('No profiles linked to this scene.');
   }
 
   // Generate images for each unique profile
@@ -872,7 +913,8 @@ async function generateImagesForSceneLogic(
       combinedSceneText,
       scene.book.title,
       forceRegenerate,
-      characterImageSize
+      characterImageSize,
+      profileOptions
     )
   );
 
@@ -882,7 +924,8 @@ async function generateImagesForSceneLogic(
     combinedSceneText,
     scene.book.title,
     forceRegenerate,
-    backgroundSceneSize
+    backgroundSceneSize,
+    backgroundOptions
   );
 
   // Prepare response (optional, since this function doesn't return HTTP response)
