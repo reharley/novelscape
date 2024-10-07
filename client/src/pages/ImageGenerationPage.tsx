@@ -65,7 +65,7 @@ const ChapterImageGenerationPage: React.FC = () => {
     setSelectedBackgroundNegativeEmbeddings,
   ] = useState<string[]>([]);
 
-  const baseUrl = 'http://localhost:5000/api'; // Adjust as needed
+  const baseUrl = 'http://' + window.location.hostname + ':5000/api'; // Adjust as needed
   // Fetch models and resources
   useEffect(() => {
     const fetchResources = async () => {

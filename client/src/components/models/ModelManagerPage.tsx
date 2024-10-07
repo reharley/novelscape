@@ -36,7 +36,7 @@ const ModelManagerPage: React.FC = () => {
     useState<AiModel | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
 
-  const baseUrl = 'http://localhost:5000/api';
+  const baseUrl = 'http://' + window.location.hostname + ':5000/api';
 
   useEffect(() => {
     const fetchDownloadedModels = async () => {

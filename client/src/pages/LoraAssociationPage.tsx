@@ -25,7 +25,7 @@ const LoraAssociationPage: React.FC = () => {
   const [selectedLoras, setSelectedLoras] = useState<number[]>([]);
   const [isModalVisible, setIsModalVisible] = useState<boolean>(false);
 
-  const baseUrl = 'http://localhost:5000/api';
+  const baseUrl = 'http://' + window.location.hostname + ':5000/api';
 
   useEffect(() => {
     fetchProfiles();

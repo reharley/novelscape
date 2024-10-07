@@ -43,7 +43,7 @@ const ModelSelectionModal: React.FC<ModelSelectionModalProps> = ({
   const [imageCarouselVisible, setImageCarouselVisible] =
     useState<boolean>(false);
 
-  const baseUrl = 'http://localhost:5000/api';
+  const baseUrl = 'http://' + window.location.hostname + ':5000/api';
   console.log('selectedModel:', selectedModel);
   console.log('selectedImage:', selectedImage);
   useEffect(() => {

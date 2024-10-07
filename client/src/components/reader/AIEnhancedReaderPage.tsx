@@ -17,6 +17,7 @@ import {
 import axios from 'axios';
 import html2canvas from 'html2canvas';
 import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   AiModel,
   Book,
@@ -35,7 +36,7 @@ const { Option } = Select;
 const { Panel } = Collapse;
 
 const AIEnhancedReaderPage: React.FC = () => {
-  // Existing state variables
+  const navigate = useNavigate();
   const [books, setBooks] = useState<Book[]>([]);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>([]);
@@ -70,7 +71,8 @@ const AIEnhancedReaderPage: React.FC = () => {
   const [loadingMultipleScenes, setLoadingMultipleScenes] =
     useState<boolean>(false);
 
-  const baseUrl = 'http://localhost:5000/api';
+  const baseUrl = 'http://' + window.location.hostname + ':5000/api';
+  console.log('baseUrl:', baseUrl);
 
   // Ref for the passage display area
   const passageRef = useRef<HTMLDivElement>(null);
@@ -703,6 +705,17 @@ const AIEnhancedReaderPage: React.FC = () => {
                 disabled={!currentPassage}
               >
                 Download Passage
+              </Button>
+              <Button
+                onClick={() =>
+                  navigate(
+                    `/reader/${selectedBook?.id}/${selectedChapter}/${currentPassageIndex}`
+                  )
+                }
+                type='default'
+                disabled={!currentPassage}
+              >
+                Open Fullscreen
               </Button>
             </Space>
 
