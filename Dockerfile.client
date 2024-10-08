@@ -1,0 +1,21 @@
+FROM node:20-alpine
+
+WORKDIR /usr/src/app
+
+RUN mkdir ./client
+
+COPY ./client ./client
+
+WORKDIR /usr/src/app/client
+RUN npm install
+
+COPY ./client/.env.production .env
+
+RUN npm run build
+
+RUN rm .env.*
+RUN rm .env
+
+EXPOSE 8080
+
+CMD ["npm", "start"] 

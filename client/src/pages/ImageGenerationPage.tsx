@@ -14,6 +14,7 @@ import axios from 'axios';
 import React, { useEffect, useState } from 'react';
 import JobCard from '../components/JobCard';
 import LoraSelector from '../components/LoraSelector';
+import { apiUrl } from '../utils/general';
 import { Book, Chapter, ImageGenerationJob } from '../utils/types';
 
 const { Content } = Layout;
@@ -65,7 +66,7 @@ const ChapterImageGenerationPage: React.FC = () => {
     setSelectedBackgroundNegativeEmbeddings,
   ] = useState<string[]>([]);
 
-  const baseUrl = 'http://' + window.location.hostname + ':5000/api'; // Adjust as needed
+  const baseUrl = apiUrl + '/api';
   // Fetch models and resources
   useEffect(() => {
     const fetchResources = async () => {

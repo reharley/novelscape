@@ -36,13 +36,13 @@ const ModelManagerPage: React.FC = () => {
     useState<AiModel | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
 
-  const baseUrl = 'http://' + window.location.hostname + ':5000/api';
+  const apiUrl = import.meta.env.VITE_API_URL + '/api';
 
   useEffect(() => {
     const fetchDownloadedModels = async () => {
       try {
         const response = await axios.get<AiModel[]>(
-          `${baseUrl}/ai-models/list-models`
+          `${apiUrl}/ai-models/list-models`
         );
         const models = response.data;
         setDownloadedModels(models);
@@ -62,7 +62,7 @@ const ModelManagerPage: React.FC = () => {
     const fetchDownloadedLoras = async () => {
       try {
         const response = await axios.get<AiModel[]>(
-          `${baseUrl}/ai-models/list-loras`
+          `${apiUrl}/ai-models/list-loras`
         );
         const loras = response.data;
         setDownloadedLoras(loras);
@@ -89,7 +89,7 @@ const ModelManagerPage: React.FC = () => {
     if (!query) return;
     setLoading(true);
     try {
-      const response = await axios.get(`${baseUrl}/search`, {
+      const response = await axios.get(`${apiUrl}/search`, {
         params: { query },
       });
       const modelsData = response.data.items.map((item: any) => ({
@@ -111,7 +111,7 @@ const ModelManagerPage: React.FC = () => {
     if (!window.confirm(`Are you sure you want to load this ${model.type}?`))
       return;
     try {
-      const response = await axios.post(`${baseUrl}/ai-models/load-model`, {
+      const response = await axios.post(`${apiUrl}/ai-models/load-model`, {
         modelId: model.id, // Ensure you're sending the correct ID
       });
       message.info(response.data.message);
@@ -130,12 +130,12 @@ const ModelManagerPage: React.FC = () => {
     }
     setLoading(true);
     try {
-      const response = await axios.post(`${baseUrl}/generate-image`, {
+      const response = await axios.post(`${apiUrl}/generate-image`, {
         prompt,
         loras: selectedLoras, // These are fileNames
         model: selectedModel.fileName, // This is the fileName of the selected model
       });
-      setGeneratedImage(`data:image/png;base64,${response.data.image}`);
+      setGeneratedImage(response.data.imageUrl);
     } catch (error: any) {
       console.error('Error generating image:', error);
       message.error(

@@ -11,6 +11,7 @@ import {
 } from 'antd';
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
+import { apiUrl } from '../utils/general';
 import { AiModel, Profile } from '../utils/types';
 
 const { Content } = Layout;
@@ -25,7 +26,7 @@ const LoraAssociationPage: React.FC = () => {
   const [selectedLoras, setSelectedLoras] = useState<number[]>([]);
   const [isModalVisible, setIsModalVisible] = useState<boolean>(false);
 
-  const baseUrl = 'http://' + window.location.hostname + ':5000/api';
+  const baseUrl = apiUrl + '/api';
 
   useEffect(() => {
     fetchProfiles();

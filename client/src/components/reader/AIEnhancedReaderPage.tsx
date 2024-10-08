@@ -18,6 +18,7 @@ import axios from 'axios';
 import html2canvas from 'html2canvas';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiUrl } from '../../utils/general';
 import {
   AiModel,
   Book,
@@ -71,7 +72,7 @@ const AIEnhancedReaderPage: React.FC = () => {
   const [loadingMultipleScenes, setLoadingMultipleScenes] =
     useState<boolean>(false);
 
-  const baseUrl = 'http://' + window.location.hostname + ':5000/api';
+  const baseUrl = apiUrl + '/api';
   console.log('baseUrl:', baseUrl);
 
   // Ref for the passage display area

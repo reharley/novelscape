@@ -3,6 +3,7 @@
 import { Carousel, Image, Modal, Spin, Typography } from 'antd';
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
+import { apiUrl } from '../../utils/general';
 import { AiModel, GenerationData, ModelImage } from '../../utils/types';
 
 const { Title, Paragraph } = Typography;
@@ -36,13 +37,13 @@ const ModelPreview: React.FC<ModelPreviewProps> = ({
     try {
       // Assuming the first image is representative
       const response = await axios.get<GenerationData>(
-        `http://localhost:5000/api/civitai/${model.id}`
+        apiUrl + `/api/civitai/${model.id}`
       );
       setGenerationData(response.data);
 
       // Fetch associated images from ModelImage
       const modelImage = await axios.get<ModelImage>(
-        `http://localhost:5000/api/model-images/${model.id}`
+        apiUrl + `/api/model-images/${model.id}`
       );
       setCarouselImages([modelImage.data.url]); // Adjust if multiple images are associated
     } catch (error) {

@@ -14,6 +14,7 @@ import {
 } from 'antd';
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
+import { apiUrl } from '../../utils/general';
 import { getNsfwLabel } from '../../utils/nsfw'; // Import the utility function
 import { AiModel, ModelImage } from '../../utils/types';
 
@@ -43,7 +44,7 @@ const ModelSelectionModal: React.FC<ModelSelectionModalProps> = ({
   const [imageCarouselVisible, setImageCarouselVisible] =
     useState<boolean>(false);
 
-  const baseUrl = 'http://' + window.location.hostname + ':5000/api';
+  const baseUrl = apiUrl + '/api';
   console.log('selectedModel:', selectedModel);
   console.log('selectedImage:', selectedImage);
   useEffect(() => {

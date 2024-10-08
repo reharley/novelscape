@@ -1,6 +1,7 @@
 import { Button, Layout, Progress, Select, Space, Typography } from 'antd';
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
+import { apiUrl } from '../../utils/general';
 import { Book } from '../../utils/types';
 
 const { Content } = Layout;
@@ -29,14 +30,14 @@ const BookReaderPage: React.FC = () => {
 
   useEffect(() => {
     axios
-      .get('http://localhost:5000/api/books')
+      .get(apiUrl + '/api/books')
       .then((response) => setBooks(response.data))
       .catch((error) => console.error(error));
   }, []);
 
   const fetchBookContent = (bookId: string) => {
     axios
-      .get(`http://localhost:5000/api/books/${bookId}`)
+      .get(apiUrl + `/api/books/${bookId}`)
       .then((response) => {
         setChapters(response.data);
         setCurrentChapterIndex(0);

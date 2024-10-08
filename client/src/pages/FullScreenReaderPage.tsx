@@ -1,10 +1,19 @@
-import { Button, Image, message, Space, Spin, Typography } from 'antd';
+import {
+  Button,
+  Image,
+  message,
+  Progress,
+  Space,
+  Spin,
+  Typography,
+} from 'antd';
 import axios from 'axios';
 import html2canvas from 'html2canvas';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import ModelPreview from '../components/reader/ModelPreview';
 import ModelSelectionModal from '../components/reader/ModelSelectionModal';
+import { apiUrl } from '../utils/general';
 import { AiModel, ModelImage, Passage, Profile } from '../utils/types';
 
 const { Title, Text, Paragraph } = Typography;
@@ -47,7 +56,7 @@ const AIEnhancedReaderPage: React.FC = () => {
   const [loadingMultipleScenes, setLoadingMultipleScenes] =
     useState<boolean>(false);
 
-  const baseUrl = 'http://' + window.location.hostname + ':5000/api';
+  const baseUrl = apiUrl + '/api';
 
   // Ref for the passage display area
   const passageRef = useRef<HTMLDivElement>(null);
@@ -312,7 +321,10 @@ const AIEnhancedReaderPage: React.FC = () => {
     }
   };
 
-  const handleNextPassage = () => {
+  const handleNextPassage = (
+    event?: React.MouseEvent<HTMLElement, MouseEvent>
+  ) => {
+    event?.stopPropagation();
     if (currentPassageIndex < passages.length - 1) {
       const newIndex = currentPassageIndex + 1;
       setCurrentPassageIndex(newIndex);
@@ -321,24 +333,16 @@ const AIEnhancedReaderPage: React.FC = () => {
     }
   };
 
-  const handlePreviousPassage = () => {
+  const handlePreviousPassage = (
+    event?: React.MouseEvent<HTMLElement, MouseEvent>
+  ) => {
+    event?.stopPropagation();
     if (currentPassageIndex > 0) {
       const newIndex = currentPassageIndex - 1;
       setCurrentPassageIndex(newIndex);
       navigate(`/reader/${bookId}/${chapterId}/${newIndex}`);
       setBackgroundImage(null);
     }
-  };
-
-  const handlePassageChange = (passageIndex: number) => {
-    setCurrentPassageIndex(passageIndex);
-    navigate(`/reader/${bookId}/${chapterId}/${passageIndex}`);
-    setBackgroundImage(null);
-  };
-
-  const handleProfileClick = (profile: Profile) => {
-    setSelectedProfile(profile);
-    setIsModelModalVisible(true);
   };
 
   // New handler for image selection
@@ -386,7 +390,10 @@ const AIEnhancedReaderPage: React.FC = () => {
     : 0;
 
   // Handler for downloading the passage image
-  const handleDownload = async () => {
+  const handleDownload = async (
+    event: React.MouseEvent<HTMLElement, MouseEvent>
+  ) => {
+    event.stopPropagation();
     if (!passageRef.current) {
       message.error('Passage area not found.');
       return;
@@ -408,7 +415,8 @@ const AIEnhancedReaderPage: React.FC = () => {
       // Create a temporary link to trigger the download
       const link = document.createElement('a');
       link.href = imgData;
-      link.download = `passage_${currentPassageIndex + 1}.png`;
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      link.download = `passage_${currentPassageIndex + 1}_${timestamp}.png`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -502,7 +510,8 @@ const AIEnhancedReaderPage: React.FC = () => {
 
         {/* Character Images */}
         {currentPassage && currentPassage.profiles.length > 0 && (
-          <div
+          <Space
+            wrap
             style={{
               position: 'absolute',
               top: '10%', // Adjust vertical position as needed
@@ -510,6 +519,7 @@ const AIEnhancedReaderPage: React.FC = () => {
               transform: 'translateX(-50%)',
               display: 'flex',
               justifyContent: 'space-around',
+              // overflowY: 'auto',
               width: '90%',
               zIndex: 3,
             }}
@@ -526,6 +536,9 @@ const AIEnhancedReaderPage: React.FC = () => {
                   <Image
                     src={profile.imageUrl}
                     alt={`${profile.name} Image`}
+                    onClick={(e: React.MouseEvent) => {
+                      e.stopPropagation();
+                    }}
                     style={{
                       width: '150px',
                       margin: '0 10px',
@@ -536,7 +549,7 @@ const AIEnhancedReaderPage: React.FC = () => {
                   />
                 </Space>
               ))}
-          </div>
+          </Space>
         )}
 
         {/* Text Box with Passage Text and Next/Previous Buttons */}
@@ -567,6 +580,7 @@ const AIEnhancedReaderPage: React.FC = () => {
                 justifyContent: 'end',
               }}
             >
+              <Button onClick={handleDownload}>Download</Button>
               <Button
                 onClick={handlePreviousPassage}
                 disabled={currentPassageIndex === 0}
@@ -575,11 +589,17 @@ const AIEnhancedReaderPage: React.FC = () => {
               </Button>
               <Button
                 onClick={handleNextPassage}
+                type='primary'
                 disabled={currentPassageIndex === passages.length - 1}
               >
                 Next
               </Button>
             </div>
+            <Progress
+              percent={readingProgress}
+              strokeColor='#1890ff'
+              trailColor='#333'
+            />
           </div>
         )}
 

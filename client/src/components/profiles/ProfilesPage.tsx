@@ -11,6 +11,7 @@ import {
 } from 'antd';
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
+import { apiUrl } from '../../utils/general';
 
 const { Content } = Layout;
 const { Option } = Select;
@@ -43,7 +44,7 @@ const ProfilesPage: React.FC = () => {
   // Fetch available books from the file system
   useEffect(() => {
     axios
-      .get('http://localhost:5000/api/books/files')
+      .get(apiUrl + '/api/books/files')
       .then((response) => setBookFiles(response.data))
       .catch((error) => console.error('Error fetching book files:', error));
   }, []);
@@ -53,7 +54,7 @@ const ProfilesPage: React.FC = () => {
     if (selectedBookFile !== null) {
       setLoadingProfiles(true);
       axios
-        .get(`http://localhost:5000/api/books/${selectedBookFile}/profiles`)
+        .get(apiUrl + `/api/books/${selectedBookFile}/profiles`)
         .then((response) => setProfiles(response.data))
         .catch((error) => console.error('Error fetching profiles:', error))
         .finally(() => setLoadingProfiles(false));
@@ -76,7 +77,7 @@ const ProfilesPage: React.FC = () => {
     try {
       // Start listening to progress updates
       const eventSource = new EventSource(
-        `http://localhost:5000/api/books/${selectedBookFile}/extract-profiles/progress`
+        apiUrl + `/api/books/${selectedBookFile}/extract-profiles/progress`
       );
 
       eventSource.onmessage = (event) => {
@@ -105,7 +106,7 @@ const ProfilesPage: React.FC = () => {
 
       // Trigger profile extraction
       await axios.post(
-        `http://localhost:5000/api/books/${selectedBookFile}/extract-profiles`
+        apiUrl + `/api/books/${selectedBookFile}/extract-profiles`
       );
     } catch (error) {
       message.error('Error extracting profiles.');
@@ -125,9 +126,7 @@ const ProfilesPage: React.FC = () => {
         'Are you sure you want to delete this book and all associated profiles?',
       onOk: async () => {
         try {
-          await axios.delete(
-            `http://localhost:5000/api/books/${selectedBookFile}`
-          );
+          await axios.delete(apiUrl + `/api/books/${selectedBookFile}`);
           message.success('Book and profiles deleted successfully.');
           setProfiles([]);
         } catch (error) {

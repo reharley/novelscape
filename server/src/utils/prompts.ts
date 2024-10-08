@@ -182,7 +182,7 @@ export async function generateBackgroundPrompt(
   
     **Guidelines:**
   
-    1. **Positive Prompt**: Should vividly describe the background scene incorporating elements from all profiles (if any). If there are no profiles, focus solely on the passage content to describe the scene. The prompt should be creative, detailed, and tailored to the context of the passage, profiles, and the book. Never focus on the characters directly.
+    1. **Positive Prompt**: Should vividly describe the background scene as a comma separated list of attributes incorporating elements solely from the passage content to describe the scene. **Never** write character descriptions.
     2. **Negative Prompt**: Should include elements to avoid in the image generation to ensure higher quality and relevance. Should avoid drawing characters/people unless they are in the background. Focus on common issues like poor anatomy, incorrect proportions, unwanted artifacts, etc.
     3. **Incorporate Profiles**: Use the profiles' names and descriptions to enrich the prompts, ensuring that the profiles' unique traits are reflected accurately within the scene when profiles are present.
     4. **Book Context**: Utilize the book name to maintain consistency with the book's theme and setting.
@@ -202,21 +202,6 @@ export async function generateBackgroundPrompt(
     \`\`\`
     ${textContent}
     \`\`\`
-  
-    - **Profiles**:
-    ${
-      profiles.length > 0
-        ? profiles
-            .map(
-              (profile) => `
-    **Profile: ${profile.name}**
-    Descriptions:
-    ${profile.descriptions.map((desc) => `- ${desc}`).join('\n')}
-    `
-            )
-            .join('\n')
-        : 'No non-character profiles provided.'
-    }
   
     **Please generate the positive and negative prompts for the background scene accordingly.**
     `;
@@ -255,6 +240,8 @@ export async function generateBackgroundPrompt(
     if (!prompts.positivePrompt || !prompts.negativePrompt) {
       throw new Error('Incomplete prompt data received from OpenAI.');
     }
+
+    console.log('Generated background prompts:', prompts);
 
     return {
       positivePrompt: prompts.positivePrompt,
