@@ -45,8 +45,6 @@ const ModelSelectionModal: React.FC<ModelSelectionModalProps> = ({
     useState<boolean>(false);
 
   const baseUrl = apiUrl + '/api';
-  console.log('selectedModel:', selectedModel);
-  console.log('selectedImage:', selectedImage);
   useEffect(() => {
     if (visible) {
       fetchModels();

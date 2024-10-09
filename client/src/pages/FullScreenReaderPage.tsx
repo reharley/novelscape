@@ -125,7 +125,6 @@ const AIEnhancedReaderPage: React.FC = () => {
         `${baseUrl}/books/${bookId}/chapters/${chapterId}/passages`
       )
       .then((response) => {
-        console.log('Fetched Passages:', response.data);
         const fetchedPassages = response.data;
         const processedPassages: Passage[] = [];
 
@@ -365,11 +364,6 @@ const AIEnhancedReaderPage: React.FC = () => {
       // Optionally, update local state with the updated profile
       if (response.data.profile) {
         setSelectedProfile(response.data.profile);
-      }
-
-      // Handle model load message if needed
-      if (response.data.modelLoad) {
-        console.log(response.data.modelLoad.message);
       }
     } catch (error: any) {
       console.error('Error setting up profile:', error);

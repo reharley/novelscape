@@ -113,9 +113,6 @@ const BookReaderPage: React.FC = () => {
       )
     : 0;
 
-  console.log('currentChapter', currentChapter);
-  console.log('currentContent', currentContent);
-  console.log(books);
   return (
     <Layout>
       <Content style={{ padding: '50px' }}>

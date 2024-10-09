@@ -1,3 +1,4 @@
+import { useIsAuthenticated } from '@azure/msal-react';
 import { Layout, Menu } from 'antd';
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
@@ -6,6 +7,7 @@ const { Header, Content, Footer } = Layout;
 
 const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
+  const isAuthenticated = useIsAuthenticated();
 
   // Determine the selected menu item based on the current route
   const selectedKeys = [location.pathname];
@@ -41,6 +43,9 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
           </Menu.Item>
           <Menu.Item key='/chapter-generation'>
             <Link to='/chapter-generation'>Chapter Generation</Link>
+          </Menu.Item>
+          <Menu.Item key='/user'>
+            <Link to='/user'>User</Link>
           </Menu.Item>
         </Menu>
       </Header>

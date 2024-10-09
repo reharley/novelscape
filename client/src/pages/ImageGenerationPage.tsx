@@ -131,8 +131,6 @@ const ChapterImageGenerationPage: React.FC = () => {
 
   // Polling mechanism to fetch job statuses periodically
   useEffect(() => {
-    console.log('Setting up polling...');
-
     // Define the polling function
     const fetchJobs = async () => {
       try {

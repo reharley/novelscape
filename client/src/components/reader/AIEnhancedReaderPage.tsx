@@ -73,7 +73,6 @@ const AIEnhancedReaderPage: React.FC = () => {
     useState<boolean>(false);
 
   const baseUrl = apiUrl + '/api';
-  console.log('baseUrl:', baseUrl);
 
   // Ref for the passage display area
   const passageRef = useRef<HTMLDivElement>(null);
@@ -155,7 +154,6 @@ const AIEnhancedReaderPage: React.FC = () => {
         `${baseUrl}/books/${bookId}/chapters/${chapterId}/passages`
       )
       .then((response) => {
-        console.log('Fetched Passages:', response.data);
         const fetchedPassages = response.data;
         const processedPassages: Passage[] = [];
 
@@ -373,7 +371,6 @@ const AIEnhancedReaderPage: React.FC = () => {
     setBackgroundImage(null);
     // setProfileImages({}); // Reset profile images when changing passage
   };
-  console.log('backgroundImage:', backgroundImage);
 
   const handleChapterChange = (chapterId: number) => {
     setSelectedChapter(chapterId);
@@ -407,11 +404,6 @@ const AIEnhancedReaderPage: React.FC = () => {
       // Optionally, update local state with the updated profile
       if (response.data.profile) {
         setSelectedProfile(response.data.profile);
-      }
-
-      // Handle model load message if needed
-      if (response.data.modelLoad) {
-        console.log(response.data.modelLoad.message);
       }
     } catch (error: any) {
       console.error('Error setting up profile:', error);
@@ -467,7 +459,6 @@ const AIEnhancedReaderPage: React.FC = () => {
       passageRef.current.style.borderRadius = originalBorderRadius;
     }
   };
-  console.log('currentPassage:', currentPassage);
   return (
     <Layout style={{ minHeight: '100vh', backgroundColor: '#1a1a1a' }}>
       <Content

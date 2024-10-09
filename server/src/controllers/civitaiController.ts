@@ -92,7 +92,6 @@ export async function fetchGenerationData(
   imageId: number
 ): Promise<GenerationMeta | null> {
   const url = generateUrl(imageId);
-  console.log(`Fetching data from URL: ${url}`);
 
   try {
     const response = await axios.get<CivitaiResponse>(url, {
@@ -108,7 +107,6 @@ export async function fetchGenerationData(
     }
 
     const meta: GenerationMeta = response.data.result.data.json.meta;
-    console.log('Generation Data:', meta);
 
     // Parse createdDate to Date object
     const createdDate = new Date(meta['Created Date'] ?? null);
@@ -170,8 +168,6 @@ export async function fetchGenerationData(
         civitaiResources: true,
       },
     });
-
-    console.log('Upserted GenerationData:', upsertedGenerationData);
 
     return meta;
   } catch (error: any) {

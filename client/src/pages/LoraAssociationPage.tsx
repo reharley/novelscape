@@ -62,7 +62,6 @@ const LoraAssociationPage: React.FC = () => {
   // Handle profile selection
   const handleProfileSelect = (profileId: number) => {
     const profile = profiles.find((p) => p.id === profileId) || null;
-    console.log(profile, profiles);
     setSelectedProfile(profile);
     if (profile) {
       setSelectedLoras(profile.aiModels.map((lora) => lora.id));
