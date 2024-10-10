@@ -45,11 +45,8 @@ async function ensureGenerationDataForProfile(
 ): Promise<void> {
   if (!profile.image) {
     // Create a default ModelImage for the profile
-    const randomId = Math.floor(Math.random() * 1000000);
     const modelImage = await prisma.modelImage.create({
       data: {
-        // randomId: '', // Optional random
-        id: randomId, // Random ID
         url: '', // Placeholder
         modelId: 4384, // Or some default modelId
         nsfwLevel: 0,
@@ -401,23 +398,26 @@ async function generateImageForProfileHelper(
     const negativeLoras = profileOptions?.negativeLoras || [];
 
     // Generate image
-    const imageResult = await generateImage({
-      prompt: finalPrompt,
-      negative_prompt: finalNegativePrompt,
-      steps: generationData.steps,
-      ...characterImageSize,
-      // Pass the options to generateImage
-      positive_loras: positiveLoras,
-      negative_loras: negativeLoras,
-      embeddings: profileOptions?.embeddings,
-      negative_embeddings: profileOptions?.negativeEmbeddings,
-      model: modelFileName,
-      removeBackground: true,
-      // cfg_scale: generationData.cfgScale,
-      // sampler: generationData.sampler,
-      // seed: generationData.seed,
-      // clip_skip: generationData.clipSkip,
-    });
+    const imageResult = await generateImage(
+      {
+        prompt: finalPrompt,
+        negative_prompt: finalNegativePrompt,
+        steps: generationData.steps,
+        ...characterImageSize,
+        // Pass the options to generateImage
+        positive_loras: positiveLoras,
+        negative_loras: negativeLoras,
+        embeddings: profileOptions?.embeddings,
+        negative_embeddings: profileOptions?.negativeEmbeddings,
+        model: modelFileName,
+        removeBackground: true,
+        // cfg_scale: generationData.cfgScale,
+        // sampler: generationData.sampler,
+        // seed: generationData.seed,
+        // clip_skip: generationData.clipSkip,
+      },
+      generationData
+    );
 
     // Update profile.imageUrl in database
     await prisma.profile.update({
@@ -426,6 +426,14 @@ async function generateImageForProfileHelper(
         imageUrl: imageResult.imageUrl,
       },
     });
+    if (profile?.image) {
+      await prisma.modelImage.update({
+        where: { id: profile.image.id },
+        data: {
+          url: imageResult.imageUrl,
+        },
+      });
+    }
 
     return {
       profileId: profile.id,
@@ -519,26 +527,28 @@ async function generateBackgroundImageForScene(
     }
 
     // Generate image
-    const imageResult = await generateImage({
-      prompt: finalPrompt,
-      negative_prompt: finalNegativePrompt,
-      steps: generationData.steps,
-      ...backgroundSceneSize,
-      // Pass the options to generateImage
-      positive_loras: positiveLoras,
-      negative_loras: negativeLoras,
-      embeddings: backgroundOptions?.embeddings,
-      negative_embeddings: backgroundOptions?.negativeEmbeddings,
-      model: modelFileName,
-      // Additional params if needed
-    });
+    const imageResult = await generateImage(
+      {
+        prompt: finalPrompt,
+        negative_prompt: finalNegativePrompt,
+        steps: generationData.steps,
+        ...backgroundSceneSize,
+        // Pass the options to generateImage
+        positive_loras: positiveLoras,
+        negative_loras: negativeLoras,
+        embeddings: backgroundOptions?.embeddings,
+        negative_embeddings: backgroundOptions?.negativeEmbeddings,
+        model: modelFileName,
+        // Additional params if needed
+      },
+      generationData
+    );
 
     // Update scene.imageUrl
     await prisma.scene.update({
       where: { id: scene.id },
       data: { imageUrl: imageResult.imageUrl },
     });
-
     return { image: imageResult.imageUrl };
   } catch (error: any) {
     console.error('Error generating background image:', error);

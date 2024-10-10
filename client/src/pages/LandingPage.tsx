@@ -233,7 +233,7 @@ const LandingPage: React.FC = () => {
                   style={{
                     textAlign: 'center',
                     padding: '20px',
-                    background: '#fafafa',
+                    // background: '#fafafa',
                     borderRadius: '8px',
                   }}
                 >

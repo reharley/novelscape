@@ -59,7 +59,7 @@ export async function generateProfilePrompt(
     .join('\n\n');
 
   const systemPrompt = `
-    You are an expert prompt engineer specializing in generating full body portrait prompts for standard diffusion image generation. Your task is to create both positive and negative prompts based on the provided passage content, associated profile, and the book name.
+    You are an expert prompt engineer specializing in generating full body portrait prompts for standard diffusion image generation. Your task is to create both positive and negative prompts based on the profile.
     
     **Guidelines:**
     
@@ -75,14 +75,6 @@ export async function generateProfilePrompt(
     ${examplesString}
     
     **Data Provided:**
-    
-    - **Book Name**: "${bookName}"
-    
-    - **Passage Content**:
-    \`\`\`
-    ${textContent}
-    \`\`\`
-    
     - **Profile**:
     **Profile: ${profile.name}**
     Gender: ${profile.gender || 'Not specified'}
@@ -91,6 +83,14 @@ export async function generateProfilePrompt(
     
     **Please generate the positive and negative prompts accordingly.**
     `;
+  /*
+- **Book Name**: "${bookName}"
+    
+    - **Passage Content**:
+    \`\`\`
+    ${textContent}
+    \`\`\`
+    */
   let assistantMessage;
   try {
     // Make a request to OpenAI's ChatGPT
@@ -175,7 +175,9 @@ export async function generateBackgroundPrompt(
     },
   ];
 
-  const examplesString = JSON.stringify(examples, null, 2);
+  const examplesString = examples
+    .map((e) => JSON.stringify(e, null, 2))
+    .join('\n\n');
 
   const systemPrompt = `
     You are an expert prompt engineer specializing in generating prompts for standard diffusion image generation. Your task is to create both positive and negative prompts based on the provided passage content, associated profiles (if any), and the book name.

@@ -104,8 +104,9 @@ model AiModel {
 }
 
 model ModelImage {
-    id             Int             @id
+    id             Int             @id @default(autoincrement())
     url            String
+    civitaiImageId Int?            @unique
     model          AiModel         @relation(fields: [modelId], references: [id])
     modelId        Int
     nsfwLevel      Int

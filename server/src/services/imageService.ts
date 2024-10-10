@@ -1,7 +1,9 @@
 import { BlobServiceClient } from '@azure/storage-blob';
 import removeBackground from '@imgly/background-removal-node';
+import { GenerationData } from '@prisma/client';
 import axios from 'axios';
 import path from 'path';
+import prisma from '../config/prisma';
 const AZURE_STORAGE_CONNECTION_STRING =
   process.env.AZURE_STORAGE_CONNECTION_STRING;
 const AZURE_STORAGE_CONTAINER_NAME =
@@ -41,7 +43,7 @@ interface GenerateImageParams {
   negative_loras?: { name: string; weight: number }[];
   embeddings?: string[];
   negative_embeddings?: string[];
-  model?: string;
+  model: string;
   removeBackground?: boolean;
 }
 /**
@@ -52,7 +54,8 @@ interface GenerateImageParams {
  * @returns An object containing the image URL.
  */
 export async function generateImage(
-  data: GenerateImageParams
+  data: GenerateImageParams,
+  generationData?: GenerationData
 ): Promise<{ imageUrl: string }> {
   const {
     prompt,
@@ -170,6 +173,12 @@ export async function generateImage(
 
     // Generate the blob URL
     const imageUrl = blockBlobClient.url;
+    const resources: { name: string; weight: number }[] = [];
+    if (embeddings)
+      resources.push(...embeddings.map((e) => ({ name: e, weight: 1 })));
+    if (positive_loras) resources.push(...positive_loras);
+    if (generationData)
+      await associateModelResources(generationData, resources, model);
 
     console.log(`Image uploaded to Azure Blob Storage: ${imageUrl}`);
 
@@ -181,6 +190,42 @@ export async function generateImage(
     );
     throw new Error('An error occurred while generating the image.');
   }
+}
+
+async function associateModelResources(
+  generationData: GenerationData,
+  resources: { name: string; weight: number }[],
+  modelFileName: string
+) {
+  const resourceNames = resources.map((r) => r.name);
+  resourceNames.push(modelFileName);
+  const aiModels = await prisma.aiModel.findMany({
+    where: { fileName: { in: resourceNames } },
+  });
+
+  if (aiModels.length === 0) {
+    return;
+  }
+
+  const existingResources = await prisma.civitaiResource.findMany({
+    where: { generationDataId: generationData.id },
+  });
+  const existingModelIds = existingResources.map((r) => r.modelId);
+  const newModels = aiModels.filter(
+    (m) => !existingModelIds.includes(m.modelId)
+  );
+
+  await prisma.civitaiResource.createMany({
+    data: newModels.map((aiModel) => ({
+      baseModel: aiModel.baseModel,
+      modelType: aiModel.type,
+      versionId: -1,
+      modelId: aiModel.modelId,
+      modelName: aiModel.name,
+      versionName: '',
+      generationDataId: generationData.id,
+    })),
+  });
 }
 
 /**

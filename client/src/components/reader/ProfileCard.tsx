@@ -11,6 +11,7 @@ interface ProfileCardProps {
 }
 
 const ProfileCard: React.FC<ProfileCardProps> = ({ profile, onClick }) => {
+  console.log('ProfileCard:', profile);
   return (
     <Card
       hoverable

@@ -11,7 +11,7 @@ import {
 } from 'antd';
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
-import { apiUrl } from '../../utils/general';
+import { apiUrl } from '../utils/general';
 
 const { Content } = Layout;
 const { Option } = Select;
@@ -33,7 +33,7 @@ interface ProgressData {
   file?: string;
 }
 
-const ProfilesPage: React.FC = () => {
+const ProfileLoraPage: React.FC = () => {
   const [bookFiles, setBookFiles] = useState<string[]>([]);
   const [selectedBookFile, setSelectedBookFile] = useState<string | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -227,4 +227,4 @@ const ProfilesPage: React.FC = () => {
   );
 };
 
-export default ProfilesPage;
+export default ProfileLoraPage;

@@ -167,7 +167,7 @@ const ChapterImageGenerationPage: React.FC = () => {
       const response = await axios.post<{ jobId: number }>(
         `${baseUrl}/generate-image/chapters/${selectedChapterId}/generate-images`,
         {
-          forceRegenerate: false,
+          forceRegenerate: true,
           profileOptions: {
             checkpoint: selectedProfileCheckpoint,
             positiveLoras: selectedProfileLoras,

@@ -13,6 +13,54 @@ router.post('/:profileId/generate-image', generateImageForProfile);
 // Endpoint to get profiles for a book
 router.get('/books/:bookId/profiles', getProfilesForBook);
 
+router.get('/:id', async (req, res) => {
+  const profileId = parseInt(req.params.id, 10);
+
+  try {
+    const profile = await prisma.profile.findUnique({
+      where: { id: profileId },
+      include: {
+        descriptions: true,
+        aiModels: {
+          include: {
+            aiModel: {
+              include: {
+                images: {
+                  include: {
+                    generationData: {
+                      include: {
+                        civitaiResources: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        image: {
+          include: {
+            generationData: {
+              include: {
+                civitaiResources: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!profile) {
+      res.status(404).json({ error: 'Profile not found.' });
+      return;
+    }
+
+    res.json(profile);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch profile details.' });
+  }
+});
+
 // GET /api/profiles - List all profiles with their associated LoRAs
 router.get('/', async (req, res) => {
   try {
@@ -123,7 +171,7 @@ router.post('/setup-profile', async (req, res) => {
     const loadModelResult = await loadModel(String(modelId));
 
     const upsertedModelImage = await prisma.modelImage.upsert({
-      where: { id: imageId },
+      where: { civitaiImageId: imageId },
       update: {
         url,
         nsfwLevel,
@@ -137,7 +185,7 @@ router.post('/setup-profile', async (req, res) => {
       },
       create: {
         // Remove 'id' if you want Prisma to auto-increment
-        id: imageId, // Include only if you intend to manually set 'id'
+        civitaiImageId: imageId, // Include only if you intend to manually set 'id'
         url,
         nsfwLevel,
         width,
