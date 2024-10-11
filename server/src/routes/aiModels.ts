@@ -3,6 +3,7 @@ import {
   associateModel,
   getModelImages,
   listCheckpoints,
+  listDownloadedEmbeddings,
   listDownloadedLoras,
   listDownloadedModels,
   listEmbeddings,
@@ -18,6 +19,7 @@ router.get('/models/loras', listLoras);
 router.get('/models/embeddings', listEmbeddings);
 router.get('/list-models', listDownloadedModels);
 router.get('/list-loras', listDownloadedLoras);
+router.get('/list-embeddings', listDownloadedEmbeddings);
 router.post('/load-model', loadModelController);
 router.post('/profiles/:profileId/associate-model', associateModel);
 router.post('/set-active-model', setActiveModelController);

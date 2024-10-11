@@ -90,6 +90,16 @@ export async function listDownloadedLoras(req: Request, res: Response) {
   }
 }
 
+export async function listDownloadedEmbeddings(req: Request, res: Response) {
+  try {
+    const loras = await listModels('"TextualInversion"');
+    res.json(loras);
+  } catch (error) {
+    console.error('Error listing LoRAs:', error);
+    res.status(500).json({ error: 'An error occurred while listing LoRAs.' });
+  }
+}
+
 export async function associateModel(req: Request, res: Response) {
   const { profileId } = req.params;
   const { modelId } = req.body;
