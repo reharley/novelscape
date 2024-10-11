@@ -12,6 +12,7 @@ interface ProfileDetail {
   id: number;
   name: string;
   type: string;
+  gender?: string;
   imageUrl?: string;
   descriptions: Array<{ id: number; text: string }>;
   image?: {
@@ -65,7 +66,9 @@ const ProfileDetails: React.FC<Props> = ({ profileId, onClose }) => {
       visible={!!profileId}
     >
       <Descriptions bordered column={1}>
+        <Descriptions.Item label='Id'>{profile.id}</Descriptions.Item>
         <Descriptions.Item label='Name'>{profile.name}</Descriptions.Item>
+        <Descriptions.Item label='Gender'>{profile.gender}</Descriptions.Item>
         <Descriptions.Item label='Type'>{profile.type}</Descriptions.Item>
 
         {profile.image && (

@@ -81,6 +81,7 @@ model Description {
     bookId    String
     book      Book    @relation(fields: [bookId], references: [id])
     text      String
+    type      String?
     profile   Profile @relation(fields: [profileId], references: [id])
     profileId Int
     passage   Passage @relation(fields: [passageId], references: [id])

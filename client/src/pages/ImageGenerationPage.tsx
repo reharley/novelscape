@@ -52,6 +52,15 @@ const ChapterImageGenerationPage: React.FC = () => {
   >([]);
   const [selectedBackgroundEmbeddings, setSelectedBackgroundEmbeddings] =
     useState<string[]>([]);
+  // Negative Embeddings
+  const [
+    selectedProfileNegativeEmbeddings,
+    setSelectedProfileNegativeEmbeddings,
+  ] = useState<string[]>([]);
+  const [
+    selectedBackgroundNegativeEmbeddings,
+    setSelectedBackgroundNegativeEmbeddings,
+  ] = useState<string[]>([]);
   // State variables to store filtered options
   const [filteredProfileLoras, setFilteredProfileLoras] = useState<AiModel[]>(
     []
@@ -212,11 +221,13 @@ const ChapterImageGenerationPage: React.FC = () => {
             checkpoint: selectedProfileCheckpoint,
             positiveLoras: selectedProfileLoras,
             embeddings: selectedProfileEmbeddings,
+            negativeEmbeddings: selectedProfileNegativeEmbeddings,
           },
           backgroundOptions: {
             checkpoint: selectedBackgroundCheckpoint,
             positiveLoras: selectedBackgroundLoras,
             embeddings: selectedBackgroundEmbeddings,
+            negativeEmbeddings: selectedBackgroundNegativeEmbeddings,
           },
         }
       );
@@ -337,6 +348,22 @@ const ChapterImageGenerationPage: React.FC = () => {
                     </Option>
                   ))}
                 </Select>
+                <Text strong>Negative Embeddings for Profiles:</Text>
+                <Select
+                  mode='multiple'
+                  placeholder='Select negative embeddings'
+                  style={{ width: '100%', marginBottom: '8px' }}
+                  onChange={(values) =>
+                    setSelectedProfileNegativeEmbeddings(values)
+                  }
+                  value={selectedProfileNegativeEmbeddings}
+                >
+                  {filteredProfileEmbeddings.map((embedding) => (
+                    <Option key={embedding.name} value={embedding.fileName}>
+                      {embedding.name}
+                    </Option>
+                  ))}
+                </Select>
               </Col>
               <Col span={12}>
                 <Text strong>Background Checkpoint:</Text>
@@ -368,6 +395,23 @@ const ChapterImageGenerationPage: React.FC = () => {
                   style={{ width: '100%', marginBottom: '8px' }}
                   onChange={(values) => setSelectedBackgroundEmbeddings(values)}
                   value={selectedBackgroundEmbeddings}
+                >
+                  {filteredBackgroundEmbeddings.map((embedding) => (
+                    <Option key={embedding.name} value={embedding.fileName}>
+                      {embedding.name}
+                    </Option>
+                  ))}
+                </Select>
+
+                <Text strong>Negative Embeddings for Backgrounds:</Text>
+                <Select
+                  mode='multiple'
+                  placeholder='Select negative embeddings'
+                  style={{ width: '100%', marginBottom: '8px' }}
+                  onChange={(values) =>
+                    setSelectedBackgroundNegativeEmbeddings(values)
+                  }
+                  value={selectedBackgroundNegativeEmbeddings}
                 >
                   {filteredBackgroundEmbeddings.map((embedding) => (
                     <Option key={embedding.name} value={embedding.fileName}>

@@ -92,7 +92,7 @@ export async function listDownloadedLoras(req: Request, res: Response) {
 
 export async function listDownloadedEmbeddings(req: Request, res: Response) {
   try {
-    const loras = await listModels('"TextualInversion"');
+    const loras = await listModels('TextualInversion');
     res.json(loras);
   } catch (error) {
     console.error('Error listing LoRAs:', error);

@@ -11,7 +11,7 @@ export async function generateProfilePrompt(
   textContent: string,
   profile: {
     name: string;
-    gender: string | null;
+    gender?: string | null;
     descriptions: string[];
   },
   bookName: string
@@ -77,7 +77,7 @@ export async function generateProfilePrompt(
     **Data Provided:**
     - **Profile**:
     **Profile: ${profile.name}**
-    Gender: ${profile.gender || 'Not specified'}
+    ${profile.gender ? 'Gender:' + profile.gender : undefined}
     Descriptions:
     ${profile.descriptions.map((desc) => `- ${desc}`).join('\n')}
     
@@ -169,9 +169,57 @@ export async function generateBackgroundPrompt(
     },
     {
       positivePrompt:
-        'A serene landscape depicting a tranquil forest clearing with sunlight filtering through the dense canopy, a gentle stream flowing nearby, and vibrant flora surrounding the area.',
+        'Conceptart, Concept Art, SamWho, mksks style,  species,overlooking chasm',
       negativePrompt:
-        'unsharp, blurry, low resolution, dark shadows, unrealistic colors, distorted shapes, overexposed areas, missing elements, cluttered background',
+        'lowres, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts,signature, watermark, username, blurry, artist name, artifact, grains, humans, 1girl, female, solo',
+    },
+    {
+      positivePrompt:
+        'ConceptArt, no humans, scenery, water, sky, day, tree, cloud, waterfall, outdoors, building, nature, river, blue sky',
+      negativePrompt:
+        'lowres, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts,signature, watermark, username, blurry, artist name, humans, castle, 1girl, solo, female',
+    },
+    {
+      positivePrompt:
+        'Concept art, no humans, water puddles, country side, road, rain, cloudy,',
+      negativePrompt:
+        'lowres, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts,signature, watermark, username, blurry, artist name, humans, castle, 1girl, solo, female',
+    },
+    {
+      positivePrompt:
+        '1girl, looking at the viewer, water, pond, lake, shrine, koi',
+      negativePrompt:
+        'bad anatomy, bad res, bad quality, error,malformed, art by bad-artist, bad-image-v2-39000, bad-hands-5, art by negprompt5, lowres, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts,signature, watermark, username, blurry, artist name, (worst quality, low quality, extra digits, loli, loli face:1.3)',
+    },
+    {
+      positivePrompt:
+        'no humans, scenery, water, sky, day, world tree, cloud, waterfall, outdoors,huge tree, nature, river, night sky,night,big trees,moon',
+      negativePrompt:
+        'badhandv4, easynegative, ng_deepnegative_v1_75t, By bad artist -neg',
+    },
+    {
+      positivePrompt:
+        'no humans, scenery, water, sky, day, world tree, cloud, waterfall, outdoors,huge tree, nature, river, night sky,night,big trees,moon',
+      negativePrompt:
+        'badhandv4, easynegative, ng_deepnegative_v1_75t, By bad artist -neg',
+    },
+    {
+      positivePrompt:
+        'ConceptArt, no humans, scenery, water, sky, day, world tree, cloud, waterfall, outdoors,huge tree, nature, river, night sky',
+      negativePrompt:
+        'badhandv4, easynegative, ng_deepnegative_v1_75t, By bad artist -neg',
+    },
+    {
+      positivePrompt:
+        'ConceptArt, no humans, scenery, water, sky, day, world tree, cloud, waterfall, outdoors,huge tree, nature, river, night sky,night,big trees,moon',
+      negativePrompt:
+        'badhandv4, easynegative, ng_deepnegative_v1_75t, By bad artist -neg',
+    },
+    {
+      positivePrompt:
+        'ConceptArt, no humans, scenery, sky, night, tree, dark night, outdoors, building, huge kingdom, a large castle, dark sky',
+      negativePrompt:
+        'lowres, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts,signature, watermark, username, blurry, artist name, humans, castle, 1girl, solo, female',
     },
   ];
 
@@ -259,4 +307,152 @@ export async function generateBackgroundPrompt(
     }
     throw new Error('Failed to generate background prompts.');
   }
+}
+// Define interfaces for clarity
+interface Entity {
+  fullName?: string;
+  alias?: string;
+  type?: string;
+  description?: string;
+  descriptionType?: string;
+}
+export async function performNERWithAliases(
+  contextText: string,
+  aliases: string[]
+): Promise<Entity[]> {
+  // Prepare the list of known aliases
+  const aliasList = aliases.map((alias) => `"${alias}"`).join(', ');
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-3.5-turbo',
+    messages: [
+      {
+        role: 'system',
+        content: `You are an assistant that performs named entity recognition (NER) on a given text. Identify and extract all named entities, categorizing them as one of the following types: 'Character', 'Building', 'Scene', 'Animal', 'Object'. For entities that are aliases of known characters, provide both the full name and the alias. Only tag Family entities if they are clearly identified as such (Potters, The Potters, Dursleys, The Dursleys), not individuals (Mr. Potter, Mr. Dursley). Do your best to identify Characters that are referred to with their last name only (Potter, Mr. Potter) as their full name (one of Harry Potter or James Potter).
+
+Include the following known possible aliases in your analysis: ${aliasList}.
+
+For each entity, provide:
+- fullName: The canonical name of the entity (if applicable).
+- alias: The alias used in the text (if applicable).
+- type: One of 'Character', 'Family', 'Building', 'Scene', 'Animal', or 'Object'.
+- gender: Male, Female, or null when unknown
+- description: A brief description of the finding in the text. Emphasize Appearance and Personality traits.
+- descriptionType: The type of description provided (Physical Attributes, Personality, Other).
+
+Output the result as a JSON array of entities.`,
+      },
+      {
+        role: 'user',
+        content: `Extract entities from the following text:\n\n${contextText}`,
+      },
+    ],
+    max_tokens: 1500,
+  });
+
+  let assistantMessage = response.choices[0].message?.content || '';
+  assistantMessage = sanitizeAssistantMessage(assistantMessage);
+
+  let entities: Entity[] = [];
+  try {
+    entities = JSON.parse(assistantMessage);
+  } catch (parseError) {
+    console.error('JSON parse error (NER):', parseError);
+    const jsonMatch = assistantMessage.match(/\[.*\]/s);
+    if (jsonMatch) {
+      const regex = /\,(?=\s*?[\}\]])/g;
+      const cleanMatch = jsonMatch[0].replace(regex, '');
+      entities = JSON.parse(cleanMatch);
+    } else {
+      console.error('Failed to parse NER as JSON.');
+    }
+  }
+
+  return entities;
+}
+// **Scene Detection with Accumulated Passages**
+export async function detectNewScene(
+  contextText: string
+): Promise<{ newScene: boolean }> {
+  const response = await openai.chat.completions.create({
+    model: 'gpt-3.5-turbo',
+    messages: [
+      {
+        role: 'system',
+        content: `You are an assistant that detects scene transitions in text. Determine if the following passage indicates the start of a new scene based on the accumulated context. Respond with a JSON object containing a single key "newScene" with a boolean value.`,
+      },
+      {
+        role: 'user',
+        content: `Analyze the following text and determine if it starts a new scene:\n\n${contextText}`,
+      },
+    ],
+    max_tokens: 100,
+  });
+
+  let assistantMessage = response.choices[0].message?.content || '';
+  assistantMessage = sanitizeAssistantMessage(assistantMessage);
+
+  let sceneResult: { newScene?: boolean } = {};
+  try {
+    sceneResult = JSON.parse(assistantMessage);
+  } catch (parseError) {
+    console.error('JSON parse error (Scene Detection):', parseError);
+    const jsonMatch = assistantMessage.match(/\{.*\}/s);
+    if (jsonMatch) {
+      const regex = /\,(?=\s*?[\}\]])/g;
+      const cleanMatch = jsonMatch[0].replace(regex, '');
+      sceneResult = JSON.parse(cleanMatch);
+    } else {
+      console.error('Failed to parse scene detection as JSON.');
+    }
+  }
+
+  return { newScene: sceneResult.newScene || false };
+}
+
+// **Sanitize Assistant Message**
+function sanitizeAssistantMessage(message: string): string {
+  return message
+    .trim()
+    .replace(/```(?:json|)/g, '')
+    .replace(/```/g, '')
+    .trim();
+}
+
+export async function extractFullNames(textContent: string) {
+  const canonicalResponse = await openai.chat.completions.create({
+    model: 'gpt-3.5-turbo',
+    messages: [
+      {
+        role: 'system',
+        content: `You are an assistant that performs named entity recognition (NER) to identify complete (full) character names. Extract only the entities of type 'Character' with their full names present from the following text and provide them as a JSON array of strings.`,
+      },
+      {
+        role: 'user',
+        content: `Extract full character names from the following text:\n\n${textContent}`,
+      },
+    ],
+    max_tokens: 500,
+  });
+
+  let assistantMessage = canonicalResponse.choices[0].message?.content || '';
+  assistantMessage = sanitizeAssistantMessage(assistantMessage);
+
+  let canonicalEntities: string[] = [];
+  try {
+    canonicalEntities = JSON.parse(assistantMessage);
+  } catch (parseError) {
+    console.error('JSON parse error (canonical):', parseError);
+    const jsonMatch = assistantMessage.match(/\[.*\]/s);
+    if (jsonMatch) {
+      const regex = /\,(?=\s*?[\}\]])/g;
+      const cleanMatch = jsonMatch[0].replace(regex, '');
+      canonicalEntities = JSON.parse(cleanMatch);
+    } else {
+      console.error('Failed to parse canonical entities as JSON.');
+      return; // Skip if unable to parse
+    }
+  }
+
+  return canonicalEntities;
 }

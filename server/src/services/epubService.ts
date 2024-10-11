@@ -5,22 +5,19 @@ import fs from 'fs-extra';
 import { JSDOM } from 'jsdom';
 import pLimit from 'p-limit'; // Import p-limit for concurrency control
 import path from 'path';
-import openai from '../config/openai';
 import prisma from '../config/prisma';
 import { parseChapterContent } from '../utils/parseChapterContent';
 import { progressManager } from '../utils/progressManager';
+import {
+  detectNewScene,
+  extractFullNames,
+  performNERWithAliases,
+} from '../utils/prompts';
 
 // Initialize DOMPurify
 const { window } = new JSDOM('<!DOCTYPE html>');
 const domPurify = DOMPurify(window);
 
-// Define interfaces for clarity
-interface Entity {
-  fullName?: string;
-  alias?: string;
-  type?: string;
-  description?: string;
-}
 export async function extractPassagesAndChapters(
   bookId: string,
   epub: EPub,
@@ -413,41 +410,8 @@ export async function extractCanonicalNames(bookId: string): Promise<void> {
 
       try {
         // Send text to OpenAI API for canonical NER
-        const canonicalResponse = await openai.chat.completions.create({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: `You are an assistant that performs named entity recognition (NER) to identify complete (full) character names. Extract only the entities of type 'Character' with their full names present from the following text and provide them as a JSON array of strings.`,
-            },
-            {
-              role: 'user',
-              content: `Extract full character names from the following text:\n\n${textContent}`,
-            },
-          ],
-          max_tokens: 500,
-        });
-
-        let assistantMessage =
-          canonicalResponse.choices[0].message?.content || '';
-        assistantMessage = sanitizeAssistantMessage(assistantMessage);
-
-        let canonicalEntities: string[] = [];
-        try {
-          canonicalEntities = JSON.parse(assistantMessage);
-        } catch (parseError) {
-          console.error('JSON parse error (canonical):', parseError);
-          const jsonMatch = assistantMessage.match(/\[.*\]/s);
-          if (jsonMatch) {
-            const regex = /\,(?=\s*?[\}\]])/g;
-            const cleanMatch = jsonMatch[0].replace(regex, '');
-            canonicalEntities = JSON.parse(cleanMatch);
-          } else {
-            console.error('Failed to parse canonical entities as JSON.');
-            return; // Skip if unable to parse
-          }
-        }
-
+        const canonicalEntities = await extractFullNames(textContent);
+        if (!canonicalEntities || !Array.isArray(canonicalEntities)) return;
         // Upsert canonical profiles
         try {
           for (const entity of canonicalEntities) {
@@ -455,23 +419,11 @@ export async function extractCanonicalNames(bookId: string): Promise<void> {
               console.log('Skipping entity without a name:', entity);
               continue;
             }
-            const titleCheck = entity.toLowerCase();
-            if (
-              titleCheck.startsWith('mr. ') ||
-              titleCheck.startsWith('ms. ') ||
-              titleCheck.startsWith('mrs. ') ||
-              titleCheck.startsWith('professor ') ||
-              titleCheck.startsWith('the ') ||
-              titleCheck.startsWith('dr. ') ||
-              titleCheck.startsWith('prof. ') ||
-              titleCheck.startsWith('doctor ') ||
-              titleCheck.startsWith('uncle ') ||
-              titleCheck.startsWith('aunt ')
-            )
-              continue; // Skip titles
-            if (entity.split(' ').length < 2) continue; // Skip single-word names
-            // Check for capitalization for first letter of each word
+
             const words = entity.split(' ');
+            if (words.length !== 2) continue; // Skip if not a full name
+            if (words[0].includes('.')) continue; // Skip if first word contains a period
+            // Check for capitalization for first letter of each word
             let valid = true;
             for (const word of words) {
               if (word[0] !== word[0].toUpperCase()) {
@@ -619,6 +571,7 @@ export async function processPassagesWithContext(
                 await prisma.description.create({
                   data: {
                     text: entity.description,
+                    type: entity.descriptionType?.toUpperCase(),
                     bookId: bookId,
                     profileId: profile.id,
                     passageId: passage.id,
@@ -661,109 +614,6 @@ export async function processPassagesWithContext(
     phase: 'Phase 3',
     message: 'Passages processed with context successfully.',
   });
-}
-
-async function performNERWithAliases(
-  contextText: string,
-  aliases: string[]
-): Promise<Entity[]> {
-  // Prepare the list of known aliases
-  const aliasList = aliases.map((alias) => `"${alias}"`).join(', ');
-
-  const response = await openai.chat.completions.create({
-    model: 'gpt-3.5-turbo',
-    messages: [
-      {
-        role: 'system',
-        content: `You are an assistant that performs named entity recognition (NER) on a given text. Identify and extract all named entities, categorizing them as one of the following types: 'Character', 'Building', 'Scene', 'Animal', 'Object'. For entities that are aliases of known characters, provide both the full name and the alias. Only tag Family entities if they are clearly identified as such (Potters, The Potters, Dursleys, The Dursleys), not individuals (Mr. Potter, Mr. Dursley). Do your best to identify Characters that are referred to with their last name only (Potter, Mr. Potter) as their full name (one of Harry Potter or James Potter).
-
-Include the following known possible aliases in your analysis: ${aliasList}.
-
-For each entity, provide:
-- fullName: The canonical name of the entity (if applicable).
-- alias: The alias used in the text (if applicable).
-- type: One of 'Character', 'Family', 'Building', 'Scene', 'Animal', or 'Object'.
-- gender: Male, Female, Unknown, or null
-- description: A brief description of the entity based on the context.
-
-Output the result as a JSON array of entities.`,
-      },
-      {
-        role: 'user',
-        content: `Extract entities from the following text:\n\n${contextText}`,
-      },
-    ],
-    max_tokens: 1500,
-  });
-
-  let assistantMessage = response.choices[0].message?.content || '';
-  assistantMessage = sanitizeAssistantMessage(assistantMessage);
-
-  let entities: Entity[] = [];
-  try {
-    entities = JSON.parse(assistantMessage);
-  } catch (parseError) {
-    console.error('JSON parse error (NER):', parseError);
-    const jsonMatch = assistantMessage.match(/\[.*\]/s);
-    if (jsonMatch) {
-      const regex = /\,(?=\s*?[\}\]])/g;
-      const cleanMatch = jsonMatch[0].replace(regex, '');
-      entities = JSON.parse(cleanMatch);
-    } else {
-      console.error('Failed to parse NER as JSON.');
-    }
-  }
-
-  return entities;
-}
-
-// **Scene Detection with Accumulated Passages**
-async function detectNewScene(
-  contextText: string
-): Promise<{ newScene: boolean }> {
-  const response = await openai.chat.completions.create({
-    model: 'gpt-3.5-turbo',
-    messages: [
-      {
-        role: 'system',
-        content: `You are an assistant that detects scene transitions in text. Determine if the following passage indicates the start of a new scene based on the accumulated context. Respond with a JSON object containing a single key "newScene" with a boolean value.`,
-      },
-      {
-        role: 'user',
-        content: `Analyze the following text and determine if it starts a new scene:\n\n${contextText}`,
-      },
-    ],
-    max_tokens: 100,
-  });
-
-  let assistantMessage = response.choices[0].message?.content || '';
-  assistantMessage = sanitizeAssistantMessage(assistantMessage);
-
-  let sceneResult: { newScene?: boolean } = {};
-  try {
-    sceneResult = JSON.parse(assistantMessage);
-  } catch (parseError) {
-    console.error('JSON parse error (Scene Detection):', parseError);
-    const jsonMatch = assistantMessage.match(/\{.*\}/s);
-    if (jsonMatch) {
-      const regex = /\,(?=\s*?[\}\]])/g;
-      const cleanMatch = jsonMatch[0].replace(regex, '');
-      sceneResult = JSON.parse(cleanMatch);
-    } else {
-      console.error('Failed to parse scene detection as JSON.');
-    }
-  }
-
-  return { newScene: sceneResult.newScene || false };
-}
-
-// **Sanitize Assistant Message**
-function sanitizeAssistantMessage(message: string): string {
-  return message
-    .trim()
-    .replace(/```(?:json|)/g, '')
-    .replace(/```/g, '')
-    .trim();
 }
 
 // **Get Next Scene Order**

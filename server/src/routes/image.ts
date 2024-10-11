@@ -3,13 +3,10 @@ import {
   generateImageController,
   generateImageForProfile,
   generateImagesForChapter,
-  generateImagesForMultipleScenes,
   generateImagesForPassage,
   generateImagesForScene,
   getJobStatus,
   listJobs,
-  updateProfileImageUrl,
-  updateSceneImageUrl,
 } from '../controllers/imageController';
 
 const router = express.Router();
@@ -41,27 +38,6 @@ router.post('/passages/:passageId/generate-images', generateImagesForPassage);
  * @access Public
  */
 router.post('/scenes/:sceneId/generate-images', generateImagesForScene);
-
-/**
- * @route POST /api/scenes/generate-images
- * @desc Generate images for the next N scenes
- * @access Public
- */
-router.post('/scenes/generate-images', generateImagesForMultipleScenes);
-
-/**
- * @route PUT /api/scenes/:sceneId/image
- * @desc Update the imageUrl for a specific scene
- * @access Public
- */
-router.put('/scenes/:sceneId/image', updateSceneImageUrl);
-
-/**
- * @route PUT /api/profiles/:profileId
- * @desc Update the imageUrl for a specific profile
- * @access Public
- */
-router.put('/profiles/:profileId', updateProfileImageUrl);
 
 /**
  * @route POST /api/chapters/:chapterId/generate-images

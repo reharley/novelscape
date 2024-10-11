@@ -1,6 +1,7 @@
 import {
   AiModel,
   Book,
+  Chapter,
   CivitaiResource,
   Description,
   GenerationData,
@@ -28,7 +29,6 @@ export type ProfileWithRelations = Profile & {
 };
 
 export type SceneWithRelations = Scene & {
-  book: Book;
   passages?: PassageWithRelations[]; // Include passages if needed
 };
 
@@ -37,3 +37,8 @@ export type PassageWithRelations = {
   textContent: string;
   profiles: ProfileWithRelations[];
 };
+
+export interface ChapterWithRelations extends Chapter {
+  book: Book;
+  scenes: SceneWithRelations[];
+}

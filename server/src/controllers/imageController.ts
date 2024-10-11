@@ -1,3 +1,4 @@
+import { ImageGenerationJob } from '@prisma/client';
 import { Request, Response } from 'express';
 import prisma from '../config/prisma';
 import { generateImage } from '../services/imageService';
@@ -5,7 +6,11 @@ import {
   generateBackgroundPrompt,
   generateProfilePrompt,
 } from '../utils/prompts';
-import { ProfileWithRelations, SceneWithRelations } from '../utils/types';
+import {
+  ChapterWithRelations,
+  ProfileWithRelations,
+  SceneWithRelations,
+} from '../utils/types';
 
 const characterImageSize = {
   width: 350,
@@ -162,14 +167,36 @@ export async function generateImagesForChapter(req: Request, res: Response) {
   }
 
   try {
-    // Fetch the chapter with its scenes
+    // Fetch the chapter with its scenes, passages, and profiles
     const chapter = await prisma.chapter.findUnique({
       where: { id: Number(chapterId) },
       include: {
         book: true,
         scenes: {
           include: {
-            passages: true,
+            passages: {
+              include: {
+                profiles: {
+                  include: {
+                    descriptions: true,
+                    image: {
+                      include: {
+                        generationData: {
+                          include: {
+                            civitaiResources: {
+                              include: {
+                                model: true,
+                              },
+                            },
+                          },
+                        },
+                        model: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -188,13 +215,50 @@ export async function generateImagesForChapter(req: Request, res: Response) {
       return;
     }
 
+    // Collect all unique profiles in the chapter
+    const profileIdsSet = new Set<number>();
+    chapter.scenes.forEach((scene) => {
+      scene.passages.forEach((passage) => {
+        passage.profiles.forEach((profile) => {
+          profileIdsSet.add(profile.id);
+        });
+      });
+    });
+
+    const profileIds = Array.from(profileIdsSet);
+
+    // Fetch profiles with necessary includes
+    const profiles = await prisma.profile.findMany({
+      where: { id: { in: profileIds } },
+      include: {
+        descriptions: true,
+        image: {
+          include: {
+            generationData: {
+              include: {
+                civitaiResources: {
+                  include: {
+                    model: true,
+                  },
+                },
+              },
+            },
+            model: true,
+          },
+        },
+        book: true,
+      },
+    });
+
+    const totalTasks = sceneIds.length + profiles.length;
+
     // Create a new job
     const job = await prisma.imageGenerationJob.create({
       data: {
         type: 'chapter',
         targetId: chapter.id,
         status: 'in_progress',
-        totalTasks: sceneIds.length,
+        totalTasks: totalTasks,
         progress: 0.0,
       },
     });
@@ -202,53 +266,45 @@ export async function generateImagesForChapter(req: Request, res: Response) {
     // Return the job ID to the client
     res.json({ jobId: job.id, message: 'Image generation job started.' });
 
-    // Process scenes asynchronously
+    // Process images asynchronously
     (async () => {
-      for (const [index, sceneId] of sceneIds.entries()) {
-        try {
-          await generateImagesForSceneLogic(
-            sceneId,
-            forceRegenerate,
-            profileOptions,
-            backgroundOptions
-          );
+      try {
+        // Generate background images
+        await generateBackgroundImagesForChapter(
+          chapter,
+          job,
+          forceRegenerate,
+          backgroundOptions
+        );
 
-          // Update job progress
-          await prisma.imageGenerationJob.update({
-            where: { id: job.id },
-            data: {
-              completedTasks: { increment: 1 },
-              progress: ((index + 1) / sceneIds.length) * 100,
-            },
-          });
-        } catch (error: any) {
-          console.error(`Error generating images for scene ${sceneId}:`, error);
+        // Generate profile images
+        await generateProfileImagesForChapter(
+          chapter,
+          profiles,
+          job,
+          forceRegenerate,
+          profileOptions
+        );
 
-          // Update job with failed task
-          await prisma.imageGenerationJob.update({
-            where: { id: job.id },
-            data: {
-              failedTasks: { increment: 1 },
-            },
-          });
-        }
+        // Finalize job status
+        await prisma.imageGenerationJob.update({
+          where: { id: job.id },
+          data: {
+            status: 'completed',
+            progress: 100.0,
+          },
+        });
+      } catch (error: any) {
+        console.error('Error generating images for chapter:', error);
+
+        // Update job with failed status
+        await prisma.imageGenerationJob.update({
+          where: { id: job.id },
+          data: {
+            status: 'failed',
+          },
+        });
       }
-
-      // Finalize job status
-      const finalJob = await prisma.imageGenerationJob.findUnique({
-        where: { id: job.id },
-      });
-      const finalStatus = finalJob?.failedTasks
-        ? 'completed_with_errors'
-        : 'completed';
-
-      await prisma.imageGenerationJob.update({
-        where: { id: job.id },
-        data: {
-          status: finalStatus,
-          progress: 100.0,
-        },
-      });
     })();
   } catch (error: any) {
     console.error('Error generating images for chapter:', error);
@@ -257,6 +313,104 @@ export async function generateImagesForChapter(req: Request, res: Response) {
         error.message ||
         'An error occurred while generating images for the chapter.',
     });
+  }
+}
+
+// New helper function to generate all background images sequentially
+async function generateBackgroundImagesForChapter(
+  chapter: ChapterWithRelations,
+  job: ImageGenerationJob,
+  forceRegenerate: boolean,
+  backgroundOptions: any
+) {
+  for (const scene of chapter.scenes) {
+    try {
+      // Aggregate all passages' textContent in the scene
+      let passages = scene.passages || [];
+      const combinedSceneText = passages.map((p) => p.textContent).join('\n');
+
+      // Generate background image for scene
+      await generateBackgroundImageForScene(
+        scene,
+        combinedSceneText,
+        chapter.book.title,
+        forceRegenerate,
+        backgroundSceneSize,
+        backgroundOptions
+      );
+
+      // Update job progress
+      await prisma.imageGenerationJob.update({
+        where: { id: job.id },
+        data: {
+          completedTasks: { increment: 1 },
+          progress: {
+            increment: (1 / job.totalTasks) * 100,
+          },
+        },
+      });
+    } catch (error: any) {
+      console.error(
+        `Error generating background image for scene ${scene.id}:`,
+        error
+      );
+      // Update job with failed task
+      await prisma.imageGenerationJob.update({
+        where: { id: job.id },
+        data: {
+          failedTasks: { increment: 1 },
+        },
+      });
+    }
+  }
+}
+
+// New helper function to generate all profile images sequentially
+async function generateProfileImagesForChapter(
+  chapter: ChapterWithRelations,
+  profiles: ProfileWithRelations[],
+  job: ImageGenerationJob,
+  forceRegenerate: boolean,
+  profileOptions: any
+) {
+  // Aggregate all passages' textContent in the chapter
+  const combinedChapterText = chapter.scenes
+    .flatMap((scene) => scene.passages)
+    .map((p) => p!.textContent)
+    .join(' ');
+
+  for (const profile of profiles) {
+    try {
+      // Generate image for profile
+      await generateImageForProfileHelper(
+        profile,
+        combinedChapterText,
+        chapter.book.title,
+        forceRegenerate,
+        characterImageSize,
+        profileOptions
+      );
+
+      // Update job progress
+      await prisma.imageGenerationJob.update({
+        where: { id: job.id },
+        data: {
+          completedTasks: { increment: 1 },
+          progress: {
+            increment: (1 / job.totalTasks) * 100,
+          },
+        },
+      });
+    } catch (error: any) {
+      console.error(`Error generating image for profile ${profile.id}:`, error);
+      // Update job with failed task
+      await prisma.imageGenerationJob.update({
+        where: { id: job.id },
+        data: {
+          failedTasks: { increment: 1 },
+        },
+      });
+    }
   }
 }
 
@@ -368,8 +522,10 @@ async function generateImageForProfileHelper(
           passageText,
           {
             name: profile.name,
-            descriptions: profile.descriptions.map((desc) => desc.text),
-            gender: profile.gender,
+            descriptions: profile.descriptions
+              .filter((x) => x.type === 'PHYSICAL ATTRIBUTES' || 'PERSONALITY')
+              .map((desc) => desc.text),
+            gender: profile.gender ?? undefined,
           },
           bookTitle
         );
@@ -785,79 +941,6 @@ export async function generateImagesForScene(req: Request, res: Response) {
   }
 }
 
-export async function generateImagesForMultipleScenes(
-  req: Request,
-  res: Response
-) {
-  const { startSceneId, numberOfScenes, forceRegenerate } = req.body;
-
-  if (!startSceneId || !numberOfScenes || numberOfScenes < 1) {
-    res.status(400).json({ error: 'Invalid parameters.' });
-    return;
-  }
-
-  try {
-    // Fetch the starting scene
-    const startScene = await prisma.scene.findUnique({
-      where: { id: Number(startSceneId) },
-    });
-
-    if (!startScene) {
-      res.status(404).json({ error: 'Starting scene not found.' });
-      return;
-    }
-
-    // Fetch next N scenes based on order
-    const scenes = await prisma.scene.findMany({
-      where: {
-        bookId: startScene.bookId,
-        order: {
-          gte: startScene.order,
-        },
-      },
-      orderBy: { order: 'asc' },
-      take: numberOfScenes,
-    });
-
-    if (scenes.length === 0) {
-      res.status(400).json({ error: 'No scenes found.' });
-      return;
-    }
-
-    const successScenes: number[] = [];
-    const failedScenes: { sceneId: number; error: string }[] = [];
-
-    // Iterate through each scene and generate images
-    for (const scene of scenes) {
-      try {
-        // Reuse generateImagesForScene logic
-        await generateImagesForSceneLogic(
-          scene.id,
-          forceRegenerate,
-          null,
-          null
-        );
-        successScenes.push(scene.id);
-      } catch (error: any) {
-        console.error(`Error generating images for scene ${scene.id}:`, error);
-        failedScenes.push({
-          sceneId: scene.id,
-          error: error.message || 'Image generation failed.',
-        });
-      }
-    }
-
-    res.json({ successScenes, failedScenes });
-  } catch (error: any) {
-    console.error('Error generating images for multiple scenes:', error);
-    res.status(500).json({
-      error:
-        error.message ||
-        'An error occurred while generating images for multiple scenes.',
-    });
-  }
-}
-
 // Helper function to generate images for a single scene without HTTP response
 async function generateImagesForSceneLogic(
   sceneId: number,
@@ -951,43 +1034,4 @@ async function generateImagesForSceneLogic(
   ];
 
   return responseImages;
-}
-
-// Update Scene.imageUrl
-export async function updateSceneImageUrl(req: Request, res: Response) {
-  const { sceneId } = req.params;
-  const { imageUrl } = req.body;
-
-  try {
-    const scene = await prisma.scene.update({
-      where: { id: Number(sceneId) },
-      data: { imageUrl },
-    });
-
-    res.json({ message: 'Scene imageUrl updated successfully.', scene });
-  } catch (error: any) {
-    console.error('Error updating scene imageUrl:', error);
-    res.status(500).json({
-      error: error.message || 'Failed to update scene imageUrl.',
-    });
-  }
-}
-
-export async function updateProfileImageUrl(req: Request, res: Response) {
-  const { profileId } = req.params;
-  const { imageUrl } = req.body;
-
-  try {
-    const profile = await prisma.profile.update({
-      where: { id: Number(profileId) },
-      data: { imageUrl },
-    });
-
-    res.json({ message: 'Profile imageUrl updated successfully.', profile });
-  } catch (error: any) {
-    console.error('Error updating profile imageUrl:', error);
-    res.status(500).json({
-      error: error.message || 'Failed to update profile imageUrl.',
-    });
-  }
 }
