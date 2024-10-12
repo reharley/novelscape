@@ -59,30 +59,25 @@ export async function generateProfilePrompt(
     .join('\n\n');
 
   const systemPrompt = `
-    You are an expert prompt engineer specializing in generating full body portrait prompts for standard diffusion image generation. Your task is to create both positive and negative prompts based on the profile.
-    
-    **Guidelines:**
-    
-    1. **Positive Prompt**: Should vividly describe the full body portrait as a comma separated list of attributes of the specific character from the profile and feature only that character (1boy, 1girl, solo). It should be creative, detailed, and tailored to the context of the profile first, the passage. Do not mention other characters or elements that are not focused on the individual. Do not reference relationships or interactions with other characters.
-    2. **Negative Prompt**: Focus on common issues like split frame, out of frame, cropped, multiple frame, split panel, multi panel, poor anatomy, incorrect proportions, unwanted artifacts,  etc. Should include elements to avoid in the image generation to ensure higher quality and relevance. Put negatives on scenery and background attributes. 
-    3. **Incorporate Profile**: Use the profile's name and descriptions to enrich the prompts, ensuring that the profile's unique traits are reflected accurately in the portrait.
-    4. **Book Context**: Utilize the book name or world to maintain consistency with the book's theme and setting when appropriate.
-    5. **Format**: Provide the output as a JSON object with two fields: "positivePrompt" and "negativePrompt". Do **not** include any Markdown formatting or code block delimiters.
-    6. **Format Clues**: Focus on comma separated list of features describing a scene and avoid full sentences
-    7. **Examples**: Below are examples of desired output formats to guide your response.
-    
-    **Example Outputs:**
-    ${examplesString}
-    
-    **Data Provided:**
-    - **Profile**:
-    **Profile: ${profile.name}**
-    ${profile.gender ? 'Gender:' + profile.gender : undefined}
-    Descriptions:
-    ${profile.descriptions.map((desc) => `- ${desc}`).join('\n')}
-    
-    **Please generate the positive and negative prompts accordingly.**
-    `;
+You are an expert prompt engineer specializing in generating full body portrait prompts for standard diffusion image generation. Your task is to create both positive and negative prompts based on the profile. Output by calling generate_prompts function.
+
+**Guidelines:**
+1. **Positive Prompt**: Should vividly describe the full body portrait as a comma separated list of attributes of the specific character from the profile and feature only that character (1boy, 1girl, solo). It should be creative, detailed, and tailored to the context of the profile first, the passage. Do not mention other characters or elements that are not focused on the individual. Do not reference relationships or interactions with other characters.
+2. **Negative Prompt**: Focus on common issues like split frame, out of frame, cropped, multiple frame, split panel, multi panel, poor anatomy, incorrect proportions, unwanted artifacts,  etc. Should include elements to avoid in the image generation to ensure higher quality and relevance. Put negatives on scenery and background attributes. 
+3. **Incorporate Profile**: Use the profile's name and descriptions to enrich the prompts, ensuring that the profile's unique traits are reflected accurately in the portrait.
+4. **Book Context**: Utilize the book name or world to maintain consistency with the book's theme and setting when appropriate.
+5. **Format**: Provide the output as a JSON object with two fields: "positivePrompt" and "negativePrompt". Do **not** include any Markdown formatting or code block delimiters.
+6. **Format Clues**: Focus on comma separated list of features describing a scene and avoid full sentences
+7. **Examples**: Below are examples of desired outputs to guide your response.
+**Example Outputs:**
+${examplesString}
+**Data Provided:**
+- **Profile**:
+**Character Name: ${profile.name}**
+${profile.gender ? 'Gender:' + profile.gender : undefined}
+Descriptions:
+${profile.descriptions.map((desc) => `- ${desc}`).join('\n')}
+`;
   /*
 - **Book Name**: "${bookName}"
     
@@ -121,6 +116,10 @@ export async function generateProfilePrompt(
         {
           role: 'system',
           content: systemPrompt,
+        },
+        {
+          role: 'user',
+          content: `Generate prompts for the character ${profile.name}.`,
         },
       ],
       functions: functions,
@@ -243,25 +242,17 @@ export async function generateBackgroundPrompt(
     .join('\n\n');
 
   const systemPrompt = `
-    You are an expert prompt engineer specializing in generating prompts for standard diffusion image generation. Your task is to create both positive and negative prompts based on the provided passage content, associated profiles (if any), and the book name.
+    You are an expert prompt engineer specializing in generating prompts for standard diffusion image generation. Your task is to create both positive and negative prompts based on the provided passage content, for background scene images.
   
     **Guidelines:**
   
-    1. **Positive Prompt**: Should vividly describe the background scene as a comma separated list of attributes incorporating elements solely from the passage content to describe the scene. **Never** write character descriptions.
+    1. **Positive Prompt**: Should vividly describe the background scene as a list of attributes incorporating elements solely from the passage content to describe the scene. **NEVER** write character descriptions. **DO NOT INCLUDE CHARACTERS**. No characters should be mentioned in the positive prompt. Focus on the setting, environment, and objects in the scene.
     2. **Negative Prompt**: Should include elements to avoid in the image generation to ensure higher quality and relevance. Should avoid drawing characters/people unless they are in the background. Focus on common issues like poor anatomy, incorrect proportions, unwanted artifacts, etc.
-    3. **Incorporate Profiles**: Use the profiles' names and descriptions to enrich the prompts, ensuring that the profiles' unique traits are reflected accurately within the scene when profiles are present.
-    4. **Book Context**: Utilize the book name to maintain consistency with the book's theme and setting.
-    5. **Format**: Provide the output as a JSON object with two fields: "positivePrompt" and "negativePrompt". Do **not** include any Markdown formatting or code block delimiters.
-    6. **Format Clues**: Focus on comma-separated list of features describing a scene and avoid full sentences.
-    7. **Characters**: Do **not** include character descriptions; focus solely on the background and non-character elements.
-    8. **Examples**: Below are examples of desired output formats to guide your response.
+    3. **DO NOT INCLUDE CHARACTERS**: Do not include characters, or character descriptions; focus solely on the background and non-character elements.
+    4. **Examples**: Below are examples of desired outputs to guide your response.
   
     **Example Outputs:**
     ${examplesString}
-  
-    **Data Provided:**
-  
-    - **Book Name**: "${bookName}"
   
     - **Passage Content**:
     \`\`\`
@@ -280,7 +271,8 @@ export async function generateBackgroundPrompt(
         properties: {
           positivePrompt: {
             type: 'string',
-            description: 'The positive prompt for image generation.',
+            description:
+              'The positive list of attributes describing the background. **DO NOT INCLUDE CHARACTERS**',
           },
           negativePrompt: {
             type: 'string',
@@ -338,20 +330,21 @@ export async function generateBackgroundPrompt(
 interface Entity {
   fullName?: string;
   alias?: string;
-  type?: string;
+  type?: 'PERSON' | 'NON_PERSON';
+  gender?: string | null;
+  appearance?: string[] | null;
   description?: string;
-  descriptionType?: string;
 }
 export async function performNERWithAliases(
   contextText: string,
   aliases: string[]
 ): Promise<Entity[]> {
   // Prepare the list of known aliases
-  const aliasList = aliases.map((alias) => `"${alias}"`).join('\n');
+  const aliasList = aliases.map((alias) => `"${alias}"`).join(', ');
   const functions = [
     {
       name: 'extract_entities',
-      description: 'Extracts entities from text.',
+      description: 'Extracts characters from text.',
       parameters: {
         type: 'object',
         properties: {
@@ -363,16 +356,16 @@ export async function performNERWithAliases(
                 fullName: {
                   type: 'string',
                   description:
-                    'The canonical name of the entity (if applicable).',
+                    'The full (first and last) name of the character.',
+                },
+                type: {
+                  type: 'string',
+                  description: 'The type of entity extracted',
+                  enum: ['PERSON', 'NON_PERSON'],
                 },
                 alias: {
                   type: 'string',
                   description: 'The alias used in the text (if applicable).',
-                },
-                type: {
-                  type: 'string',
-                  description:
-                    "One of 'Character', 'Family', 'Building', 'Scene', 'Animal', or 'Object'.",
                 },
                 gender: {
                   type: ['string', 'null'],
@@ -380,16 +373,22 @@ export async function performNERWithAliases(
                 },
                 description: {
                   type: 'string',
-                  description:
-                    'A brief description of the finding in the text. Emphasize Appearance and Personality traits.',
+                  description: 'A brief summary of the finding in the text.',
                 },
-                descriptionType: {
-                  type: 'string',
+                appearance: {
+                  type: 'array',
+                  items: { type: 'string' },
                   description:
-                    'The type of description provided (Physical Attributes, Personality, Other).',
+                    'Physical appearance of the character in focus being extracted as attributes. Should be on clothing, hair, eyes, weight, build, age, accessories etc. **DO NOT INCLUDE** anything about other characters.',
+                },
+                actions: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description:
+                    'Actions performed by the character as string array of verbs.',
                 },
               },
-              required: ['type'],
+              required: ['description', 'alias', 'type'],
             },
             description: 'The list of extracted entities.',
           },
@@ -403,19 +402,13 @@ export async function performNERWithAliases(
     messages: [
       {
         role: 'system',
-        content: `You are an assistant that performs named entity recognition (NER) on a given text. Identify and extract all named entities, categorizing them as one of the following types: 'Character', 'Building', 'Scene', 'Animal', 'Object'. For entities that are aliases of known characters, provide both the full name and the alias. Only tag Family entities if they are clearly identified as such (Potters, The Potters, Dursleys, The Dursleys), not individuals (Mr. Potter, Mr. Dursley). Do your best to identify Characters that are referred to with their last name only (Potter, Mr. Potter) as their full name (one of Harry Potter or James Potter).
+        content: `
+You are an assistant that performs named entity recognition (NER) on a given text. Identify and extract all characters in the passage below. For entities that are aliases of known characters, provide both the full name and the alias. **IGNORE** Family entities if they are clearly identified as such (Potters, The Potters, Dursleys, The Dursleys), not individuals (Mr. Potter, Mr. Dursley). Do your best to identify Characters that are referred to with their last name only (Potter, Mr. Potter) as their full name (one of Harry Potter or James Potter).
 
-Include the following known possible aliases in your analysis: ${aliasList}.
+Include the following known possible aliases in your analysis:
+${aliasList}.
 
-For each entity, provide:
-- fullName: The canonical name of the entity (if applicable).
-- alias: The alias used in the text (if applicable).
-- type: One of 'Character', 'Family', 'Building', 'Scene', 'Animal', or 'Object'.
-- gender: Male, Female, or null when unknown
-- description: A brief description of the finding in the text. Emphasize Appearance and Personality traits.
-- descriptionType: The type of description provided (Physical Attributes, Personality, Other).
-
-Output the result as a JSON array of entities.`,
+Output the result as a JSON array of entities through extract_entities.`,
       },
       {
         role: 'user',
@@ -464,7 +457,27 @@ export async function detectNewScene(
     messages: [
       {
         role: 'system',
-        content: `You are an assistant that detects scene transitions in text. Determine if the following passage indicates the start of a new scene based on the accumulated context. Respond with a JSON object containing a single key "newScene" with a boolean value.`,
+        content: `
+You are an assistant that detects scene transitions in text.
+When reading a novel, several cues can indicate a scene change. Here are some common ways authors signal that a new scene is beginning:
+
+Chapter Breaks: A common and clear signal. A new chapter typically indicates a significant shift in location, time, or focus.
+
+Line Breaks/White Space: Authors often use line breaks or white space (blank lines) to separate scenes within the same chapter. These breaks indicate a change in time, location, or perspective without needing to start a new chapter.
+
+Change in Setting: A description of a new location, time of day, or environment can signal a scene change. For example, if characters move from indoors to outdoors, or from one place to another, it suggests a scene shift.
+
+Shift in Character Focus: A scene change can occur when the narrative shifts from one character's actions or perspective to another character's. For example, the story might shift from one character in the present to another character in the past or future.
+
+Time Jump: A transition in time, such as moving forward or backward, can signal a new scene. Authors might indicate this with phrases like "Later that evening..." or "The next day...," or even with subtle hints like a character mentioning the passage of time.
+
+Change in Tone or Mood: Sometimes, a shift in the emotional tone or mood of the narrative signals a scene change. For instance, moving from a tense confrontation to a peaceful reflection may mark a new scene.
+
+Dialogue and Action Transitions: A sudden shift in dialogue, where new topics are introduced or different characters speak, can serve as a scene transition. Similarly, when characters begin a new activity or enter a new phase of action, this can indicate a scene shift.
+
+Try and identify if the following passage marks the beginning of a new scene. Consider the accumulated context and the new passage. Look for any of the cues mentioned above that might indicate a scene change.
+
+Prefer medium sized scenes over shorter ones or long ones. If the new passage is a continuation of the previous scene, mark it as not a new scene.`,
       },
       {
         role: 'user',
@@ -480,7 +493,7 @@ ${nextPassageText}`,
     functions: functions,
     function_call: { name: 'report_scene' },
     temperature: 0.3, // Creativity level
-    max_tokens: 100,
+    max_tokens: 5000,
   });
 
   const message = response.choices[0]?.message;
@@ -532,7 +545,7 @@ export async function extractFullNames(textContent: string) {
         content: `
 You are an assistant that performs named entity recognition (NER) to identify complete (full) character names. Extract only the entities of type that are people with their full names present from the following text and provide them as a JSON array of strings.
 Ignore any other types of entities.
-Focus on extracting full names (e.g. Harry Potter, not just Harry) and avoid partial names or titles.)
+Focus on extracting full names (e.g. Harry Potter, not just Harry) and avoid partial names or titles.
 `,
       },
       {

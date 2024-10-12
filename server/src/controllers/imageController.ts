@@ -1,6 +1,7 @@
 import { ImageGenerationJob } from '@prisma/client';
 import { Request, Response } from 'express';
 import prisma from '../config/prisma';
+import { getCanonicalNames } from '../services/epubService';
 import { generateImage } from '../services/imageService';
 import {
   generateBackgroundPrompt,
@@ -323,6 +324,7 @@ async function generateBackgroundImagesForChapter(
   forceRegenerate: boolean,
   backgroundOptions: any
 ) {
+  const canonicalNames = await getCanonicalNames(chapter.bookId);
   for (const scene of chapter.scenes) {
     try {
       // Aggregate all passages' textContent in the scene
@@ -336,7 +338,8 @@ async function generateBackgroundImagesForChapter(
         chapter.book.title,
         forceRegenerate,
         backgroundSceneSize,
-        backgroundOptions
+        backgroundOptions,
+        canonicalNames
       );
 
       // Update job progress
@@ -364,7 +367,27 @@ async function generateBackgroundImagesForChapter(
     }
   }
 }
+/**
+ * Removes any substrings from a comma-separated string that contain any of the first or last names as whole words.
+ * The matching is case-insensitive.
+ * @param names - List of names (first and last)
+ * @param str - Comma-separated string to filter
+ * @returns Filtered string with substrings not containing the names
+ */
+function removeNamesFromString(names: string[], str: string): string {
+  const nameParts = new Set(
+    names.flatMap((name) => name.toLowerCase().split(/\s+/))
+  );
 
+  const stringsArray = str.split(',');
+
+  const filteredArray = stringsArray.filter((s) => {
+    const words = s.toLowerCase().split(/\W+/);
+    return !words.some((word) => nameParts.has(word));
+  });
+
+  return filteredArray.join(',');
+}
 // New helper function to generate all profile images sequentially
 async function generateProfileImagesForChapter(
   chapter: ChapterWithRelations,
@@ -523,8 +546,13 @@ async function generateImageForProfileHelper(
           {
             name: profile.name,
             descriptions: profile.descriptions
-              .filter((x) => x.type === 'PHYSICAL ATTRIBUTES' || 'PERSONALITY')
-              .map((desc) => desc.text),
+              .filter(
+                (x) =>
+                  x.appearance &&
+                  x.appearance.length > 0 &&
+                  x.appearance.toLowerCase() !== 'unknown'
+              )
+              .map((desc) => desc.appearance!),
             gender: profile.gender ?? undefined,
           },
           bookTitle
@@ -617,7 +645,8 @@ async function generateBackgroundImageForScene(
   bookTitle: string,
   forceRegenerate: boolean,
   backgroundSceneSize: { width: number; height: number },
-  backgroundOptions: any // Add this parameter
+  backgroundOptions: any,
+  personNames: string[]
 ): Promise<{ image: string | null; error?: string }> {
   try {
     // Ensure GenerationData exists for the scene background
@@ -655,16 +684,21 @@ async function generateBackgroundImageForScene(
         bookTitle
       );
 
+      const prompt = removeNamesFromString(personNames, prompts.positivePrompt);
+      const negativePrompt = removeNamesFromString(
+        personNames,
+        prompts.negativePrompt
+      );
       // Update GenerationData
       await prisma.generationData.update({
         where: { id: generationData.id },
         data: {
-          prompt: prompts.positivePrompt,
-          negativePrompt: prompts.negativePrompt,
+          prompt,
+          negativePrompt,
         },
       });
-      generationData.prompt = prompts.positivePrompt;
-      generationData.negativePrompt = prompts.negativePrompt;
+      generationData.prompt = prompt;
+      generationData.negativePrompt = negativePrompt;
     }
 
     let finalPrompt = generationData.prompt;
@@ -791,7 +825,7 @@ export async function generateImagesForPassage(req: Request, res: Response) {
     }
 
     const characterProfiles = profiles.filter(
-      (profile) => profile.type.toLowerCase() === 'character'
+      (profile) => profile.type?.toLowerCase() === 'person'
     );
 
     // Generate images for character profiles
@@ -806,6 +840,7 @@ export async function generateImagesForPassage(req: Request, res: Response) {
       )
     );
 
+    const canonicalNames = await getCanonicalNames(passage.bookId);
     // Generate background image
     const backgroundImagePromise = generateBackgroundImageForScene(
       passage.scene!,
@@ -813,7 +848,8 @@ export async function generateImagesForPassage(req: Request, res: Response) {
       passage.book.title,
       forceRegenerate,
       backgroundSceneSize,
-      null
+      null,
+      canonicalNames
     ).then((result) => ({
       profileId: 0,
       profileName: 'Background Scene',
@@ -910,6 +946,7 @@ export async function generateImagesForScene(req: Request, res: Response) {
       )
     );
 
+    const canonicalNames = await getCanonicalNames(scene.bookId);
     // Generate background image
     const backgroundImageResult = await generateBackgroundImageForScene(
       scene,
@@ -917,7 +954,8 @@ export async function generateImagesForScene(req: Request, res: Response) {
       scene.book.title,
       forceRegenerate,
       backgroundSceneSize,
-      null
+      null,
+      canonicalNames
     );
 
     // Prepare response
@@ -946,7 +984,8 @@ async function generateImagesForSceneLogic(
   sceneId: number,
   forceRegenerate: boolean,
   profileOptions: any,
-  backgroundOptions: any
+  backgroundOptions: any,
+  canonicalNames: string[]
 ) {
   // Fetch the scene with its passages and profiles
   const scene = await prisma.scene.findUnique({
@@ -1018,7 +1057,8 @@ async function generateImagesForSceneLogic(
     scene.book.title,
     forceRegenerate,
     backgroundSceneSize,
-    backgroundOptions
+    backgroundOptions,
+    canonicalNames
   );
 
   // Prepare response (optional, since this function doesn't return HTTP response)

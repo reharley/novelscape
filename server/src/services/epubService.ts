@@ -221,7 +221,8 @@ export async function detectScenes(bookId: string): Promise<void> {
 
     for (const passage of passages) {
       let isNewScene = false;
-      const contextText = accumulatedPassages.join(' ');
+      const contextText =
+        accumulatedPassages.join(' ') + ' ' + passage.textContent;
       try {
         const sceneFlagResponse = await detectNewScene(
           contextText,
@@ -428,6 +429,7 @@ export async function extractCanonicalNames(bookId: string): Promise<void> {
             if (
               words[0].startsWith('Uncle') ||
               words[0].startsWith('Aunt') ||
+              words[0].startsWith('The ') ||
               words[0].startsWith('Professor')
             )
               continue; // Skip if first word contains a period
@@ -526,37 +528,48 @@ export async function processPassagesWithContext(
         if (entities && Array.isArray(entities)) {
           await Promise.all(
             entities.map(async (entity) => {
-              if ((!entity.fullName && !entity.alias) || !entity.type) return;
-
-              // Handle 'Scene' type separately if needed
-              if (entity.type.toUpperCase() === 'SCENE') {
-                return; // Skipping as scenes are handled via sceneFlag
-              }
+              if (!entity.fullName && !entity.alias) return;
 
               // Determine canonical name
               const canonicalName = entity.fullName || entity.alias || '';
 
               // Upsert Profile
-              const profile = await prisma.profile.upsert({
-                where: {
-                  name_bookId: {
+              let profile;
+              if (entity.fullName && canonicalNames.includes(canonicalName)) {
+                profile = await prisma.profile.upsert({
+                  where: {
+                    name_bookId: {
+                      name: canonicalName,
+                      bookId: bookId,
+                    },
+                  },
+                  update: {
+                    gender: entity.gender
+                      ? entity.gender.toUpperCase()
+                      : undefined,
+                    type: entity.type ? entity.type.toUpperCase() : undefined,
+                  },
+                  create: {
+                    type: entity.type ? entity.type.toUpperCase() : undefined,
                     name: canonicalName,
+                    gender: entity.gender
+                      ? entity.gender.toUpperCase()
+                      : undefined,
                     bookId: bookId,
                   },
-                },
-                update: {
-                  type: entity.type.toUpperCase(),
-                },
-                create: {
-                  name: canonicalName,
-                  type: entity.type.toUpperCase(),
-                  bookId: bookId,
-                },
-              });
+                });
+              } else {
+                console.log(
+                  'Skipping entity without a valid canonical name:',
+                  entity.fullName,
+                  entity.alias
+                );
+                return;
+              }
 
               // Handle Alias
               try {
-                if (entity.alias && entity.fullName) {
+                if (entity.alias && entity.fullName && profile) {
                   await prisma.alias.upsert({
                     where: {
                       name_profileId: {
@@ -570,6 +583,13 @@ export async function processPassagesWithContext(
                       profileId: profile.id,
                     },
                   });
+                } else {
+                  console.log(
+                    'Skipping alias:',
+                    entity.alias,
+                    entity.fullName,
+                    profile?.id
+                  );
                 }
               } catch (e) {
                 console.error('Error upserting alias:', e);
@@ -580,7 +600,7 @@ export async function processPassagesWithContext(
                 await prisma.description.create({
                   data: {
                     text: entity.description,
-                    type: entity.descriptionType?.toUpperCase(),
+                    appearance: entity.appearance?.join(', ') ?? null,
                     bookId: bookId,
                     profileId: profile.id,
                     passageId: passage.id,
@@ -673,7 +693,7 @@ export async function getCanonicalNames(bookId: string): Promise<string[]> {
   const profiles = await prisma.profile.findMany({
     where: {
       bookId: bookId,
-      type: 'CHARACTER',
+      type: 'PERSON',
     },
     select: {
       name: true,

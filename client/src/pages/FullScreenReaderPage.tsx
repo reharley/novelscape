@@ -519,7 +519,7 @@ const AIEnhancedReaderPage: React.FC = () => {
             }}
           >
             {currentPassage.profiles
-              .filter((p) => p.type.toLowerCase() === 'character')
+              .filter((p) => p.type.toLowerCase() === 'person')
               .map((profile) => (
                 <Space
                   key={profile.id}

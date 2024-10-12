@@ -2,6 +2,7 @@
 import express from 'express';
 import {
   deleteBook,
+  detectSceneController,
   extractProfilesController,
   extractProfilesProgress,
   getBookContent,
@@ -78,5 +79,8 @@ router.delete('/:bookId', deleteBook);
  * @access Public
  */
 router.get('/:bookId/profiles', getProfilesForBook);
+
+router.post('/:bookId/detect-scenes', detectSceneController);
+router.get('/:bookId/detect-scenes/progress', extractProfilesProgress);
 
 export default router;

@@ -3,7 +3,11 @@ import { Request, Response } from 'express';
 import fs from 'fs-extra';
 import path from 'path';
 import prisma from '../config/prisma';
-import { extractProfiles, getChapterRawAsync } from '../services/epubService';
+import {
+  detectScenes,
+  extractProfiles,
+  getChapterRawAsync,
+} from '../services/epubService';
 import { parseChapterContent } from '../utils/parseChapterContent';
 import { progressManager } from '../utils/progressManager';
 
@@ -129,6 +133,33 @@ export async function getBookContent(req: Request, res: Response) {
     res
       .status(500)
       .json({ error: 'An error occurred while retrieving the book content.' });
+  }
+}
+
+export async function detectSceneController(req: Request, res: Response) {
+  const { bookId } = req.params;
+
+  try {
+    detectScenes(bookId)
+      .then(() => {
+        // Extraction completed successfully
+        // Progress updates are handled within extractProfiles via progressManager
+      })
+      .catch((error) => {
+        console.error(`Error extracting profiles for book ${bookId}:`, error);
+        // Send error via progressManager
+        progressManager.sendProgress(bookId, {
+          status: 'error',
+          message: error.message,
+        });
+        progressManager.closeAllClients(bookId);
+      });
+    res.status(202).json({ message: 'Scenes detected.' });
+  } catch (error: any) {
+    console.error('Error starting profile extraction:', error);
+    res
+      .status(500)
+      .json({ error: error.message || 'Failed to start profile extraction.' });
   }
 }
 

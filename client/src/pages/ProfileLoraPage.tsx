@@ -114,6 +114,52 @@ const ProfileLoraPage: React.FC = () => {
     }
   };
 
+  const detectScenes = async () => {
+    if (selectedBookFile === null) {
+      message.error('Please select a book first.');
+      return;
+    }
+
+    setExtractingProfiles(true);
+    setProgress(null); // Reset progress
+    try {
+      // Start listening to progress updates
+      const eventSource = new EventSource(
+        apiUrl + `/api/books/${selectedBookFile}/detect-scenes/progress`
+      );
+
+      eventSource.onmessage = (event) => {
+        const data: ProgressData = JSON.parse(event.data);
+        setProgress(data);
+
+        if (data.status === 'completed') {
+          message.success(data.message);
+          eventSource.close();
+          setExtractingProfiles(false);
+          // Refresh profiles after extraction
+          fetchProfiles();
+        } else if (data.status === 'error') {
+          message.error(data.message);
+          eventSource.close();
+          setExtractingProfiles(false);
+        }
+      };
+
+      eventSource.onerror = (err) => {
+        console.error('EventSource failed:', err);
+        message.error('Connection to progress stream failed.');
+        eventSource.close();
+        setExtractingProfiles(false);
+      };
+
+      // Trigger profile extraction
+      await axios.post(apiUrl + `/api/books/${selectedBookFile}/detect-scenes`);
+    } catch (error) {
+      message.error('Error extracting profiles.');
+      setExtractingProfiles(false);
+    }
+  };
+
   // Delete book and profiles
   const deleteBook = () => {
     if (selectedBookFile === null) {
@@ -152,6 +198,7 @@ const ProfileLoraPage: React.FC = () => {
             </Option>
           ))}
         </Select>
+        <Button onClick={detectScenes}>Detect Scenes</Button>
 
         <div style={{ marginBottom: '20px' }}>
           <Button
