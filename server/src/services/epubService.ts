@@ -220,12 +220,13 @@ export async function detectScenes(bookId: string): Promise<void> {
     let currentScene: Scene | null = null;
 
     for (const passage of passages) {
-      accumulatedPassages.push(passage.textContent);
-      const contextText = accumulatedPassages.join('\n\n');
-
       let isNewScene = false;
+      const contextText = accumulatedPassages.join(' ');
       try {
-        const sceneFlagResponse = await detectNewScene(contextText);
+        const sceneFlagResponse = await detectNewScene(
+          contextText,
+          passage.textContent
+        );
         isNewScene = sceneFlagResponse.newScene || false;
       } catch (error: any) {
         console.error(
@@ -238,6 +239,7 @@ export async function detectScenes(bookId: string): Promise<void> {
         });
         continue; // Skip to the next passage
       }
+      accumulatedPassages.push(passage.textContent);
 
       if (isNewScene && accumulatedPassages.length > 1) {
         // Exclude the last passage which triggered the scene change
@@ -423,6 +425,13 @@ export async function extractCanonicalNames(bookId: string): Promise<void> {
             const words = entity.split(' ');
             if (words.length !== 2) continue; // Skip if not a full name
             if (words[0].includes('.')) continue; // Skip if first word contains a period
+            if (
+              words[0].startsWith('Uncle') ||
+              words[0].startsWith('Aunt') ||
+              words[0].startsWith('Professor')
+            )
+              continue; // Skip if first word contains a period
+            if (entity.toUpperCase() === entity) continue; // Skip if all caps
             // Check for capitalization for first letter of each word
             let valid = true;
             for (const word of words) {

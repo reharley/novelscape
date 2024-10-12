@@ -91,8 +91,29 @@ export async function generateProfilePrompt(
     ${textContent}
     \`\`\`
     */
-  let assistantMessage;
+  let message;
   try {
+    const functions = [
+      {
+        name: 'generate_prompts',
+        description:
+          'Generates positive and negative prompts for image generation based on the provided profile.',
+        parameters: {
+          type: 'object',
+          properties: {
+            positivePrompt: {
+              type: 'string',
+              description: 'The positive prompt for image generation.',
+            },
+            negativePrompt: {
+              type: 'string',
+              description: 'The negative prompt for image generation.',
+            },
+          },
+          required: ['positivePrompt', 'negativePrompt'],
+        },
+      },
+    ];
     // Make a request to OpenAI's ChatGPT
     const response = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo', // Use the latest GPT model
@@ -102,44 +123,38 @@ export async function generateProfilePrompt(
           content: systemPrompt,
         },
       ],
+      functions: functions,
+      function_call: { name: 'generate_prompts' },
       max_tokens: 700, // Adjust as needed
-      temperature: 0.7, // Creativity level
+      temperature: 0.3, // Creativity level
     });
 
     // Extract and parse the response
-    assistantMessage = response.choices[0]?.message?.content;
+    message = response.choices[0]?.message;
 
-    if (!assistantMessage) {
-      throw new Error('No response received from OpenAI.');
+    if (message?.function_call?.name === 'generate_prompts') {
+      const args = JSON.parse(message.function_call.arguments);
+      if (!args.positivePrompt || !args.negativePrompt) {
+        throw new Error('Incomplete prompt data received from OpenAI.');
+      }
+
+      const promptObj = {
+        positivePrompt: args.positivePrompt,
+        negativePrompt: args.negativePrompt,
+      };
+
+      console.log(
+        `Generated character prompts for ${profile.name}:`,
+        promptObj
+      );
+      return promptObj;
+    } else {
+      throw new Error('No function call was made by the assistant.');
     }
-
-    // Remove Markdown code block delimiters if present
-    const jsonString = assistantMessage
-      .replace(/```json\s*|\s*```/g, '')
-      .trim();
-
-    // Attempt to parse the JSON response
-    const prompts = JSON.parse(jsonString);
-
-    // Validate the presence of both prompts
-    if (!prompts.positivePrompt || !prompts.negativePrompt) {
-      throw new Error('Incomplete prompt data received from OpenAI.');
-    }
-
-    const promptObj = {
-      positivePrompt: prompts.positivePrompt,
-      negativePrompt: prompts.negativePrompt,
-    };
-
-    console.log(`Generated character prompts for ${profile.name}:`, promptObj);
-    return promptObj;
   } catch (error: any) {
     console.error('Error generating prompts:', error.message);
     if (error instanceof SyntaxError) {
-      console.error(
-        'Failed to parse JSON. Original response:',
-        assistantMessage
-      );
+      console.error('Failed to parse JSON. Original response:', message);
     }
     throw new Error('Failed to generate prompts.');
   }
@@ -255,8 +270,28 @@ export async function generateBackgroundPrompt(
   
     **Please generate the positive and negative prompts for the background scene accordingly.**
     `;
-
-  let assistantMessage;
+  const functions = [
+    {
+      name: 'generate_prompts',
+      description:
+        'Generates positive and negative prompts for image generation based on the provided passage.',
+      parameters: {
+        type: 'object',
+        properties: {
+          positivePrompt: {
+            type: 'string',
+            description: 'The positive prompt for image generation.',
+          },
+          negativePrompt: {
+            type: 'string',
+            description: 'The negative prompt for image generation.',
+          },
+        },
+        required: ['positivePrompt', 'negativePrompt'],
+      },
+    },
+  ];
+  let message;
   try {
     // Make a request to OpenAI's ChatGPT
     const response = await openai.chat.completions.create({
@@ -267,43 +302,34 @@ export async function generateBackgroundPrompt(
           content: systemPrompt,
         },
       ],
+      functions: functions,
+      function_call: { name: 'generate_prompts' },
       max_tokens: 700, // Adjust as needed
-      temperature: 0.7, // Creativity level
+      temperature: 0.3, // Creativity level
     });
 
     // Extract and parse the response
-    assistantMessage = response.choices[0]?.message?.content;
+    message = response.choices[0]?.message;
 
-    if (!assistantMessage) {
-      throw new Error('No response received from OpenAI.');
+    if (message?.function_call?.name === 'generate_prompts') {
+      const args = JSON.parse(message.function_call.arguments);
+      if (!args.positivePrompt || !args.negativePrompt) {
+        throw new Error('Incomplete prompt data received from OpenAI.');
+      }
+
+      console.log('Generated background prompts:', args);
+
+      return {
+        positivePrompt: args.positivePrompt,
+        negativePrompt: args.negativePrompt,
+      };
+    } else {
+      throw new Error('No function call was made by the assistant.');
     }
-
-    // Remove Markdown code block delimiters if present
-    const jsonString = assistantMessage
-      .replace(/```json\s*|\s*```/g, '')
-      .trim();
-
-    // Attempt to parse the JSON response
-    const prompts = JSON.parse(jsonString);
-
-    // Validate the presence of both prompts
-    if (!prompts.positivePrompt || !prompts.negativePrompt) {
-      throw new Error('Incomplete prompt data received from OpenAI.');
-    }
-
-    console.log('Generated background prompts:', prompts);
-
-    return {
-      positivePrompt: prompts.positivePrompt,
-      negativePrompt: prompts.negativePrompt,
-    };
   } catch (error: any) {
     console.error('Error generating background prompts:', error.message);
     if (error instanceof SyntaxError) {
-      console.error(
-        'Failed to parse JSON. Original response:',
-        assistantMessage
-      );
+      console.error('Failed to parse JSON. Original response:', message);
     }
     throw new Error('Failed to generate background prompts.');
   }
@@ -321,8 +347,57 @@ export async function performNERWithAliases(
   aliases: string[]
 ): Promise<Entity[]> {
   // Prepare the list of known aliases
-  const aliasList = aliases.map((alias) => `"${alias}"`).join(', ');
-
+  const aliasList = aliases.map((alias) => `"${alias}"`).join('\n');
+  const functions = [
+    {
+      name: 'extract_entities',
+      description: 'Extracts entities from text.',
+      parameters: {
+        type: 'object',
+        properties: {
+          entities: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                fullName: {
+                  type: 'string',
+                  description:
+                    'The canonical name of the entity (if applicable).',
+                },
+                alias: {
+                  type: 'string',
+                  description: 'The alias used in the text (if applicable).',
+                },
+                type: {
+                  type: 'string',
+                  description:
+                    "One of 'Character', 'Family', 'Building', 'Scene', 'Animal', or 'Object'.",
+                },
+                gender: {
+                  type: ['string', 'null'],
+                  description: 'Male, Female, or null when unknown.',
+                },
+                description: {
+                  type: 'string',
+                  description:
+                    'A brief description of the finding in the text. Emphasize Appearance and Personality traits.',
+                },
+                descriptionType: {
+                  type: 'string',
+                  description:
+                    'The type of description provided (Physical Attributes, Personality, Other).',
+                },
+              },
+              required: ['type'],
+            },
+            description: 'The list of extracted entities.',
+          },
+        },
+        required: ['entities'],
+      },
+    },
+  ];
   const response = await openai.chat.completions.create({
     model: 'gpt-3.5-turbo',
     messages: [
@@ -347,33 +422,43 @@ Output the result as a JSON array of entities.`,
         content: `Extract entities from the following text:\n\n${contextText}`,
       },
     ],
+    functions: functions,
+    function_call: { name: 'extract_entities' },
     max_tokens: 1500,
+    temperature: 0.3, // Creativity level
   });
 
-  let assistantMessage = response.choices[0].message?.content || '';
-  assistantMessage = sanitizeAssistantMessage(assistantMessage);
-
-  let entities: Entity[] = [];
-  try {
-    entities = JSON.parse(assistantMessage);
-  } catch (parseError) {
-    console.error('JSON parse error (NER):', parseError);
-    const jsonMatch = assistantMessage.match(/\[.*\]/s);
-    if (jsonMatch) {
-      const regex = /\,(?=\s*?[\}\]])/g;
-      const cleanMatch = jsonMatch[0].replace(regex, '');
-      entities = JSON.parse(cleanMatch);
-    } else {
-      console.error('Failed to parse NER as JSON.');
-    }
+  const message = response.choices[0]?.message;
+  if (message?.function_call?.name === 'extract_entities') {
+    const args = JSON.parse(message.function_call.arguments);
+    const entities: Entity[] = args.entities;
+    console.log('Extracted entities:', entities);
+    return entities;
+  } else {
+    throw new Error('No function call was made by the assistant.');
   }
-
-  return entities;
 }
 // **Scene Detection with Accumulated Passages**
 export async function detectNewScene(
-  contextText: string
+  contextText: string,
+  nextPassageText: string
 ): Promise<{ newScene: boolean }> {
+  const functions = [
+    {
+      name: 'report_scene',
+      description: 'Reports whether a new scene has started.',
+      parameters: {
+        type: 'object',
+        properties: {
+          newScene: {
+            type: 'boolean',
+            description: 'True if a new scene has started, false otherwise.',
+          },
+        },
+        required: ['newScene'],
+      },
+    },
+  ];
   const response = await openai.chat.completions.create({
     model: 'gpt-3.5-turbo',
     messages: [
@@ -383,31 +468,30 @@ export async function detectNewScene(
       },
       {
         role: 'user',
-        content: `Analyze the following text and determine if it starts a new scene:\n\n${contextText}`,
+        content: `
+Analyze the following text and determine if it starts a new scene.
+Accumulated context:
+${contextText}
+
+New passage:
+${nextPassageText}`,
       },
     ],
+    functions: functions,
+    function_call: { name: 'report_scene' },
+    temperature: 0.3, // Creativity level
     max_tokens: 100,
   });
 
-  let assistantMessage = response.choices[0].message?.content || '';
-  assistantMessage = sanitizeAssistantMessage(assistantMessage);
-
-  let sceneResult: { newScene?: boolean } = {};
-  try {
-    sceneResult = JSON.parse(assistantMessage);
-  } catch (parseError) {
-    console.error('JSON parse error (Scene Detection):', parseError);
-    const jsonMatch = assistantMessage.match(/\{.*\}/s);
-    if (jsonMatch) {
-      const regex = /\,(?=\s*?[\}\]])/g;
-      const cleanMatch = jsonMatch[0].replace(regex, '');
-      sceneResult = JSON.parse(cleanMatch);
-    } else {
-      console.error('Failed to parse scene detection as JSON.');
-    }
+  const message = response.choices[0]?.message;
+  if (message?.function_call?.name === 'report_scene') {
+    const args = JSON.parse(message.function_call.arguments);
+    const newScene = args.newScene;
+    console.log('Scene detection result:', newScene);
+    return { newScene };
+  } else {
+    throw new Error('No function call was made by the assistant.');
   }
-
-  return { newScene: sceneResult.newScene || false };
 }
 
 // **Sanitize Assistant Message**
@@ -420,12 +504,36 @@ function sanitizeAssistantMessage(message: string): string {
 }
 
 export async function extractFullNames(textContent: string) {
-  const canonicalResponse = await openai.chat.completions.create({
+  // Define the function schema for function calling
+  const functions = [
+    {
+      name: 'provide_full_names',
+      description: 'Provides full character names extracted from text.',
+      parameters: {
+        type: 'object',
+        properties: {
+          fullNames: {
+            type: 'array',
+            items: {
+              type: 'string',
+            },
+            description: 'An array of full character names.',
+          },
+        },
+        required: ['fullNames'],
+      },
+    },
+  ];
+  const response = await openai.chat.completions.create({
     model: 'gpt-3.5-turbo',
     messages: [
       {
         role: 'system',
-        content: `You are an assistant that performs named entity recognition (NER) to identify complete (full) character names. Extract only the entities of type 'Character' with their full names present from the following text and provide them as a JSON array of strings.`,
+        content: `
+You are an assistant that performs named entity recognition (NER) to identify complete (full) character names. Extract only the entities of type that are people with their full names present from the following text and provide them as a JSON array of strings.
+Ignore any other types of entities.
+Focus on extracting full names (e.g. Harry Potter, not just Harry) and avoid partial names or titles.)
+`,
       },
       {
         role: 'user',
@@ -433,26 +541,19 @@ export async function extractFullNames(textContent: string) {
       },
     ],
     max_tokens: 500,
+    functions: functions,
+    temperature: 0.3, // Creativity level
+    function_call: { name: 'provide_full_names' },
   });
 
-  let assistantMessage = canonicalResponse.choices[0].message?.content || '';
-  assistantMessage = sanitizeAssistantMessage(assistantMessage);
+  const message = response.choices[0]?.message;
 
-  let canonicalEntities: string[] = [];
-  try {
-    canonicalEntities = JSON.parse(assistantMessage);
-  } catch (parseError) {
-    console.error('JSON parse error (canonical):', parseError);
-    const jsonMatch = assistantMessage.match(/\[.*\]/s);
-    if (jsonMatch) {
-      const regex = /\,(?=\s*?[\}\]])/g;
-      const cleanMatch = jsonMatch[0].replace(regex, '');
-      canonicalEntities = JSON.parse(cleanMatch);
-    } else {
-      console.error('Failed to parse canonical entities as JSON.');
-      return; // Skip if unable to parse
-    }
+  if (message?.function_call?.name === 'provide_full_names') {
+    const args = JSON.parse(message.function_call.arguments);
+    const fullNames: string[] = args.fullNames;
+    console.log('Extracted full names:', fullNames);
+    return fullNames;
+  } else {
+    throw new Error('No function call was made by the assistant.');
   }
-
-  return canonicalEntities;
 }
