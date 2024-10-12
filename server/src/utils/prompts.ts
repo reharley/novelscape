@@ -458,7 +458,7 @@ export async function detectNewScene(
       {
         role: 'system',
         content: `
-You are an assistant that detects scene transitions in text.
+You are an assistant novel editor that detects scene transitions in text.
 When reading a novel, several cues can indicate a scene change. Here are some common ways authors signal that a new scene is beginning:
 
 Chapter Breaks: A common and clear signal. A new chapter typically indicates a significant shift in location, time, or focus.
@@ -475,9 +475,9 @@ Change in Tone or Mood: Sometimes, a shift in the emotional tone or mood of the 
 
 Dialogue and Action Transitions: A sudden shift in dialogue, where new topics are introduced or different characters speak, can serve as a scene transition. Similarly, when characters begin a new activity or enter a new phase of action, this can indicate a scene shift.
 
-Try and identify if the following passage marks the beginning of a new scene. Consider the accumulated context and the new passage. Look for any of the cues mentioned above that might indicate a scene change.
+Try and identify if the following passage marks the beginning of a new scene. Consider the accumulated context and the new passage. Look for any of the cues mentioned above that might indicate a scene change.`,
 
-Prefer medium sized scenes over shorter ones or long ones. If the new passage is a continuation of the previous scene, mark it as not a new scene.`,
+        // Prefer medium sized scenes over shorter ones or long ones. If the new passage is a continuation of the previous scene, mark it as not a new scene.,
       },
       {
         role: 'user',
@@ -493,7 +493,7 @@ ${nextPassageText}`,
     functions: functions,
     function_call: { name: 'report_scene' },
     temperature: 0.3, // Creativity level
-    max_tokens: 5000,
+    max_tokens: 4096,
   });
 
   const message = response.choices[0]?.message;

@@ -558,7 +558,7 @@ async function generateImageForProfileHelper(
           bookTitle
         );
 
-        finalPrompt = prompts.positivePrompt;
+        finalPrompt = `${profile.name}, ${prompts.positivePrompt}`;
         finalNegativePrompt = prompts.negativePrompt;
 
         // Update GenerationData in the database
