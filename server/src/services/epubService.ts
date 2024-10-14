@@ -1,10 +1,13 @@
 import { Scene } from '@prisma/client';
+import axios from 'axios';
 import DOMPurify from 'dompurify';
 import EPub from 'epub2';
 import fs from 'fs-extra';
 import { JSDOM } from 'jsdom';
 import pLimit from 'p-limit'; // Import p-limit for concurrency control
 import path from 'path';
+import pdfParse from 'pdf-parse';
+
 import prisma from '../config/prisma';
 import { parseChapterContent } from '../utils/parseChapterContent';
 import { progressManager } from '../utils/progressManager';
@@ -19,9 +22,8 @@ const { window } = new JSDOM('<!DOCTYPE html>');
 const domPurify = DOMPurify(window);
 
 export async function extractPassagesAndChapters(
-  bookId: string,
-  epub: EPub,
-  extractedDir: string
+  bookId: number,
+  epub: EPub
 ): Promise<void> {
   const chapters = epub.flow;
 
@@ -42,7 +44,6 @@ export async function extractPassagesAndChapters(
   const concurrencyLimit = 5; // Adjust based on your system's capabilities
   const limit = pLimit(concurrencyLimit);
 
-  // Limit to the first 10 chapters for demonstration; adjust as needed
   const chaptersToProcess = chapters.slice(0, chapters.length);
   const totalChapters = chaptersToProcess.length;
   let processedChapters = 0;
@@ -54,8 +55,7 @@ export async function extractPassagesAndChapters(
       if (!chapter.order) return;
 
       try {
-        const text = await epub.getChapterAsync(chapterId);
-        // const text = await getChapterRawAsync(epub, chapterId);
+        const text = await getChapterText(epub, chapterId);
 
         if (!text) {
           console.error(`Error: Chapter ${chapterId} is empty.`);
@@ -97,7 +97,7 @@ export async function extractPassagesAndChapters(
 
         if (passageData.length > 0) {
           await prisma.passage.createMany({
-            data: passageData,
+            data: passageData as any[],
           });
         }
 
@@ -131,35 +131,124 @@ export async function extractPassagesAndChapters(
     message: 'Passages and chapters extracted successfully.',
   });
 }
-export async function extractProfiles(
-  bookId: string,
-  booksDir: string,
-  extractedDir: string
-): Promise<void> {
-  const bookPath = path.join(booksDir, bookId);
-
-  // Check if the book exists
-  if (!(await fs.pathExists(bookPath))) {
-    throw new Error('Book not found.');
-  }
-
-  // Upsert the book with id as filename
-  await prisma.book.upsert({
+export async function extractProfiles(bookId: number): Promise<void> {
+  // Fetch the book from the database
+  const book = await prisma.book.findUnique({
     where: { id: bookId },
-    update: {},
-    create: {
-      id: bookId,
-      title: path.parse(bookId).name,
-    },
   });
 
-  // Initialize and parse the EPUB
-  const epub = new EPub(bookPath);
+  if (!book) {
+    throw new Error('Book not found in database.');
+  }
 
-  epub.on('end', async () => {
+  // Get the storageUrl
+  const storageUrl = book.storageUrl;
+
+  if (!storageUrl) {
+    throw new Error('Book storageUrl is missing.');
+  }
+
+  // Fetch the book file from storageUrl
+  const response = await axios.get(storageUrl, { responseType: 'arraybuffer' });
+
+  // Get the file data
+  const fileData = response.data;
+
+  // Determine the file type
+  const { fileTypeFromBuffer } = await import('file-type');
+  const fileType = await fileTypeFromBuffer(fileData);
+
+  if (!fileType) {
+    throw new Error('Could not determine file type.');
+  }
+
+  if (fileType.ext === 'epub') {
+    // Handle EPUB files
+
+    // Initialize and parse the EPUB from buffer
+    const epub = new EPub(fileData);
+
+    epub.on('end', async () => {
+      try {
+        // **Phase 1: Extract Passages and Chapters**
+        await extractPassagesAndChapters(bookId, epub);
+
+        // **Phase 2: Extract Canonical Names**
+        await extractCanonicalNames(bookId);
+
+        // **Phase 3: Process Passages with Context**
+        await processPassagesWithContext(bookId);
+
+        // **Phase 4: Detect Scenes**
+        await detectScenes(bookId);
+
+        // Send completion status
+        progressManager.sendProgress(bookId, {
+          status: 'completed',
+          message: 'All phases completed successfully.',
+        });
+        progressManager.closeAllClients(bookId);
+      } catch (error: any) {
+        console.error(`Error processing book ${bookId}:`, error);
+        progressManager.sendProgress(bookId, {
+          status: 'error',
+          message:
+            error.message || 'An error occurred during profile extraction.',
+        });
+        progressManager.closeAllClients(bookId);
+      }
+    });
+
+    epub.on('error', (err) => {
+      console.error('Error parsing EPUB:', err);
+      progressManager.sendProgress(bookId, {
+        status: 'error',
+        message: 'Error parsing EPUB file.',
+      });
+      progressManager.closeAllClients(bookId);
+    });
+
+    epub.parse();
+  } else if (fileType.ext === 'pdf') {
+    // Handle PDF files
     try {
-      // **Phase 1: Extract Passages and Chapters**
-      await extractPassagesAndChapters(bookId, epub, extractedDir);
+      const data = await pdfParse(fileData);
+
+      // 'data.text' contains the text content of the PDF
+      const textContent = data.text;
+
+      // Create a single chapter
+      const chapterRecord = await prisma.chapter.create({
+        data: {
+          order: 1,
+          title: book.title || 'Chapter 1',
+          bookId: bookId,
+        },
+      });
+
+      // Split text into passages (e.g., paragraphs)
+      const passages = textContent.split('\n\n'); // Split on double newlines
+
+      const passageData = passages
+        .map((text, idx) => {
+          const trimmedText = text.trim();
+          if (!trimmedText) return null;
+          return {
+            textContent: trimmedText,
+            order: idx,
+            chapterId: chapterRecord.id,
+            bookId: bookId,
+          };
+        })
+        .filter((data) => data !== null);
+
+      if (passageData.length > 0) {
+        await prisma.passage.createMany({
+          data: passageData as any[],
+        });
+      }
+
+      // Now proceed to extract canonical names and process passages
 
       // **Phase 2: Extract Canonical Names**
       await extractCanonicalNames(bookId);
@@ -169,9 +258,6 @@ export async function extractProfiles(
 
       // **Phase 4: Detect Scenes**
       await detectScenes(bookId);
-
-      // **Finalizing: Extract and Save Book Resources**
-      await extractAndSaveBookResources(epub, bookId, extractedDir);
 
       // Send completion status
       progressManager.sendProgress(bookId, {
@@ -188,11 +274,25 @@ export async function extractProfiles(
       });
       progressManager.closeAllClients(bookId);
     }
-  });
-
-  epub.parse();
+  } else {
+    throw new Error('Unsupported file type: ' + fileType.ext);
+  }
 }
-export async function detectScenes(bookId: string): Promise<void> {
+function getChapterText(
+  epub: EPub,
+  chapterId: string
+): Promise<string | undefined> {
+  return new Promise((resolve, reject) => {
+    epub.getChapter(chapterId, (error: any, text?: string) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve(text);
+      }
+    });
+  });
+}
+export async function detectScenes(bookId: number): Promise<void> {
   progressManager.sendProgress(bookId, {
     status: 'phase',
     phase: 'Phase 4: Detecting scenes...',
@@ -323,16 +423,11 @@ export async function detectScenes(bookId: string): Promise<void> {
 
 export async function extractAndSaveBookResources(
   epub: EPub,
-  bookId: string,
+  fileName: string,
   extractedDir: string
 ): Promise<void> {
-  progressManager.sendProgress(bookId, {
-    status: 'phase',
-    phase: 'Finalizing: Extracting book resources...',
-  });
-
   const manifestItems = Object.values(epub.manifest); // Extract manifest entries as an array
-  const extractPath = path.join(extractedDir, bookId);
+  const extractPath = path.join(extractedDir, fileName);
 
   // Use p-limit to control concurrency for file extraction
   const fileLimit = pLimit(5); // Adjust concurrency as needed
@@ -349,28 +444,14 @@ export async function extractAndSaveBookResources(
 
         // Write file to disk
         if (data) await fs.writeFile(outputPath, data);
-        progressManager.sendProgress(bookId, {
-          status: 'file_extracted',
-          file: item.href,
-        });
       } catch (err: any) {
         console.error(`Error extracting file ${item.href}:`, err);
-        progressManager.sendProgress(bookId, {
-          status: 'error',
-          message: `Error extracting file ${item.href}: ${err.message}`,
-        });
       }
     })
   );
 
   // Await all file extraction tasks
   await Promise.all(tasks);
-
-  progressManager.sendProgress(bookId, {
-    status: 'phase_completed',
-    phase: 'Finalizing',
-    message: 'Book resources extracted successfully.',
-  });
 }
 
 async function getFileAsync(
@@ -388,7 +469,7 @@ async function getFileAsync(
   });
 }
 
-export async function extractCanonicalNames(bookId: string): Promise<void> {
+export async function extractCanonicalNames(bookId: number): Promise<void> {
   progressManager.sendProgress(bookId, {
     status: 'phase',
     phase: 'Phase 2: Extracting canonical character names...',
@@ -492,7 +573,7 @@ export async function extractCanonicalNames(bookId: string): Promise<void> {
 }
 
 export async function processPassagesWithContext(
-  bookId: string
+  bookId: number
 ): Promise<void> {
   progressManager.sendProgress(bookId, {
     status: 'phase',
@@ -646,7 +727,7 @@ export async function processPassagesWithContext(
 }
 
 // **Get Next Scene Order**
-async function getNextSceneOrder(bookId: string): Promise<number> {
+async function getNextSceneOrder(bookId: number): Promise<number> {
   const lastScene = await prisma.scene.findFirst({
     where: { bookId: bookId },
     orderBy: { order: 'desc' },
@@ -688,8 +769,7 @@ export async function getChapterRawAsync(
     });
   });
 }
-
-export async function getCanonicalNames(bookId: string): Promise<string[]> {
+export async function getCanonicalNames(bookId: number): Promise<string[]> {
   const profiles = await prisma.profile.findMany({
     where: {
       bookId: bookId,

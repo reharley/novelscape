@@ -8,6 +8,7 @@ import {
   extractProfiles,
   getChapterRawAsync,
 } from '../services/epubService';
+import { uploadFileToAzure } from '../utils/azureStorage';
 import { parseChapterContent } from '../utils/parseChapterContent';
 import { progressManager } from '../utils/progressManager';
 
@@ -136,10 +137,48 @@ export async function getBookContent(req: Request, res: Response) {
   }
 }
 
-export async function detectSceneController(req: Request, res: Response) {
-  const { bookId } = req.params;
-
+export async function uploadBookController(req: Request, res: Response) {
   try {
+    const userId = req.user.oid;
+    if (!req.file) {
+      res.status(400).send('No file uploaded.');
+      return;
+    }
+
+    const file = req.file;
+
+    // Check if the file type is valid
+    const validTypes = ['application/pdf', 'application/epub+zip'];
+    if (!validTypes.includes(file.mimetype)) {
+      res.status(400).send('Invalid file type. Only PDF and EPUB are allowed.');
+      return;
+    }
+
+    // Upload file to Azure Blob Storage
+    const fileUrl = await uploadFileToAzure(file.buffer, file.originalname);
+
+    await prisma.book.create({
+      data: {
+        userId,
+        title: file.originalname,
+        storageUrl: fileUrl,
+      },
+    });
+
+    // Respond with the URL of the uploaded file
+    res.status(200).json({
+      message: 'File uploaded successfully!',
+      fileUrl,
+    });
+  } catch (error) {
+    console.error('Error uploading file:', error);
+    res.status(500).send('Error uploading file.');
+  }
+}
+
+export async function detectSceneController(req: Request, res: Response) {
+  try {
+    const bookId = Number(req.params.bookId);
     detectScenes(bookId)
       .then(() => {
         // Extraction completed successfully
@@ -164,11 +203,10 @@ export async function detectSceneController(req: Request, res: Response) {
 }
 
 export async function extractProfilesController(req: Request, res: Response) {
-  const { bookId } = req.params;
-
   try {
+    const bookId = Number(req.params.bookId);
     // Start profile extraction asynchronously
-    extractProfiles(bookId, booksDir, extractedDir)
+    extractProfiles(bookId)
       .then(() => {
         // Extraction completed successfully
         // Progress updates are handled within extractProfiles via progressManager
@@ -194,7 +232,7 @@ export async function extractProfilesController(req: Request, res: Response) {
 }
 
 export async function extractProfilesProgress(req: Request, res: Response) {
-  const { bookId } = req.params;
+  const bookId = Number(req.params.bookId);
 
   // Set headers for SSE
   res.set({
@@ -218,7 +256,7 @@ export async function getPassagesForBook(req: Request, res: Response) {
 
   try {
     const passages = await prisma.passage.findMany({
-      where: { bookId },
+      where: { bookId: Number(bookId) },
       orderBy: { order: 'asc' },
       include: {
         profiles: {
@@ -251,7 +289,7 @@ export async function getPassagesForChapter(req: Request, res: Response) {
   try {
     const passages = await prisma.passage.findMany({
       where: {
-        bookId: bookId,
+        bookId: Number(bookId),
         chapterId: Number(chapterId),
       },
       select: {
@@ -288,7 +326,7 @@ export async function getChaptersForBook(req: Request, res: Response) {
 
   try {
     const chapters = await prisma.chapter.findMany({
-      where: { bookId: bookId },
+      where: { bookId: Number(bookId) },
       orderBy: { order: 'asc' },
       select: {
         id: true,
@@ -310,9 +348,8 @@ export async function getChaptersForBook(req: Request, res: Response) {
 }
 
 export async function deleteBook(req: Request, res: Response) {
-  const { bookId } = req.params;
-
   try {
+    const bookId = Number(req.params.bookId);
     await prisma.$transaction([
       prisma.description.deleteMany({
         where: { bookId },
@@ -362,9 +399,8 @@ export async function deleteBook(req: Request, res: Response) {
  * Fetches profiles associated with a specific book, including their descriptions.
  */
 export async function getProfilesForBook(req: Request, res: Response) {
-  const { bookId } = req.params;
-
   try {
+    const bookId = Number(req.params.bookId);
     const profiles = await prisma.profile.findMany({
       where: { bookId },
       include: {

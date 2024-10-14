@@ -7,14 +7,14 @@ interface ProgressClients {
 class ProgressManager {
   private clients: ProgressClients = {};
 
-  addClient(bookId: string, res: Response) {
+  addClient(bookId: number, res: Response) {
     if (!this.clients[bookId]) {
       this.clients[bookId] = new Set();
     }
     this.clients[bookId].add(res);
   }
 
-  removeClient(bookId: string, res: Response) {
+  removeClient(bookId: number, res: Response) {
     if (this.clients[bookId]) {
       this.clients[bookId].delete(res);
       if (this.clients[bookId].size === 0) {
@@ -23,7 +23,7 @@ class ProgressManager {
     }
   }
 
-  sendProgress(bookId: string, data: any) {
+  sendProgress(bookId: number, data: any) {
     if (this.clients[bookId]) {
       this.clients[bookId].forEach((res) => {
         res.write(`data: ${JSON.stringify(data)}\n\n`);
@@ -31,7 +31,7 @@ class ProgressManager {
     }
   }
 
-  closeAllClients(bookId: string) {
+  closeAllClients(bookId: number) {
     if (this.clients[bookId]) {
       this.clients[bookId].forEach((res) => {
         res.end();

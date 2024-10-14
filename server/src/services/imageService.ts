@@ -1,37 +1,9 @@
-import { BlobServiceClient } from '@azure/storage-blob';
 import removeBackground from '@imgly/background-removal-node';
 import { GenerationData } from '@prisma/client';
 import axios from 'axios';
 import path from 'path';
 import prisma from '../config/prisma';
-const AZURE_STORAGE_CONNECTION_STRING =
-  process.env.AZURE_STORAGE_CONNECTION_STRING;
-const AZURE_STORAGE_CONTAINER_NAME =
-  process.env.AZURE_STORAGE_CONTAINER_NAME || 'images';
-
-// Initialize BlobServiceClient
-if (!AZURE_STORAGE_CONNECTION_STRING) {
-  throw new Error(
-    'AZURE_STORAGE_CONNECTION_STRING is not defined in environment variables.'
-  );
-}
-
-const blobServiceClient = BlobServiceClient.fromConnectionString(
-  AZURE_STORAGE_CONNECTION_STRING
-);
-
-// Ensure the container exists
-async function getContainerClient() {
-  const containerClient = blobServiceClient.getContainerClient(
-    AZURE_STORAGE_CONTAINER_NAME
-  );
-  const exists = await containerClient.exists();
-  if (!exists) {
-    await containerClient.create({ access: 'container' }); // Public access
-    console.log(`Container "${AZURE_STORAGE_CONTAINER_NAME}" created.`);
-  }
-  return containerClient;
-}
+import { getContainerClient } from '../utils/azureStorage';
 
 interface GenerateImageParams {
   prompt: string;
@@ -161,7 +133,7 @@ export async function generateImage(
     const filename = `image_${timestamp}_${randomInt}.png`;
 
     // Get container client
-    const containerClient = await getContainerClient();
+    const containerClient = await getContainerClient('images');
 
     // Get block blob client
     const blockBlobClient = containerClient.getBlockBlobClient(filename);

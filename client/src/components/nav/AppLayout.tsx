@@ -29,8 +29,8 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
           <Menu.Item key='/models'>
             <Link to='/models'>Model Manager</Link>
           </Menu.Item>
-          <Menu.Item key='/reader'>
-            <Link to='/reader'>Book Reader</Link>
+          <Menu.Item key='/library'>
+            <Link to='/library'>Library</Link>
           </Menu.Item>
           <Menu.Item key='/ai-reader'>
             <Link to='/ai-reader'>AI Enhanced Reader</Link>

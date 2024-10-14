@@ -8,8 +8,10 @@ datasource db {
 }
 
 model Book {
-    id           String        @id
+    id           Int           @id @default(autoincrement())
     title        String
+    storageUrl   String
+    userId       String
     chapters     Chapter[]
     profiles     Profile[]
     passages     Passage[]
@@ -24,7 +26,7 @@ model Chapter {
     order    Int
     title    String
     book     Book      @relation(fields: [bookId], references: [id])
-    bookId   String
+    bookId   Int
     passages Passage[]
     scenes   Scene[]
 }
@@ -34,7 +36,7 @@ model Passage {
     textContent  String
     order        Int
     book         Book          @relation(fields: [bookId], references: [id])
-    bookId       String
+    bookId       Int
     chapter      Chapter       @relation(fields: [chapterId], references: [id])
     chapterId    Int
     descriptions Description[]
@@ -55,7 +57,7 @@ model Profile {
     gender       String?
     descriptions Description[]
     book         Book             @relation(fields: [bookId], references: [id])
-    bookId       String
+    bookId       Int
     passages     Passage[]        @relation("PassageProfiles")
     aiModels     ProfileAiModel[]
     imageId      Int?
@@ -78,7 +80,7 @@ model Alias {
 
 model Description {
     id         Int     @id @default(autoincrement())
-    bookId     String
+    bookId     Int
     book       Book    @relation(fields: [bookId], references: [id])
     text       String
     appearance String?
@@ -169,7 +171,7 @@ model Scene {
     id        Int       @id @default(autoincrement())
     order     Int
     book      Book      @relation(fields: [bookId], references: [id])
-    bookId    String
+    bookId    Int
     chapter   Chapter?  @relation(fields: [chapterId], references: [id])
     chapterId Int
     passages  Passage[]

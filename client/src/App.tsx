@@ -13,7 +13,6 @@ import ModelManagerPage from './components/models/ModelManagerPage';
 import AppLayout from './components/nav/AppLayout';
 import AppTheme from './components/nav/AppTheme.tsx';
 import AIEnhancedReaderPage from './components/reader/AIEnhancedReaderPage.tsx';
-import BookReaderPage from './components/reader/BookReaderPage';
 import ProtectedRoute from './components/routing/ProtectedRoute.tsx';
 import FullScreenReaderPage from './pages/FullScreenReaderPage.tsx';
 import ChapterImageGenerator from './pages/ImageGenerationPage.tsx';
@@ -21,9 +20,14 @@ import LoraAssociationPage from './pages/LoraAssociationPage.tsx';
 import ProfileLoraPage from './pages/ProfileLoraPage.tsx';
 
 import LandingPage from './pages/LandingPage.tsx';
+import LibraryPage from './pages/LibraryPage.tsx';
 import ProfileListPage from './pages/ProfilesListPage.tsx';
+import UserPage from './pages/UserPage.tsx';
 import { reactPlugin } from './utils/appInsights.ts';
 import { msalConfig } from './utils/authConfig.ts';
+import { setupAxios } from './utils/axiosSetup.ts';
+
+setupAxios();
 
 const LayoutRoute = () => (
   <AppLayout>
@@ -55,8 +59,9 @@ const router = createBrowserRouter(
           <Route path='/' element={<LayoutRoute />}>
             {/* <Route index element={<HomePage />} /> */}
             <Route path='models' element={<ModelManagerPage />} />
-            <Route path='reader' element={<BookReaderPage />} />
+            <Route path='library' element={<LibraryPage />} />
             <Route path='ai-reader' element={<AIEnhancedReaderPage />} />
+            <Route path='user' element={<UserPage />} />
             <Route path='profile-loras' element={<ProfileLoraPage />} />
             <Route path='profiles' element={<ProfileListPage />} />
             <Route path='associate-loras' element={<LoraAssociationPage />} />

@@ -4,8 +4,8 @@ export function parseChapterContent(text: string) {
   const $ = cheerio.load(text);
   const contents: any[] = [];
 
+  //@ts-ignore
   function processElement(element: cheerio.Element) {
-    //@ts-ignore
     const tagName = element.tagName?.toLowerCase() || '';
 
     const text = $(element).text().trim();

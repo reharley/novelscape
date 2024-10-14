@@ -4,7 +4,7 @@ export const loginRequest = {
   scopes: [
     'openid',
     'profile',
-    // 'https://novelscape.onmicrosoft.com/orca-api/orca.customer',
+    'https://novelscape.onmicrosoft.com/basic-api/basic.access',
   ],
 };
 

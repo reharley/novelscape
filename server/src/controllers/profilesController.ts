@@ -26,8 +26,8 @@ export async function generateImageForProfile(req: Request, res: Response) {
 }
 
 export async function getProfilesForBook(req: Request, res: Response) {
-  const { bookId } = req.params;
   try {
+    const bookId = Number(req.params.bookId);
     const profiles = await prisma.profile.findMany({
       where: { bookId },
       include: {

@@ -12,7 +12,9 @@ import {
   getProfilesForBook,
   listBookFiles,
   listBooks,
+  uploadBookController,
 } from '../controllers/booksController';
+import { upload } from '../utils/multer';
 
 const router = express.Router();
 
@@ -82,5 +84,7 @@ router.get('/:bookId/profiles', getProfilesForBook);
 
 router.post('/:bookId/detect-scenes', detectSceneController);
 router.get('/:bookId/detect-scenes/progress', extractProfilesProgress);
+
+router.post('/upload', upload.single('file'), uploadBookController);
 
 export default router;
