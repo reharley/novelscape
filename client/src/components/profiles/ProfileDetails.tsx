@@ -56,7 +56,6 @@ const ProfileDetails: React.FC<Props> = ({ profileId, onClose }) => {
     return <Spin size='large' />;
   }
 
-  console.log(profile);
   return (
     <Drawer
       title={profile.name}

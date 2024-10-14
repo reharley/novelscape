@@ -61,7 +61,6 @@ const LandingPage: React.FC = () => {
         authority: b2cPolicies.authorities.signUpSignIn.authority,
       })
       .then((res: any) => {
-        console.log('Authentication success:', res);
         localStorage.setItem('accessToken', res.accessToken);
       })
       .catch((e) => {

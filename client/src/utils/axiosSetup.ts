@@ -5,7 +5,6 @@ export function setupAxios() {
     (config) => {
       const accessToken = localStorage.getItem('accessToken');
       const token = `Bearer ${accessToken}`;
-      console.log(token);
       if (token) {
         config.headers['Authorization'] = token;
       }

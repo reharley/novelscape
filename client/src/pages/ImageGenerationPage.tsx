@@ -98,7 +98,6 @@ const ChapterImageGenerationPage: React.FC = () => {
   // Filter LoRAs and Embeddings based on selected checkpoints
   useEffect(() => {
     if (selectedProfileCheckpoint) {
-      console.log('here');
       const baseModel = checkpoints.find(
         (ckpt) => ckpt.fileName === selectedProfileCheckpoint
       )?.baseModel;
@@ -183,7 +182,6 @@ const ChapterImageGenerationPage: React.FC = () => {
     // Define the polling function
     const fetchJobs = async () => {
       try {
-        console.log('Fetching jobs...');
         const response = await axios.get<ImageGenerationJob[]>(
           `${baseUrl}/generate-image/jobs`
         );
@@ -249,10 +247,6 @@ const ChapterImageGenerationPage: React.FC = () => {
       setGenerating(false);
     }
   };
-
-  console.log('checkpoints:', checkpoints);
-  console.log('loras:', loras);
-  console.log('embeddings:', embeddings);
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
