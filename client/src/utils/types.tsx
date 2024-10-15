@@ -38,9 +38,17 @@ export interface Description {
 }
 
 export interface Book {
-  id: string;
-  title: string;
+  id: number;
   profiles: Profile[];
+  title: string;
+  storageUrl: string;
+  userId: string;
+  chapters: Chapter[];
+  passages: Passage[];
+  scenes: Scene[];
+  createdAt: Date;
+  updatedAt: Date;
+  descriptions: Description[];
 }
 
 export interface Chapter {

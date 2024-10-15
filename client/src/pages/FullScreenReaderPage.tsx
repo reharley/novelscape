@@ -62,9 +62,14 @@ const AIEnhancedReaderPage: React.FC = () => {
   const passageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (bookId && chapterId) {
-      const chapterIdNum = parseInt(chapterId, 10);
-      fetchPassages(bookId, chapterIdNum);
+    if (bookId) {
+      if (chapterId) {
+        const chapterIdNum = parseInt(chapterId, 10);
+        fetchPassages(bookId, chapterIdNum);
+      } else {
+        // Fetch last read position
+        fetchLastReadPosition(bookId);
+      }
     }
   }, [bookId, chapterId]);
 
@@ -77,6 +82,12 @@ const AIEnhancedReaderPage: React.FC = () => {
       setCurrentPassageIndex(0);
     }
   }, [passageIndex]);
+
+  useEffect(() => {
+    if (bookId && chapterId) {
+      updateLastReadPosition(bookId, chapterId, currentPassageIndex);
+    }
+  }, [currentPassageIndex]);
 
   const splitPassage = (passage: Passage): Passage[] => {
     const text = passage.textContent;
@@ -118,6 +129,46 @@ const AIEnhancedReaderPage: React.FC = () => {
     return newPassages;
   };
 
+  const fetchLastReadPosition = async (bookId: string) => {
+    try {
+      const response = await axios.get(
+        `${baseUrl}/books/${bookId}/reading-progress`
+      );
+      const { chapterId, passageIndex } = response.data;
+
+      if (chapterId != null) {
+        // Navigate to the last read position
+        navigate(`/reader/${bookId}/${chapterId}/${passageIndex || 0}`);
+      } else {
+        // No last read position, fetch chapters
+        fetchChapters(bookId);
+      }
+    } catch (error) {
+      console.error('Error fetching last read position:', error);
+      message.error('Failed to fetch last read position.');
+      // Default to first chapter
+      fetchChapters(bookId);
+    }
+  };
+
+  const fetchChapters = async (bookId: string) => {
+    try {
+      const response = await axios.get(`${baseUrl}/books/${bookId}/chapters`);
+      const chapters = response.data;
+      if (chapters.length > 0) {
+        const firstChapterId = chapters[0].id;
+        navigate(`/reader/${bookId}/${firstChapterId}/0`);
+      } else {
+        // No chapters, redirect to processing page
+        navigate(`/processing/${bookId}`);
+      }
+    } catch (error) {
+      console.error('Error fetching chapters:', error);
+      message.error('Failed to fetch chapters.');
+      navigate(`/processing/${bookId}`);
+    }
+  };
+
   const fetchPassages = (bookId: string, chapterId: number) => {
     setLoadingPassages(true);
     axios
@@ -126,8 +177,13 @@ const AIEnhancedReaderPage: React.FC = () => {
       )
       .then((response) => {
         const fetchedPassages = response.data;
+        if (fetchedPassages.length === 0) {
+          // No passages, redirect to processing page
+          navigate(`/processing/${bookId}`);
+          return;
+        }
         const processedPassages: Passage[] = [];
-
+        console.log(fetchedPassages);
         fetchedPassages.forEach((passage) => {
           const splitPassages = splitPassage(passage);
           processedPassages.push(...splitPassages);
@@ -178,8 +234,24 @@ const AIEnhancedReaderPage: React.FC = () => {
       .catch((error) => {
         console.error('Error fetching passages:', error);
         message.error('Failed to fetch passages.');
+        navigate(`/processing/${bookId}`);
       })
       .finally(() => setLoadingPassages(false));
+  };
+
+  const updateLastReadPosition = async (
+    bookId: string,
+    chapterId: string,
+    passageIndex: number
+  ) => {
+    try {
+      await axios.post(`${baseUrl}/books/${bookId}/reading-progress`, {
+        chapterId: parseInt(chapterId, 10),
+        passageIndex,
+      });
+    } catch (error) {
+      console.error('Error updating last read position:', error);
+    }
   };
 
   const generateImagesForPassage = async () => {

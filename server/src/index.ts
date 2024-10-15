@@ -6,7 +6,7 @@ import './config/dotenv';
 import prisma from './config/prisma';
 import { auth } from './middleware/auth';
 import { errorHandler } from './middleware/errorHandler';
-import routes from './routes';
+import routes from './routes/index';
 
 prisma; // Initialize Prisma Client
 const app = express();

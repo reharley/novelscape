@@ -1,7 +1,7 @@
 import { ImageGenerationJob } from '@prisma/client';
 import { Request, Response } from 'express';
 import prisma from '../config/prisma';
-import { getCanonicalNames } from '../services/epubService';
+import { getCanonicalNames } from '../services/bookService';
 import { generateImage } from '../services/imageService';
 import {
   generateBackgroundPrompt,

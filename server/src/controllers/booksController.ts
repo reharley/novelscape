@@ -4,6 +4,10 @@ import fs from 'fs-extra';
 import path from 'path';
 import prisma from '../config/prisma';
 import {
+  extractCanonicalNames,
+  extractPassageAndChapters,
+} from '../services/bookService';
+import {
   detectScenes,
   extractProfiles,
   getChapterRawAsync,
@@ -17,10 +21,6 @@ if (!process.env.BOOKS_PATH) {
   process.exit(1);
 }
 const booksDir = process.env.BOOKS_PATH;
-const extractedDir = path.join(__dirname, '../../extracted_books');
-
-// Ensure extracted_books directory exists
-fs.ensureDirSync(extractedDir);
 
 export async function listBookFiles(req: Request, res: Response) {
   try {
@@ -36,11 +36,6 @@ export async function listBookFiles(req: Request, res: Response) {
 export async function listBooks(req: Request, res: Response) {
   try {
     const books = await prisma.book.findMany({
-      select: {
-        id: true,
-        title: true,
-        // Include other fields if necessary
-      },
       orderBy: {
         title: 'asc', // Optional: order books alphabetically by title
       },
@@ -61,7 +56,7 @@ export async function listBooks(req: Request, res: Response) {
 /**
  * Retrieves the structured content of a specific book.
  */
-export async function getBookContent(req: Request, res: Response) {
+export async function getEpubContent(req: Request, res: Response) {
   const { bookId } = req.params;
   const bookPath = path.join(booksDir, `${bookId}.epub`);
 
@@ -417,4 +412,168 @@ export async function getProfilesForBook(req: Request, res: Response) {
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch profiles.' });
   }
+}
+
+export async function getReadingProgress(req: Request, res: Response) {
+  const bookId = Number(req.params.bookId);
+  const userId = req.user.oid;
+
+  try {
+    const progress = await prisma.readingProgress.findUnique({
+      where: {
+        userId_bookId: {
+          userId,
+          bookId,
+        },
+      },
+    });
+
+    if (progress) {
+      res.json({
+        chapterId: progress.chapterId,
+        passageIndex: progress.passageIndex,
+      });
+    } else {
+      res.json({});
+    }
+  } catch (error) {
+    console.error('Error fetching reading progress:', error);
+    res.status(500).json({ error: 'Failed to fetch reading progress.' });
+  }
+}
+
+export async function updateReadingProgress(req: Request, res: Response) {
+  const bookId = Number(req.params.bookId);
+  const userId = req.user.oid;
+  const { chapterId, passageIndex } = req.body;
+
+  try {
+    await prisma.readingProgress.upsert({
+      where: {
+        userId_bookId: {
+          userId,
+          bookId,
+        },
+      },
+      update: {
+        chapterId,
+        passageIndex,
+      },
+      create: {
+        userId,
+        bookId,
+        chapterId,
+        passageIndex,
+      },
+    });
+
+    res.json({ message: 'Reading progress updated.' });
+  } catch (error) {
+    console.error('Error updating reading progress:', error);
+    res.status(500).json({ error: 'Failed to update reading progress.' });
+  }
+}
+
+export async function processBookController(req: Request, res: Response) {
+  try {
+    const bookId = Number(req.params.bookId);
+
+    // Start the processing asynchronously
+    processBook(bookId)
+      .then(() => {
+        // Processing completed successfully
+        // Progress updates are handled within processBook via progressManager
+      })
+      .catch((error) => {
+        console.error(`Error processing book ${bookId}:`, error);
+        // Send error via progressManager
+        progressManager.sendProgress(bookId, {
+          status: 'error',
+          message: error.message,
+        });
+        progressManager.closeAllClients(bookId);
+      });
+
+    // Immediately respond to acknowledge the request
+    res.status(202).json({ message: 'Book processing started.' });
+  } catch (error: any) {
+    console.error('Error starting book processing:', error);
+    res
+      .status(500)
+      .json({ error: error.message || 'Failed to start book processing.' });
+  }
+}
+
+export async function processingProgress(req: Request, res: Response) {
+  const bookId = Number(req.params.bookId);
+
+  // Set headers for SSE
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+  res.flushHeaders();
+
+  // Add client to ProgressManager
+  progressManager.addClient(bookId, res);
+
+  // Handle client disconnect
+  req.on('close', () => {
+    progressManager.removeClient(bookId, res);
+  });
+}
+
+// Implement processBook function to handle the processing logic
+async function processBook(bookId: number) {
+  // Phase 1: Extract Passages and Chapters
+  progressManager.sendProgress(bookId, {
+    status: 'phase',
+    phase: 'Phase 1',
+    message: 'Extracting Passages and Chapters',
+  });
+  await extractPassageAndChapters(bookId); // Implement this function
+  progressManager.sendProgress(bookId, {
+    status: 'phase_progress',
+    phase: 'Phase 1',
+    completed: 1,
+    total: 1,
+  });
+
+  // Phase 2: Extract Canonical Names
+  progressManager.sendProgress(bookId, {
+    status: 'phase',
+    phase: 'Phase 2',
+    message: 'Extracting Canonical Names',
+  });
+  await extractCanonicalNames(bookId); // Implement this function
+  progressManager.sendProgress(bookId, {
+    status: 'phase_progress',
+    phase: 'Phase 2',
+    completed: 1,
+    total: 1,
+  });
+
+  // When Phases 1 and 2 are complete, you might present chapters to the user
+
+  // Phase 3: Process Passages with Context
+  // progressManager.sendProgress(bookId, {
+  //   status: 'phase',
+  //   phase: 'Phase 3',
+  //   message: 'Processing Passages with Context',
+  // });
+  // await processPassagesWithContext(bookId); // Implement this function
+  // progressManager.sendProgress(bookId, {
+  //   status: 'phase_progress',
+  //   phase: 'Phase 3',
+  //   completed: 1,
+  //   total: 1,
+  // });
+
+  // Processing completed
+  progressManager.sendProgress(bookId, {
+    status: 'completed',
+    message: 'Book processing completed successfully.',
+  });
+  progressManager.closeAllClients(bookId);
 }

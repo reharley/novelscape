@@ -4,9 +4,6 @@ import { v4 as uuidv4 } from 'uuid';
 
 const AZURE_STORAGE_CONNECTION_STRING =
   process.env.AZURE_STORAGE_CONNECTION_STRING;
-const AZURE_STORAGE_CONTAINER_NAME =
-  process.env.AZURE_STORAGE_CONTAINER_NAME || 'images';
-
 // Initialize BlobServiceClient
 if (!AZURE_STORAGE_CONNECTION_STRING) {
   throw new Error(
@@ -18,8 +15,10 @@ const blobServiceClient = BlobServiceClient.fromConnectionString(
   AZURE_STORAGE_CONNECTION_STRING
 );
 
+export type ContainerName = 'images' | 'books';
+
 // Ensure the container exists
-export async function getContainerClient(containerName: 'images' | 'books') {
+export async function getContainerClient(containerName: ContainerName) {
   const containerClient = blobServiceClient.getContainerClient(containerName);
   const exists = await containerClient.exists();
   if (!exists) {
@@ -43,3 +42,46 @@ export const uploadFileToAzure = async (
   // Return the URL of the uploaded file
   return blockBlobClient.url;
 };
+
+export async function downloadBlobFromAzure(
+  blobUrl: string,
+  containerName: ContainerName
+): Promise<Buffer> {
+  // Parse the blob URL to extract the container and blob names
+  const url = new URL(blobUrl);
+  const pathParts = url.pathname.split('/');
+  const blobName = pathParts.slice(2).join('/');
+
+  // Get the container client
+  const containerClient = await getContainerClient(containerName);
+
+  // Get the blob client
+  const blobClient = containerClient.getBlobClient(blobName);
+
+  // Download the blob content
+  const downloadResponse = await blobClient.download();
+  if (!downloadResponse.readableStreamBody) {
+    throw new Error('Failed to download blob: readableStreamBody is null');
+  }
+  const downloadedBuffer = await streamToBuffer(
+    downloadResponse.readableStreamBody
+  );
+
+  return downloadedBuffer;
+}
+
+// Helper function to convert a readable stream to a buffer
+async function streamToBuffer(
+  readableStream: NodeJS.ReadableStream
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    readableStream.on('data', (data: Buffer) => {
+      chunks.push(data);
+    });
+    readableStream.on('end', () => {
+      resolve(Buffer.concat(chunks));
+    });
+    readableStream.on('error', reject);
+  });
+}

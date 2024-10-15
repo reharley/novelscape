@@ -3,15 +3,17 @@ import express from 'express';
 import {
   deleteBook,
   detectSceneController,
-  extractProfilesController,
   extractProfilesProgress,
-  getBookContent,
   getChaptersForBook,
+  getEpubContent,
   getPassagesForBook,
   getPassagesForChapter,
   getProfilesForBook,
+  getReadingProgress,
   listBookFiles,
   listBooks,
+  processBookController,
+  updateReadingProgress,
   uploadBookController,
 } from '../controllers/booksController';
 import { upload } from '../utils/multer';
@@ -57,14 +59,14 @@ router.get('/', listBooks);
  * @desc Get book content
  * @access Public
  */
-router.get('/:bookId', getBookContent);
+router.get('/epub/:bookId', getEpubContent);
 
 /**
  * @route POST /api/books/:bookId/extract-profiles
  * @desc Extract profiles from a book
  * @access Public
  */
-router.post('/:bookId/extract-profiles', extractProfilesController);
+router.post('/:bookId/extract-profiles', processBookController);
 
 router.get('/:bookId/extract-profiles/progress', extractProfilesProgress);
 
@@ -86,5 +88,19 @@ router.post('/:bookId/detect-scenes', detectSceneController);
 router.get('/:bookId/detect-scenes/progress', extractProfilesProgress);
 
 router.post('/upload', upload.single('file'), uploadBookController);
+
+/**
+ * @route GET /api/books/:bookId/reading-progress
+ * @desc Get the last reading progress for a book
+ * @access Public
+ */
+router.get('/:bookId/reading-progress', getReadingProgress);
+
+/**
+ * @route POST /api/books/:bookId/reading-progress
+ * @desc Update the reading progress for a book
+ * @access Public
+ */
+router.post('/:bookId/reading-progress', updateReadingProgress);
 
 export default router;
