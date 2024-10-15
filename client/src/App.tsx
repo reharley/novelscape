@@ -19,6 +19,8 @@ import ChapterImageGenerator from './pages/ImageGenerationPage.tsx';
 import LoraAssociationPage from './pages/LoraAssociationPage.tsx';
 import ProfileLoraPage from './pages/ProfileLoraPage.tsx';
 
+import { useTokenRefresh } from './hooks/useTokenRefresh.ts';
+import BookProcessingPage from './pages/BookProcessingPage.tsx';
 import LandingPage from './pages/LandingPage.tsx';
 import LibraryPage from './pages/LibraryPage.tsx';
 import ProfileListPage from './pages/ProfilesListPage.tsx';
@@ -52,6 +54,7 @@ const router = createBrowserRouter(
       <Route element={<ThemeRoute />}>
         <Route path='welcome' element={<LandingPage />} />
         <Route element={<ProtectedRoute />}>
+          <Route path='reader/:bookId' element={<FullScreenReaderPage />} />
           <Route
             path='reader/:bookId/:chapterId/:passageIndex'
             element={<FullScreenReaderPage />}
@@ -63,6 +66,7 @@ const router = createBrowserRouter(
             <Route path='ai-reader' element={<AIEnhancedReaderPage />} />
             <Route path='user' element={<UserPage />} />
             <Route path='profile-loras' element={<ProfileLoraPage />} />
+            <Route path='processing/:bookId' element={<BookProcessingPage />} />
             <Route path='profiles' element={<ProfileListPage />} />
             <Route path='associate-loras' element={<LoraAssociationPage />} />
             <Route
@@ -77,6 +81,7 @@ const router = createBrowserRouter(
 );
 
 function App() {
+  useTokenRefresh();
   return (
     <AppInsightsContext.Provider value={reactPlugin}>
       <MsalProvider instance={msalInstance}>
