@@ -28,6 +28,7 @@ model Chapter {
     title           String
     book            Book              @relation(fields: [bookId], references: [id])
     bookId          Int
+    processed       Boolean           @default(false)
     passages        Passage[]
     scenes          Scene[]
     ReadingProgress ReadingProgress[]

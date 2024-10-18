@@ -33,6 +33,7 @@ export interface Profile {
 export interface Description {
   id: number;
   text: string;
+  profile: Profile;
   profileId: number;
   passageId: number;
 }

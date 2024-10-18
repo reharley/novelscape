@@ -1,10 +1,10 @@
 import express from 'express';
-import aiModelsRouter from './aiModels';
-import booksRouter from './books';
-import civitaiRouter from './civitat';
-import imageRouter from './image';
-import profilesRouter from './profiles';
-import searchRouter from './search';
+import aiModelsRouter from './aiModelRoutes.js';
+import booksRouter from './bookRoutes.js';
+import civitaiRouter from './civitatRoutes.js';
+import imageRouter from './imageRoutes.js';
+import profilesRouter from './profileRoutes.js';
+import searchRouter from './searchRoutes.js';
 
 const router = express.Router();
 

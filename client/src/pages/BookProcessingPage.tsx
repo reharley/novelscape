@@ -9,6 +9,7 @@ import {
   Typography,
 } from 'antd';
 import axios from 'axios';
+import { EventSourcePolyfill } from 'event-source-polyfill';
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { apiUrl } from '../utils/general';
@@ -96,8 +97,13 @@ const BookProcessingPage: React.FC = () => {
 
     try {
       // Start listening to progress updates
-      const eventSource = new EventSource(
-        `${apiUrl}/api/books/${bookId}/extract-profiles/progress`
+      const eventSource = new EventSourcePolyfill(
+        `${apiUrl}/api/books/${bookId}/extract-profiles/progress`,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('accessToken')}`,
+          },
+        }
       );
 
       eventSource.onmessage = (event) => {

@@ -1,20 +1,19 @@
-import EPub from 'epub2';
 import { Request, Response } from 'express';
 import fs from 'fs-extra';
-import path from 'path';
-import prisma from '../config/prisma';
+
+import prisma from '../config/prisma.js';
 import {
   extractCanonicalNames,
   extractPassageAndChapters,
-} from '../services/bookService';
+  processPassagesWithContextForChapter,
+} from '../services/bookService.js';
+import { detectScenesForChapter } from '../services/epubService.js';
+import { uploadFileToAzure } from '../utils/azureStorage.js';
+import { progressManager } from '../utils/progressManager.js';
 import {
-  detectScenes,
-  extractProfiles,
-  getChapterRawAsync,
-} from '../services/epubService';
-import { uploadFileToAzure } from '../utils/azureStorage';
-import { parseChapterContent } from '../utils/parseChapterContent';
-import { progressManager } from '../utils/progressManager';
+  generateBackgroundImagesForChapter,
+  generateProfileImagesForChapter,
+} from './imageController.js';
 
 if (!process.env.BOOKS_PATH) {
   console.error('Books path not configured.');
@@ -56,81 +55,81 @@ export async function listBooks(req: Request, res: Response) {
 /**
  * Retrieves the structured content of a specific book.
  */
-export async function getEpubContent(req: Request, res: Response) {
-  const { bookId } = req.params;
-  const bookPath = path.join(booksDir, `${bookId}.epub`);
+// export async function getEpubContent(req: Request, res: Response) {
+//   const { bookId } = req.params;
+//   const bookPath = path.join(booksDir, `${bookId}.epub`);
 
-  try {
-    if (!(await fs.pathExists(bookPath))) {
-      console.warn(`Book not found: ${bookPath}`);
-      res.status(404).send('Book not found');
-      return;
-    }
+//   try {
+//     if (!(await fs.pathExists(bookPath))) {
+//       console.warn(`Book not found: ${bookPath}`);
+//       res.status(404).send('Book not found');
+//       return;
+//     }
 
-    const epub = new EPub(bookPath);
+//     const epub = new EPub(bookPath);
 
-    epub.on('end', async () => {
-      const chapters = epub.flow;
-      let structuredContent: any[] = [];
-      let processedChapters = 0;
+//     epub.on('end', async () => {
+//       const chapters = epub.flow;
+//       let structuredContent: any[] = [];
+//       let processedChapters = 0;
 
-      if (chapters.length === 0) {
-        console.warn(`No chapters found in the book: ${bookId}`);
-        res.status(404).send('No chapters found in the book');
-        return;
-      }
+//       if (chapters.length === 0) {
+//         console.warn(`No chapters found in the book: ${bookId}`);
+//         res.status(404).send('No chapters found in the book');
+//         return;
+//       }
 
-      try {
-        for (const [index, chapter] of chapters.entries()) {
-          const chapterId = chapter.id;
-          if (!chapterId) {
-            console.warn(
-              `Skipping chapter without ID: ${
-                chapter.title || `Chapter ${index + 1}`
-              }`
-            );
-            continue; // Skip chapters without an ID
-          }
+//       try {
+//         for (const [index, chapter] of chapters.entries()) {
+//           const chapterId = chapter.id;
+//           if (!chapterId) {
+//             console.warn(
+//               `Skipping chapter without ID: ${
+//                 chapter.title || `Chapter ${index + 1}`
+//               }`
+//             );
+//             continue; // Skip chapters without an ID
+//           }
 
-          try {
-            const text = await getChapterRawAsync(epub, chapterId);
-            if (!text) {
-              console.warn(`Empty chapter: ${chapterId}`);
-              continue;
-            }
+//           try {
+//             const text = await getChapterRawAsync(epub, chapterId);
+//             if (!text) {
+//               console.warn(`Empty chapter: ${chapterId}`);
+//               continue;
+//             }
 
-            const chapterTitle = chapter.title || `Chapter ${index + 1}`;
-            const contents = parseChapterContent(text);
-            structuredContent.push({
-              order: index,
-              chapterTitle,
-              contents,
-            });
-          } catch (chapterError) {
-            console.error(`Error reading chapter ${chapterId}:`, chapterError);
-          }
-        }
+//             const chapterTitle = chapter.title || `Chapter ${index + 1}`;
+//             const contents = parseChapterContent(text);
+//             structuredContent.push({
+//               order: index,
+//               chapterTitle,
+//               contents,
+//             });
+//           } catch (chapterError) {
+//             console.error(`Error reading chapter ${chapterId}:`, chapterError);
+//           }
+//         }
 
-        // Sort structuredContent based on chapter order
-        structuredContent.sort((a, b) => a.order - b.order);
-        res.json(structuredContent);
-      } catch (processingError) {
-        console.error(
-          `Error processing chapters for book ${bookId}:`,
-          processingError
-        );
-        res.status(500).json({ error: 'Failed to process book content.' });
-      }
-    });
+//         // Sort structuredContent based on chapter order
+//         structuredContent.sort((a, b) => a.order - b.order);
+//         res.json(structuredContent);
+//       } catch (processingError) {
+//         console.error(
+//           `Error processing chapters for book ${bookId}:`,
+//           processingError
+//         );
+//         res.status(500).json({ error: 'Failed to process book content.' });
+//       }
+//     });
 
-    epub.parse();
-  } catch (error) {
-    console.error(`Error retrieving book content for ${bookId}:`, error);
-    res
-      .status(500)
-      .json({ error: 'An error occurred while retrieving the book content.' });
-  }
-}
+//     epub.parse();
+//   } catch (error) {
+//     console.error(`Error retrieving book content for ${bookId}:`, error);
+//     res
+//       .status(500)
+//       .json({ error: 'An error occurred while retrieving the book content.' });
+//   }
+// }
 
 export async function uploadBookController(req: Request, res: Response) {
   try {
@@ -173,21 +172,21 @@ export async function uploadBookController(req: Request, res: Response) {
 
 export async function detectSceneController(req: Request, res: Response) {
   try {
-    const bookId = Number(req.params.bookId);
-    detectScenes(bookId)
-      .then(() => {
-        // Extraction completed successfully
-        // Progress updates are handled within extractProfiles via progressManager
-      })
-      .catch((error) => {
-        console.error(`Error extracting profiles for book ${bookId}:`, error);
-        // Send error via progressManager
-        progressManager.sendProgress(bookId, {
-          status: 'error',
-          message: error.message,
-        });
-        progressManager.closeAllClients(bookId);
-      });
+    const chapterId = Number(req.params.chapterId);
+    // detectScenes(chapterId)
+    //   .then(() => {
+    //     // Extraction completed successfully
+    //     // Progress updates are handled within extractProfiles via progressManager
+    //   })
+    //   .catch((error) => {
+    //     console.error(`Error extracting profiles for book ${bookId}:`, error);
+    //     // Send error via progressManager
+    //     progressManager.sendProgress(bookId, {
+    //       status: 'error',
+    //       message: error.message,
+    //     });
+    //     progressManager.closeAllClients(bookId);
+    //   });
     res.status(202).json({ message: 'Scenes detected.' });
   } catch (error: any) {
     console.error('Error starting profile extraction:', error);
@@ -201,20 +200,20 @@ export async function extractProfilesController(req: Request, res: Response) {
   try {
     const bookId = Number(req.params.bookId);
     // Start profile extraction asynchronously
-    extractProfiles(bookId)
-      .then(() => {
-        // Extraction completed successfully
-        // Progress updates are handled within extractProfiles via progressManager
-      })
-      .catch((error) => {
-        console.error(`Error extracting profiles for book ${bookId}:`, error);
-        // Send error via progressManager
-        progressManager.sendProgress(bookId, {
-          status: 'error',
-          message: error.message,
-        });
-        progressManager.closeAllClients(bookId);
-      });
+    // extractProfiles(bookId)
+    //   .then(() => {
+    //     // Extraction completed successfully
+    //     // Progress updates are handled within extractProfiles via progressManager
+    //   })
+    //   .catch((error) => {
+    //     console.error(`Error extracting profiles for book ${bookId}:`, error);
+    //     // Send error via progressManager
+    //     progressManager.sendProgress(bookId, {
+    //       status: 'error',
+    //       message: error.message,
+    //     });
+    //     progressManager.closeAllClients(bookId);
+    //   });
 
     // Immediately respond to acknowledge the request
     res.status(202).json({ message: 'Profile extraction started.' });
@@ -243,6 +242,26 @@ export async function extractProfilesProgress(req: Request, res: Response) {
   // Handle client disconnect
   req.on('close', () => {
     progressManager.removeClient(bookId, res);
+  });
+}
+
+export async function chapterProgress(req: Request, res: Response) {
+  const chapterId = Number(req.params.chapterId);
+
+  // Set headers for SSE
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+  res.flushHeaders();
+
+  // Add client to ProgressManager
+  progressManager.addClient(chapterId, res);
+
+  // Handle client disconnect
+  req.on('close', () => {
+    progressManager.removeClient(chapterId, res);
   });
 }
 
@@ -282,7 +301,7 @@ export async function getPassagesForChapter(req: Request, res: Response) {
     return;
   }
   try {
-    const passages = await prisma.passage.findMany({
+    const passagesWithProfiles = await prisma.passage.findMany({
       where: {
         bookId: Number(bookId),
         chapterId: Number(chapterId),
@@ -292,12 +311,16 @@ export async function getPassagesForChapter(req: Request, res: Response) {
         textContent: true,
         order: true,
         scene: true,
-        profiles: {
+        descriptions: {
           select: {
-            id: true,
-            name: true,
-            type: true,
-            imageUrl: true,
+            profile: {
+              select: {
+                id: true,
+                name: true,
+                type: true,
+                imageUrl: true,
+              },
+            },
           },
         },
       },
@@ -306,10 +329,22 @@ export async function getPassagesForChapter(req: Request, res: Response) {
       },
     });
 
-    if (passages.length === 0) {
-      res.status(404).json({ message: 'No passages found for this chapter.' });
-      return;
-    }
+    // Now process the results to combine profiles into a single array per passage
+    const passages = passagesWithProfiles.map((passage) => {
+      // Extract profiles from descriptions
+      const profiles = passage.descriptions.map((desc) => desc.profile);
+
+      // Remove duplicate profiles by their id
+      const uniqueProfiles = Array.from(
+        new Map(profiles.map((p) => [p.id, p])).values()
+      );
+
+      return {
+        ...passage,
+        profiles: uniqueProfiles, // Add profiles array to the result
+      };
+    });
+
     res.json(passages);
   } catch (error) {
     console.error('Error fetching passages:', error);
@@ -417,7 +452,6 @@ export async function getProfilesForBook(req: Request, res: Response) {
 export async function getReadingProgress(req: Request, res: Response) {
   const bookId = Number(req.params.bookId);
   const userId = req.user.oid;
-
   try {
     const progress = await prisma.readingProgress.findUnique({
       where: {
@@ -554,26 +588,208 @@ async function processBook(bookId: number) {
     total: 1,
   });
 
-  // When Phases 1 and 2 are complete, you might present chapters to the user
-
-  // Phase 3: Process Passages with Context
-  // progressManager.sendProgress(bookId, {
-  //   status: 'phase',
-  //   phase: 'Phase 3',
-  //   message: 'Processing Passages with Context',
-  // });
-  // await processPassagesWithContext(bookId); // Implement this function
-  // progressManager.sendProgress(bookId, {
-  //   status: 'phase_progress',
-  //   phase: 'Phase 3',
-  //   completed: 1,
-  //   total: 1,
-  // });
-
   // Processing completed
   progressManager.sendProgress(bookId, {
     status: 'completed',
     message: 'Book processing completed successfully.',
   });
   progressManager.closeAllClients(bookId);
+}
+
+export async function generateChapterImages(chapterId: number) {
+  const forceRegenerate = false;
+
+  const backgroundOptions = {
+    checkpoint: 'dreamshaper_8.safetensors',
+    positiveLoras: [],
+    embeddings: [],
+    negativeEmbeddings: [],
+  };
+  const profileOptions = {
+    checkpoint: 'dreamshaper_8.safetensors',
+    positiveLoras: [],
+    embeddings: [],
+    negativeEmbeddings: ['Asian-Less2-Neg.pt'],
+  };
+
+  const chapter = await prisma.chapter.findUnique({
+    where: { id: Number(chapterId) },
+    include: {
+      book: true,
+      scenes: {
+        include: {
+          passages: {
+            include: {
+              profiles: {
+                include: {
+                  descriptions: true,
+                  image: {
+                    include: {
+                      generationData: {
+                        include: {
+                          civitaiResources: {
+                            include: {
+                              model: true,
+                            },
+                          },
+                        },
+                      },
+                      model: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!chapter) {
+    throw new Error('Chapter not found.');
+  }
+
+  // Collect all scene IDs in the chapter
+  const sceneIds = chapter.scenes.map((scene) => scene.id);
+
+  if (sceneIds.length === 0) {
+    throw new Error('No scenes found in this chapter.');
+  }
+
+  // Collect all unique profiles in the chapter
+  const profileIdsSet = new Set<number>();
+  chapter.scenes.forEach((scene) => {
+    scene.passages.forEach((passage) => {
+      passage.profiles.forEach((profile) => {
+        profileIdsSet.add(profile.id);
+      });
+    });
+  });
+
+  const profileIds = Array.from(profileIdsSet);
+
+  // Fetch profiles with necessary includes
+  const profiles = await prisma.profile.findMany({
+    where: { id: { in: profileIds } },
+    include: {
+      descriptions: true,
+      image: {
+        include: {
+          generationData: {
+            include: {
+              civitaiResources: {
+                include: {
+                  model: true,
+                },
+              },
+            },
+          },
+          model: true,
+        },
+      },
+      book: true,
+    },
+  });
+
+  const totalTasks = sceneIds.length + profiles.length;
+
+  // Create a new job
+  const job = await prisma.imageGenerationJob.create({
+    data: {
+      type: 'chapter',
+      targetId: chapter.id,
+      status: 'in_progress',
+      totalTasks: totalTasks,
+      progress: 0.0,
+    },
+  });
+
+  // Process images asynchronously
+  (async () => {
+    try {
+      // Generate background images
+      await generateBackgroundImagesForChapter(
+        chapter,
+        job,
+        forceRegenerate,
+        backgroundOptions
+      );
+
+      // Generate profile images
+      await generateProfileImagesForChapter(
+        chapter,
+        profiles,
+        job,
+        forceRegenerate,
+        profileOptions
+      );
+
+      // Finalize job status
+      await prisma.imageGenerationJob.update({
+        where: { id: job.id },
+        data: {
+          status: 'completed',
+          progress: 100.0,
+        },
+      });
+      // Processing completed
+      progressManager.sendProgress(chapterId, {
+        status: 'completed',
+        message: 'Book processing completed successfully.',
+      });
+      progressManager.closeAllClients(chapterId);
+    } catch (error: any) {
+      console.error('Error generating images for chapter:', error);
+
+      // Update job with failed status
+      await prisma.imageGenerationJob.update({
+        where: { id: job.id },
+        data: {
+          status: 'failed',
+        },
+      });
+      progressManager.sendProgress(chapterId, {
+        status: 'error',
+        message:
+          error.message || 'An error occurred during profile extraction.',
+      });
+      progressManager.closeAllClients(chapterId);
+    }
+  })();
+}
+
+export async function generateChapterImagesController(
+  req: Request,
+  res: Response
+) {
+  const chapterId = Number(req.params.chapterId);
+  try {
+    const chapter = await prisma.chapter.findUnique({
+      where: { id: chapterId },
+    });
+    if (!chapter) {
+      throw new Error('Chapter not found.');
+    }
+    if (!chapter.processed) {
+      await processPassagesWithContextForChapter(chapterId);
+
+      await detectScenesForChapter(chapterId);
+      await prisma.chapter.update({
+        where: { id: chapterId },
+        data: { processed: true },
+      });
+    }
+    generateChapterImages(chapterId);
+    progressManager.sendProgress(chapterId, {
+      status: 'completed',
+      message: 'Book processing completed successfully.',
+    });
+    res.status(202).json({ message: 'Image generation started.' });
+  } catch (error: any) {
+    console.error('Error starting image generation:', error);
+    res
+      .status(500)
+      .json({ error: error.message || 'Failed to start image generation.' });
+  }
 }

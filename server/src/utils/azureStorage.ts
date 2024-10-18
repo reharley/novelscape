@@ -43,10 +43,11 @@ export const uploadFileToAzure = async (
   return blockBlobClient.url;
 };
 
-export async function downloadBlobFromAzure(
+export async function downloadFileFromAzure(
   blobUrl: string,
-  containerName: ContainerName
-): Promise<Buffer> {
+  containerName: ContainerName,
+  filePath: string
+) {
   // Parse the blob URL to extract the container and blob names
   const url = new URL(blobUrl);
   const pathParts = url.pathname.split('/');
@@ -59,15 +60,7 @@ export async function downloadBlobFromAzure(
   const blobClient = containerClient.getBlobClient(blobName);
 
   // Download the blob content
-  const downloadResponse = await blobClient.download();
-  if (!downloadResponse.readableStreamBody) {
-    throw new Error('Failed to download blob: readableStreamBody is null');
-  }
-  const downloadedBuffer = await streamToBuffer(
-    downloadResponse.readableStreamBody
-  );
-
-  return downloadedBuffer;
+  const downloadResponse = await blobClient.downloadToFile(filePath);
 }
 
 // Helper function to convert a readable stream to a buffer

@@ -1,11 +1,11 @@
 import { Router } from 'express';
-import prisma from '../config/prisma';
-import { fetchGenerationData } from '../controllers/civitaiController';
+import prisma from '../config/prisma.js';
+import { fetchGenerationData } from '../controllers/civitaiController.js';
 import {
   generateImageForProfile,
   getProfilesForBook,
-} from '../controllers/profilesController';
-import { loadModel } from '../services/modelService';
+} from '../controllers/profilesController.js';
+import { loadModel } from '../services/modelService.js';
 
 const router = Router();
 router.post('/:profileId/generate-image', generateImageForProfile);

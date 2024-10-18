@@ -1,6 +1,3 @@
-import { PublicClientApplication } from '@azure/msal-browser';
-import { MsalProvider } from '@azure/msal-react';
-import { AppInsightsContext } from '@microsoft/applicationinsights-react-js';
 import {
   createBrowserRouter,
   createRoutesFromElements,
@@ -25,8 +22,6 @@ import LandingPage from './pages/LandingPage.tsx';
 import LibraryPage from './pages/LibraryPage.tsx';
 import ProfileListPage from './pages/ProfilesListPage.tsx';
 import UserPage from './pages/UserPage.tsx';
-import { reactPlugin } from './utils/appInsights.ts';
-import { msalConfig } from './utils/authConfig.ts';
 import { setupAxios } from './utils/axiosSetup.ts';
 
 setupAxios();
@@ -42,11 +37,6 @@ const ThemeRoute = () => (
     <Outlet />
   </AppTheme>
 );
-
-// @ts-ignore
-const msalInstance = new PublicClientApplication(msalConfig);
-
-msalInstance.initialize();
 
 const router = createBrowserRouter(
   createRoutesFromElements(
@@ -82,13 +72,7 @@ const router = createBrowserRouter(
 
 function App() {
   useTokenRefresh();
-  return (
-    <AppInsightsContext.Provider value={reactPlugin}>
-      <MsalProvider instance={msalInstance}>
-        <RouterProvider router={router} />
-      </MsalProvider>
-    </AppInsightsContext.Provider>
-  );
+  return <RouterProvider router={router} />;
 }
 
 export default App;

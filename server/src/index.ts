@@ -2,11 +2,11 @@ import bodyParser from 'body-parser';
 import cors from 'cors';
 import express from 'express';
 
-import './config/dotenv';
-import prisma from './config/prisma';
-import { auth } from './middleware/auth';
-import { errorHandler } from './middleware/errorHandler';
-import routes from './routes/index';
+import './config/dotenv.js';
+import prisma from './config/prisma.js';
+import { auth } from './middleware/auth.js';
+import { errorHandler } from './middleware/errorHandler.js';
+import routes from './routes/index.js';
 
 prisma; // Initialize Prisma Client
 const app = express();

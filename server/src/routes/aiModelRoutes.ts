@@ -10,7 +10,7 @@ import {
   listLoras,
   loadModelController,
   setActiveModelController,
-} from '../controllers/aiModelsController';
+} from '../controllers/aiModelsController.js';
 
 const router = express.Router();
 

@@ -3,6 +3,7 @@ import {
   Image,
   message,
   Progress,
+  Select,
   Space,
   Spin,
   Typography,
@@ -11,14 +12,22 @@ import axios from 'axios';
 import html2canvas from 'html2canvas';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import GenerateImagesModal from '../components/reader/GenerateImagesModal';
 import ModelPreview from '../components/reader/ModelPreview';
 import ModelSelectionModal from '../components/reader/ModelSelectionModal';
 import { apiUrl } from '../utils/general';
 import { AiModel, ModelImage, Passage, Profile } from '../utils/types';
 
 const { Title, Text, Paragraph } = Typography;
+const { Option } = Select; // Destructure Option from Select
 
-const AIEnhancedReaderPage: React.FC = () => {
+interface Chapter {
+  id: number;
+  title: string;
+  order: number;
+}
+
+const FullScreenReaderPage: React.FC = () => {
   const { bookId, chapterId, passageIndex } = useParams<{
     bookId: string;
     chapterId: string;
@@ -33,16 +42,27 @@ const AIEnhancedReaderPage: React.FC = () => {
   const [loadingImage, setLoadingImage] = useState<boolean>(false);
   const [loadingPassages, setLoadingPassages] = useState<boolean>(false);
 
+  // State variables for chapters
+  const [chapters, setChapters] = useState<Chapter[]>([]);
   // New state variables for modal and preview
   const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
   const [isModelModalVisible, setIsModelModalVisible] =
     useState<boolean>(false);
   const [isPreviewVisible, setIsPreviewVisible] = useState<boolean>(false);
   const [previewModel, setPreviewModel] = useState<AiModel | null>(null);
-
+  const [isGenerateImagesModalVisible, setIsGenerateImagesModalVisible] =
+    useState<boolean>(false);
   const [loadingProfileImages, setLoadingProfileImages] =
     useState<boolean>(false);
+  // Handler for opening the modal
+  const handleGenerateImages = () => {
+    setIsGenerateImagesModalVisible(true);
+  };
 
+  // Handler for closing the modal
+  const handleCloseGenerateImagesModal = () => {
+    setIsGenerateImagesModalVisible(false);
+  };
   // New state variable for force regenerate checkbox
   const [forceRegenerate, setForceRegenerate] = useState<boolean>(false);
 
@@ -74,6 +94,12 @@ const AIEnhancedReaderPage: React.FC = () => {
   }, [bookId, chapterId]);
 
   useEffect(() => {
+    if (bookId) {
+      fetchChapters(bookId);
+    }
+  }, [bookId]);
+
+  useEffect(() => {
     // Update currentPassageIndex when passageIndex param changes
     if (passageIndex) {
       const index = parseInt(passageIndex, 10);
@@ -88,7 +114,6 @@ const AIEnhancedReaderPage: React.FC = () => {
       updateLastReadPosition(bookId, chapterId, currentPassageIndex);
     }
   }, [currentPassageIndex]);
-
   const splitPassage = (passage: Passage): Passage[] => {
     const text = passage.textContent;
     if (text.length <= 280) {
@@ -153,11 +178,18 @@ const AIEnhancedReaderPage: React.FC = () => {
 
   const fetchChapters = async (bookId: string) => {
     try {
-      const response = await axios.get(`${baseUrl}/books/${bookId}/chapters`);
+      const response = await axios.get<Chapter[]>(
+        `${baseUrl}/books/${bookId}/chapters`
+      );
       const chapters = response.data;
+      setChapters(chapters);
+
       if (chapters.length > 0) {
         const firstChapterId = chapters[0].id;
-        navigate(`/reader/${bookId}/${firstChapterId}/0`);
+        // Only navigate if no chapterId is present
+        if (!chapterId) {
+          navigate(`/reader/${bookId}/${firstChapterId}/0`);
+        }
       } else {
         // No chapters, redirect to processing page
         navigate(`/processing/${bookId}`);
@@ -177,13 +209,8 @@ const AIEnhancedReaderPage: React.FC = () => {
       )
       .then((response) => {
         const fetchedPassages = response.data;
-        if (fetchedPassages.length === 0) {
-          // No passages, redirect to processing page
-          navigate(`/processing/${bookId}`);
-          return;
-        }
         const processedPassages: Passage[] = [];
-        console.log(fetchedPassages);
+
         fetchedPassages.forEach((passage) => {
           const splitPassages = splitPassage(passage);
           processedPassages.push(...splitPassages);
@@ -234,7 +261,7 @@ const AIEnhancedReaderPage: React.FC = () => {
       .catch((error) => {
         console.error('Error fetching passages:', error);
         message.error('Failed to fetch passages.');
-        navigate(`/processing/${bookId}`);
+        // navigate(`/processing/${bookId}`);
       })
       .finally(() => setLoadingPassages(false));
   };
@@ -245,150 +272,12 @@ const AIEnhancedReaderPage: React.FC = () => {
     passageIndex: number
   ) => {
     try {
-      await axios.post(`${baseUrl}/books/${bookId}/reading-progress`, {
-        chapterId: parseInt(chapterId, 10),
-        passageIndex,
-      });
+      // await axios.post(`${baseUrl}/books/${bookId}/reading-progress`, {
+      //   chapterId: parseInt(chapterId, 10),
+      //   passageIndex,
+      // });
     } catch (error) {
       console.error('Error updating last read position:', error);
-    }
-  };
-
-  const generateImagesForPassage = async () => {
-    if (!bookId || !chapterId) {
-      message.error('Book ID or Chapter ID is missing.');
-      return;
-    }
-
-    const currentPassage = passages[currentPassageIndex];
-    if (!currentPassage) {
-      message.error('No passage selected.');
-      return;
-    }
-
-    setLoadingProfileImages(true);
-    setLoadingImage(true);
-
-    try {
-      const response = await axios.post(
-        `${baseUrl}/generate-image/passages/${currentPassage.id}/generate-images`,
-        {
-          forceRegenerate, // Include the flag in the request body
-        }
-      );
-      const { images } = response.data as {
-        passageId: number;
-        images: {
-          profileId: number;
-          profileName: string;
-          image: string | null;
-          error?: string;
-        }[];
-      };
-      fetchPassages(bookId, parseInt(chapterId, 10));
-
-      message.success('Images generated and updated successfully.');
-    } catch (error: any) {
-      console.error('Error generating images for passage:', error);
-      message.error(
-        error.response?.data?.error || 'Failed to generate images for profiles.'
-      );
-    } finally {
-      setLoadingProfileImages(false);
-      setLoadingImage(false);
-    }
-  };
-
-  const generateImagesForScene = async (sceneId: number) => {
-    setLoadingImage(true);
-    try {
-      const response = await axios.post(
-        `${baseUrl}/generate-image/scenes/${sceneId}/generate-images`,
-        {
-          forceRegenerate,
-        }
-      );
-      const { images } = response.data as {
-        sceneId: number;
-        images: {
-          profileId: number;
-          profileName: string;
-          image: string | null;
-          error?: string;
-        }[];
-      };
-      if (bookId && chapterId) fetchPassages(bookId, parseInt(chapterId, 10));
-
-      message.success(
-        'Images generated and updated successfully for the scene.'
-      );
-    } catch (error: any) {
-      console.error('Error generating images for scene:', error);
-      message.error(
-        error.response?.data?.error ||
-          'Failed to generate images for the scene.'
-      );
-    } finally {
-      setLoadingImage(false);
-    }
-  };
-
-  const generateImagesForMultipleScenes = async () => {
-    if (!bookId || !chapterId) {
-      message.error('Book ID or Chapter ID is missing.');
-      return;
-    }
-
-    const currentPassage = passages[currentPassageIndex];
-    if (!currentPassage || !currentPassage.scene) {
-      message.error('No scene associated with the current passage.');
-      return;
-    }
-
-    setLoadingMultipleScenes(true);
-
-    try {
-      const response = await axios.post(
-        `${baseUrl}/generate-image/scenes/generate-images`,
-        {
-          startSceneId: currentPassage.scene.id,
-          numberOfScenes: numberOfScenes,
-          forceRegenerate,
-        }
-      );
-      const { successScenes, failedScenes } = response.data as {
-        successScenes: number[];
-        failedScenes: { sceneId: number; error: string }[];
-      };
-
-      if (successScenes.length > 0) {
-        message.success(
-          `Images generated successfully for scenes: ${successScenes.join(
-            ', '
-          )}.`
-        );
-      }
-
-      if (failedScenes.length > 0) {
-        failedScenes.forEach((fail) =>
-          message.error(
-            `Failed to generate images for scene ${fail.sceneId}: ${fail.error}`
-          )
-        );
-      }
-
-      // Fetch the updated passages to get the new image URLs
-      if (bookId && chapterId) {
-        fetchPassages(bookId, parseInt(chapterId, 10));
-      }
-    } catch (error: any) {
-      console.error('Error generating images for multiple scenes:', error);
-      message.error(
-        error.response?.data?.error ||
-          'Failed to generate images for multiple scenes.'
-      );
-    } finally {
-      setLoadingMultipleScenes(false);
     }
   };
 
@@ -414,6 +303,35 @@ const AIEnhancedReaderPage: React.FC = () => {
       navigate(`/reader/${bookId}/${chapterId}/${newIndex}`);
       setBackgroundImage(null);
     }
+  };
+
+  const handleNextChapter = () => {
+    const currentChapterIndex = chapters.findIndex(
+      (chapter) => chapter.id === parseInt(chapterId || '', 10)
+    );
+    if (currentChapterIndex < chapters.length - 1) {
+      const nextChapterId = chapters[currentChapterIndex + 1].id;
+      navigate(`/reader/${bookId}/${nextChapterId}/0`);
+    } else {
+      message.info('This is the last chapter.');
+    }
+  };
+
+  const handlePreviousChapter = () => {
+    const currentChapterIndex = chapters.findIndex(
+      (chapter) => chapter.id === parseInt(chapterId || '', 10)
+    );
+    if (currentChapterIndex > 0) {
+      const prevChapterId = chapters[currentChapterIndex - 1].id;
+      navigate(`/reader/${bookId}/${prevChapterId}/0`);
+    } else {
+      message.info('This is the first chapter.');
+    }
+  };
+
+  // Handler for chapter selection
+  const handleChapterSelect = (value: number) => {
+    navigate(`/reader/${bookId}/${value}/0`);
   };
 
   // New handler for image selection
@@ -522,6 +440,12 @@ const AIEnhancedReaderPage: React.FC = () => {
     }
   };
 
+  // Get current chapter index
+  const currentChapterIndex = chapters.findIndex(
+    (chapter) => chapter.id === parseInt(chapterId || '', 10)
+  );
+
+  console.log('currentPassage:', currentPassage);
   return (
     <div
       style={{
@@ -618,35 +542,64 @@ const AIEnhancedReaderPage: React.FC = () => {
           </Space>
         )}
 
-        {/* Text Box with Passage Text and Next/Previous Buttons */}
-        {currentPassage && (
-          <div
-            style={{
-              position: 'absolute',
-              bottom: '20px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              width: '90%',
-              maxWidth: '800px',
-              backgroundColor: 'rgba(0, 0, 0, 0.7)',
-              padding: '20px',
-              borderRadius: '10px',
-              zIndex: 4,
-            }}
+        {/* Text Box with Passage Text, Chapter Dropdown, and Navigation Buttons */}
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '90%',
+            maxWidth: '800px',
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            padding: '20px',
+            borderRadius: '10px',
+            zIndex: 4,
+          }}
+        >
+          {/* Chapter Dropdown */}
+          <Select
+            value={parseInt(chapterId || '', 10)}
+            onChange={handleChapterSelect}
+            style={{ width: 200, marginBottom: 10 }}
           >
+            {chapters.map((chapter) => (
+              <Option key={chapter.id} value={chapter.id}>
+                {chapter.title || `Chapter ${chapter.order}`}
+              </Option>
+            ))}
+          </Select>
+          {currentPassage && (
             <Paragraph style={{ fontSize: '1.2em', margin: 0 }}>
               {currentPassage.textContent}
             </Paragraph>
+          )}
 
-            {/* Navigation Buttons inside the text box */}
-            <div
-              style={{
-                marginTop: '20px',
-                display: 'flex',
-                justifyContent: 'end',
-              }}
-            >
-              <Button onClick={handleDownload}>Download</Button>
+          {/* Navigation Buttons inside the text box */}
+          <div
+            style={{
+              marginTop: '20px',
+              display: 'flex',
+              justifyContent: 'space-between',
+            }}
+          >
+            <Button onClick={handleDownload}>Download</Button>
+            <Button type='primary' onClick={handleGenerateImages}>
+              Generate Images
+            </Button>
+            <Space>
+              <Button
+                onClick={handlePreviousChapter}
+                disabled={currentChapterIndex === 0}
+              >
+                Previous Chapter
+              </Button>
+              <Button
+                onClick={handleNextChapter}
+                disabled={currentChapterIndex === chapters.length - 1}
+              >
+                Next Chapter
+              </Button>
               <Button
                 onClick={handlePreviousPassage}
                 disabled={currentPassageIndex === 0}
@@ -660,14 +613,14 @@ const AIEnhancedReaderPage: React.FC = () => {
               >
                 Next
               </Button>
-            </div>
-            <Progress
-              percent={readingProgress}
-              strokeColor='#1890ff'
-              trailColor='#333'
-            />
+            </Space>
           </div>
-        )}
+          <Progress
+            percent={readingProgress}
+            strokeColor='#1890ff'
+            trailColor='#333'
+          />
+        </div>
 
         {/* Loading Spinner */}
         {loadingImage && (
@@ -701,8 +654,15 @@ const AIEnhancedReaderPage: React.FC = () => {
           model={previewModel}
         />
       )}
+      {/* Generate Images Modal */}
+      <GenerateImagesModal
+        visible={isGenerateImagesModalVisible}
+        onClose={handleCloseGenerateImagesModal}
+        bookId={bookId || ''}
+        chapterId={chapterId || ''}
+      />
     </div>
   );
 };
 
-export default AIEnhancedReaderPage;
+export default FullScreenReaderPage;

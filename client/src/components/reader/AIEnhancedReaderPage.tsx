@@ -88,7 +88,7 @@ const AIEnhancedReaderPage: React.FC = () => {
       });
   }, [baseUrl]);
 
-  const fetchChapters = (bookId: string) => {
+  const fetchChapters = (bookId: number) => {
     setLoadingChapters(true);
     axios
       .get<Chapter[]>(`${baseUrl}/books/${bookId}/chapters`)
@@ -147,7 +147,7 @@ const AIEnhancedReaderPage: React.FC = () => {
     return newPassages;
   };
 
-  const fetchPassages = (bookId: string, chapterId: number) => {
+  const fetchPassages = (bookId: number, chapterId: number) => {
     setLoadingPassages(true);
     axios
       .get<Passage[]>(
@@ -472,7 +472,7 @@ const AIEnhancedReaderPage: React.FC = () => {
           <Select
             placeholder='Select a book'
             style={{ width: 300, marginBottom: '20px' }}
-            onChange={(value: string) => {
+            onChange={(value: number) => {
               const book = books.find((b) => b.id === value) || null;
               setSelectedBook(book);
               if (book) {

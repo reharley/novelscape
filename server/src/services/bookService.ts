@@ -1,13 +1,14 @@
-import EPub from 'epub2';
-import { fileTypeFromBuffer } from 'file-type';
+import { EPub } from 'epub2';
+import { promises as fs } from 'fs';
+import os from 'os';
 import pLimit from 'p-limit';
+import path from 'path';
 
-import prisma from '../config/prisma';
-import { downloadBlobFromAzure } from '../utils/azureStorage';
-import { processPdfFile } from '../utils/pdf';
-import { progressManager } from '../utils/progressManager';
-import { extractFullNames, performNERWithAliases } from '../utils/prompts';
-import { extractEpubPassagesAndChapters } from './epubService';
+import prisma from '../config/prisma.js';
+import { downloadFileFromAzure } from '../utils/azureStorage.js';
+import { progressManager } from '../utils/progressManager.js';
+import { extractFullNames, performNERWithAliases } from '../utils/prompts.js';
+import { extractEpubPassagesAndChapters } from './epubService.js';
 
 export async function extractPassageAndChapters(bookId: number) {
   const book = await prisma.book.findUnique({
@@ -24,55 +25,47 @@ export async function extractPassageAndChapters(bookId: number) {
     throw new Error('Book storageUrl is missing.');
   }
 
-  const fileData = await downloadBlobFromAzure(storageUrl, 'books');
+  try {
+    const tempDir = os.tmpdir(); // Get the temporary directory
+    const tempFilePath = path.join(tempDir, `book-${bookId}.epub`); // Create a unique file name
+    await downloadFileFromAzure(storageUrl, 'books', tempFilePath);
 
-  const fileType = await fileTypeFromBuffer(fileData);
+    // Check if the file exists after writing
+    const fileExists = await fs
+      .access(tempFilePath)
+      .then(() => true)
+      .catch(() => false);
+    console.log(`File exists after writing: ${fileExists}`);
 
-  if (!fileType) {
-    throw new Error('Could not determine file type.');
-  }
-
-  if (fileType.ext === 'epub') {
-    const epub = new EPub(storageUrl);
-
-    epub.on('end', async () => {
-      try {
-        await extractEpubPassagesAndChapters(bookId, epub);
-      } catch (error: any) {
-        console.error(`Error processing book ${bookId}:`, error);
-        progressManager.sendProgress(bookId, {
-          status: 'error',
-          message:
-            error.message || 'An error occurred during profile extraction.',
-        });
-        progressManager.closeAllClients(bookId);
-      }
+    if (!fileExists) {
+      throw new Error('File was not created or cannot be accessed.');
+    }
+    // Step 4: Create the EPUB object using the file path
+    const epub = new EPub(tempFilePath);
+    await parseEpub(epub);
+    await extractEpubPassagesAndChapters(bookId, epub);
+  } catch (error: any) {
+    console.error(`Error processing book ${bookId}:`, error);
+    progressManager.sendProgress(bookId, {
+      status: 'error',
+      message: error.message || 'An error occurred during profile extraction.',
     });
+    progressManager.closeAllClients(bookId);
+  }
+}
+
+function parseEpub(epub: EPub): Promise<void> {
+  return new Promise((resolve, reject) => {
+    epub.on('end', () => {
+      resolve();
+    });
+
     epub.on('error', (err) => {
-      console.error('Error parsing EPUB:', err);
-      progressManager.sendProgress(bookId, {
-        status: 'error',
-        message: 'Error parsing EPUB file.',
-      });
-      progressManager.closeAllClients(bookId);
+      reject(err);
     });
 
     epub.parse();
-  } else if (fileType.ext === 'pdf') {
-    try {
-      await processPdfFile(fileData, bookId);
-    } catch (error: any) {
-      console.error(`Error processing book ${bookId}:`, error);
-      progressManager.sendProgress(bookId, {
-        status: 'error',
-        message:
-          error.message || 'An error occurred during profile extraction.',
-      });
-      progressManager.closeAllClients(bookId);
-    }
-  } else {
-    throw new Error('Unsupported file type: ' + fileType.ext);
-  }
+  });
 }
 
 export async function extractCanonicalNames(bookId: number): Promise<void> {
@@ -104,22 +97,25 @@ export async function extractCanonicalNames(bookId: number): Promise<void> {
         if (!canonicalEntities || !Array.isArray(canonicalEntities)) return;
         // Upsert canonical profiles
         try {
-          for (const entity of canonicalEntities) {
+          for (const entityObject of canonicalEntities) {
+            const entity = entityObject.name;
             if (!entity) {
               console.log('Skipping entity without a name:', entity);
               continue;
             }
+            if (entityObject.type.toUpperCase() !== 'PERSON') continue;
 
             const words = entity.split(' ');
             if (words.length !== 2) continue; // Skip if not a full name
             if (words[0].includes('.')) continue; // Skip if first word contains a period
             if (
-              words[0].startsWith('Uncle') ||
-              words[0].startsWith('Aunt') ||
-              words[0].startsWith('The ') ||
-              words[0].startsWith('Professor')
+              words[0] === 'Uncle' ||
+              words[0] === 'Aunt' ||
+              words[0] === 'Auntie' ||
+              words[0] === 'The' ||
+              words[0] === 'Professor'
             )
-              continue; // Skip if first word contains a period
+              continue;
             if (entity.toUpperCase() === entity) continue; // Skip if all caps
             // Check for capitalization for first letter of each word
             let valid = true;
@@ -142,7 +138,7 @@ export async function extractCanonicalNames(bookId: number): Promise<void> {
               update: {},
               create: {
                 name: entity,
-                type: 'CHARACTER',
+                type: 'PERSON',
                 bookId: bookId,
               },
             });
@@ -178,25 +174,36 @@ export async function extractCanonicalNames(bookId: number): Promise<void> {
   });
 }
 
-export async function processPassagesWithContext(
-  bookId: number
+export async function processPassagesWithContextForChapter(
+  chapterId: number
 ): Promise<void> {
-  progressManager.sendProgress(bookId, {
+  progressManager.sendProgress(chapterId, {
     status: 'phase',
-    phase: 'Phase 3: Processing passages with context...',
+    phase: 'Phase 1: Processing passages with context for chapter...',
   });
 
   const concurrencyLimit = 7; // Adjust based on your system's capabilities
   const limit = pLimit(concurrencyLimit);
 
-  // Fetch all passages for the book
+  const chapter = await prisma.chapter.findUnique({
+    where: { id: chapterId },
+  });
+  if (!chapter) {
+    throw new Error('Chapter not found in database.');
+  }
+
+  // Fetch all passages for the specific chapter
   const passages = await prisma.passage.findMany({
-    where: { bookId: bookId },
-    include: { chapter: true },
+    where: {
+      bookId: chapter.bookId,
+      chapterId: chapterId, // Only fetch passages for the specific chapter
+    },
+    include: { chapter: true, book: true },
   });
 
   const totalPassages = passages.length;
   let processedPassages = 0;
+  const bookId = chapter.bookId;
   const canonicalNames = await getCanonicalNames(bookId);
 
   const tasks = passages.map((passage) =>
@@ -217,16 +224,13 @@ export async function processPassagesWithContext(
             entities.map(async (entity) => {
               if (!entity.fullName && !entity.alias) return;
 
-              // Determine canonical name
-              const canonicalName = entity.fullName || entity.alias || '';
-
               // Upsert Profile
               let profile;
-              if (entity.fullName && canonicalNames.includes(canonicalName)) {
+              if (entity.fullName && canonicalNames.includes(entity.fullName)) {
                 profile = await prisma.profile.upsert({
                   where: {
                     name_bookId: {
-                      name: canonicalName,
+                      name: entity.fullName,
                       bookId: bookId,
                     },
                   },
@@ -238,7 +242,7 @@ export async function processPassagesWithContext(
                   },
                   create: {
                     type: entity.type ? entity.type.toUpperCase() : undefined,
-                    name: canonicalName,
+                    name: entity.fullName,
                     gender: entity.gender
                       ? entity.gender.toUpperCase()
                       : undefined,
@@ -310,9 +314,9 @@ export async function processPassagesWithContext(
 
         // Update progress after processing each passage
         processedPassages += 1;
-        progressManager.sendProgress(bookId, {
+        progressManager.sendProgress(chapterId, {
           status: 'phase_progress',
-          phase: 'Phase 3',
+          phase: 'Phase 1',
           completed: processedPassages,
           total: totalPassages,
         });
@@ -325,12 +329,13 @@ export async function processPassagesWithContext(
   // Await all passage processing tasks
   await Promise.all(tasks);
 
-  progressManager.sendProgress(bookId, {
+  progressManager.sendProgress(chapterId, {
     status: 'phase_completed',
-    phase: 'Phase 3',
-    message: 'Passages processed with context successfully.',
+    phase: 'Phase 1',
+    message: 'Passages processed with context for the chapter successfully.',
   });
 }
+
 export async function getCanonicalNames(bookId: number): Promise<string[]> {
   const profiles = await prisma.profile.findMany({
     where: {

@@ -1,25 +1,26 @@
 import { ImageGenerationJob } from '@prisma/client';
 import { Request, Response } from 'express';
-import prisma from '../config/prisma';
-import { getCanonicalNames } from '../services/bookService';
-import { generateImage } from '../services/imageService';
+
+import prisma from '../config/prisma.js';
+import { getCanonicalNames } from '../services/bookService.js';
+import { generateImage } from '../services/imageService.js';
 import {
   generateBackgroundPrompt,
   generateProfilePrompt,
-} from '../utils/prompts';
+} from '../utils/prompts.js';
 import {
   ChapterWithRelations,
   ProfileWithRelations,
   SceneWithRelations,
-} from '../utils/types';
+} from '../utils/types.js';
 
 const characterImageSize = {
-  width: 350,
-  height: 700,
+  width: 512,
+  height: 768,
 };
 const backgroundSceneSize = {
-  width: 1000,
-  height: 500,
+  width: 768,
+  height: 512,
 };
 
 export async function generateImageController(req: Request, res: Response) {
@@ -318,7 +319,7 @@ export async function generateImagesForChapter(req: Request, res: Response) {
 }
 
 // New helper function to generate all background images sequentially
-async function generateBackgroundImagesForChapter(
+export async function generateBackgroundImagesForChapter(
   chapter: ChapterWithRelations,
   job: ImageGenerationJob,
   forceRegenerate: boolean,
@@ -389,7 +390,7 @@ function removeNamesFromString(names: string[], str: string): string {
   return filteredArray.join(',');
 }
 // New helper function to generate all profile images sequentially
-async function generateProfileImagesForChapter(
+export async function generateProfileImagesForChapter(
   chapter: ChapterWithRelations,
   profiles: ProfileWithRelations[],
   job: ImageGenerationJob,

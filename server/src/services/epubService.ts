@@ -1,17 +1,16 @@
 import { Scene } from '@prisma/client';
 import axios from 'axios';
 import DOMPurify from 'dompurify';
-import EPub from 'epub2';
+import { EPub } from 'epub2';
 import fs from 'fs-extra';
 import { JSDOM } from 'jsdom';
 import pLimit from 'p-limit'; // Import p-limit for concurrency control
 import path from 'path';
 
-import prisma from '../config/prisma';
-import { parseChapterContent } from '../utils/parseChapterContent';
-import { processPdfFile } from '../utils/pdf';
-import { progressManager } from '../utils/progressManager';
-import { detectNewScene } from '../utils/prompts';
+import prisma from '../config/prisma.js';
+import { parseChapterContent } from '../utils/parseChapterContent.js';
+import { progressManager } from '../utils/progressManager.js';
+import { detectNewScene } from '../utils/prompts.js';
 
 // Initialize DOMPurify
 const { window } = new JSDOM('<!DOCTYPE html>');
@@ -189,7 +188,7 @@ export async function extractProfiles(bookId: number): Promise<void> {
     epub.parse();
   } else if (fileType.ext === 'pdf') {
     try {
-      await processPdfFile(fileData, bookId);
+      // await processPdfFile(fileData, bookId);
     } catch (error: any) {
       console.error(`Error processing book ${bookId}:`, error);
       progressManager.sendProgress(bookId, {
@@ -233,32 +232,35 @@ function getChapterText(
     });
   });
 }
-export async function detectScenes(bookId: number): Promise<void> {
-  progressManager.sendProgress(bookId, {
+export async function detectScenesForChapter(chapterId: number): Promise<void> {
+  progressManager.sendProgress(chapterId, {
     status: 'phase',
-    phase: 'Phase 4: Detecting scenes...',
+    phase: 'Phase 2: Detecting scenes for chapter...',
   });
 
-  // Fetch all chapters ordered by their order
-  const chapters = await prisma.chapter.findMany({
-    where: { bookId: bookId },
-    orderBy: { order: 'asc' },
+  // Fetch the specific chapter with its passages ordered by their order
+  const chapter = await prisma.chapter.findUnique({
+    where: { id: chapterId },
     include: { passages: { orderBy: { order: 'asc' } } },
   });
 
-  const totalChapters = chapters.length;
-  let processedChapters = 0;
+  if (!chapter) {
+    progressManager.sendProgress(chapterId, {
+      status: 'error',
+      message: `Chapter with ID ${chapterId} not found.`,
+    });
+    return;
+  }
+
+  const bookId = chapter.bookId;
+  const passages = chapter.passages;
+  let accumulatedPassages: string[] = [];
+  let currentScene: Scene | null = null;
   let globalSceneOrder = 1; // To maintain global scene order across chapters
 
-  const concurrencyLimit = 5; // Adjust based on your system's capabilities
-  const limit = pLimit(concurrencyLimit);
-
-  // Function to process each chapter
-  const processChapter = async (chapter: (typeof chapters)[0]) => {
-    const { id: chapterId, order: chapterOrder, passages } = chapter;
-
-    let accumulatedPassages: string[] = [];
-    let currentScene: Scene | null = null;
+  // Function to process the chapter
+  const processChapter = async () => {
+    const { order: chapterOrder } = chapter;
 
     for (const passage of passages) {
       let isNewScene = false;
@@ -275,7 +277,7 @@ export async function detectScenes(bookId: number): Promise<void> {
           `Error during scene detection in Chapter ${chapterOrder}:`,
           error
         );
-        progressManager.sendProgress(bookId, {
+        progressManager.sendProgress(chapterId, {
           status: 'error',
           message: `Error during scene detection in Chapter ${chapterOrder}: ${error.message}`,
         });
@@ -307,6 +309,7 @@ export async function detectScenes(bookId: number): Promise<void> {
             where: { id: { in: passageIds } },
             data: { sceneId: scene.id },
           });
+
           // Reset accumulated passages to start a new scene
           accumulatedPassages = [passage.textContent];
         }
@@ -336,29 +339,15 @@ export async function detectScenes(bookId: number): Promise<void> {
         });
       }
     }
-
-    // Update progress after processing each chapter
-    processedChapters += 1;
-    progressManager.sendProgress(bookId, {
-      status: 'phase_progress',
-      phase: 'Phase 4',
-      completed: processedChapters,
-      total: totalChapters,
-    });
   };
 
-  // Limit the number of concurrent chapter processing tasks
-  const chapterTasks = chapters.map((chapter) =>
-    limit(() => processChapter(chapter))
-  );
+  // Process the chapter
+  await processChapter();
 
-  // Await all chapter processing tasks
-  await Promise.all(chapterTasks);
-
-  progressManager.sendProgress(bookId, {
+  progressManager.sendProgress(chapterId, {
     status: 'phase_completed',
-    phase: 'Phase 4',
-    message: 'Scene detection completed successfully.',
+    phase: 'Phase 2',
+    message: 'Scene detection for the chapter completed successfully.',
   });
 }
 

@@ -1,4 +1,4 @@
-import openai from '../config/openai';
+import openai from '../config/openai.js';
 
 /**
  * @desc Generates positive and negative prompts using OpenAI's ChatGPT based on the provided text content, profiles, and book name.
@@ -98,7 +98,8 @@ ${profile.descriptions.map((desc) => `- ${desc}`).join('\n')}
           properties: {
             positivePrompt: {
               type: 'string',
-              description: 'The positive prompt for image generation.',
+              description:
+                'The positive prompt for image generation. DO NOT INCLUDE CHARACTERS.',
             },
             negativePrompt: {
               type: 'string',
@@ -527,10 +528,21 @@ export async function extractFullNames(textContent: string) {
         properties: {
           fullNames: {
             type: 'array',
-            items: {
-              type: 'string',
-            },
             description: 'An array of full character names.',
+            items: {
+              type: 'object',
+              properties: {
+                name: {
+                  type: 'string',
+                  description: 'The full name of the character.',
+                },
+                type: {
+                  type: 'string',
+                  description: 'The type of entity extracted',
+                  enum: ['PERSON', 'NON_PERSON'],
+                },
+              },
+            },
           },
         },
         required: ['fullNames'],
@@ -563,7 +575,8 @@ Focus on extracting full names (e.g. Harry Potter, not just Harry) and avoid par
 
   if (message?.function_call?.name === 'provide_full_names') {
     const args = JSON.parse(message.function_call.arguments);
-    const fullNames: string[] = args.fullNames;
+    const fullNames: { name: string; type: 'PERSON' | 'NON_PERSON' }[] =
+      args.fullNames;
     console.log('Extracted full names:', fullNames);
     return fullNames;
   } else {

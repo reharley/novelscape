@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { Request, Response } from 'express';
-import prisma from '../config/prisma';
-import { sanitizeHtml } from '../utils/sanitizer';
+import prisma from '../config/prisma.js';
+import { sanitizeHtml } from '../utils/sanitizer.js';
 
 // Configuration
 const CIVITAI_API_TOKEN = process.env.CIVITAI_API_TOKEN;

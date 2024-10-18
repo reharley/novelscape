@@ -1,11 +1,12 @@
 // src/routes/books.ts
 import express from 'express';
 import {
+  chapterProgress,
   deleteBook,
   detectSceneController,
   extractProfilesProgress,
+  generateChapterImagesController,
   getChaptersForBook,
-  getEpubContent,
   getPassagesForBook,
   getPassagesForChapter,
   getProfilesForBook,
@@ -15,8 +16,8 @@ import {
   processBookController,
   updateReadingProgress,
   uploadBookController,
-} from '../controllers/booksController';
-import { upload } from '../utils/multer';
+} from '../controllers/booksController.js';
+import { upload } from '../utils/multer.js';
 
 const router = express.Router();
 
@@ -59,7 +60,7 @@ router.get('/', listBooks);
  * @desc Get book content
  * @access Public
  */
-router.get('/epub/:bookId', getEpubContent);
+// router.get('/epub/:bookId', getEpubContent);
 
 /**
  * @route POST /api/books/:bookId/extract-profiles
@@ -67,8 +68,13 @@ router.get('/epub/:bookId', getEpubContent);
  * @access Public
  */
 router.post('/:bookId/extract-profiles', processBookController);
-
 router.get('/:bookId/extract-profiles/progress', extractProfilesProgress);
+
+router.get(
+  '/:chapterId/generate-chapter-images',
+  generateChapterImagesController
+);
+router.get('/:chapterId/generate-chapter-images/progress', chapterProgress);
 
 /**
  * @route DELETE /api/books/:bookId

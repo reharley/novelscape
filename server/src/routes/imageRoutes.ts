@@ -7,7 +7,7 @@ import {
   generateImagesForScene,
   getJobStatus,
   listJobs,
-} from '../controllers/imageController';
+} from '../controllers/imageController.js';
 
 const router = express.Router();
 

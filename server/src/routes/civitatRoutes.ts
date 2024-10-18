@@ -9,7 +9,7 @@ import {
   getModelVersionById,
   getTags,
   searchModels,
-} from '../controllers/civitaiController';
+} from '../controllers/civitaiController.js';
 
 const router = express.Router();
 

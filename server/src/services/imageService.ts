@@ -2,8 +2,8 @@ import removeBackground from '@imgly/background-removal-node';
 import { GenerationData } from '@prisma/client';
 import axios from 'axios';
 import path from 'path';
-import prisma from '../config/prisma';
-import { getContainerClient } from '../utils/azureStorage';
+import prisma from '../config/prisma.js';
+import { getContainerClient } from '../utils/azureStorage.js';
 
 interface GenerateImageParams {
   prompt: string;
