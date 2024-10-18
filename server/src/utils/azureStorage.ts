@@ -30,10 +30,11 @@ export async function getContainerClient(containerName: ContainerName) {
 
 export const uploadFileToAzure = async (
   buffer: Buffer,
-  filename: string
+  filename: string,
+  containerName: ContainerName
 ): Promise<string> => {
-  const blobName = uuidv4() + path.extname(filename); // Unique file name
-  const containerClient = await getContainerClient('books');
+  const blobName = uuidv4() + path.extname(filename);
+  const containerClient = await getContainerClient(containerName);
   const blockBlobClient = containerClient.getBlockBlobClient(blobName);
 
   // Upload buffer to Azure Blob

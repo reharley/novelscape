@@ -1,14 +1,9 @@
-import { EPub } from 'epub2';
-import { promises as fs } from 'fs';
-import os from 'os';
 import pLimit from 'p-limit';
-import path from 'path';
 
 import prisma from '../config/prisma.js';
-import { downloadFileFromAzure } from '../utils/azureStorage.js';
 import { progressManager } from '../utils/progressManager.js';
 import { extractFullNames, performNERWithAliases } from '../utils/prompts.js';
-import { extractEpubPassagesAndChapters } from './epubService.js';
+import { extractEpubPassagesAndChapters, getEpub } from './epubService.js';
 
 export async function extractPassageAndChapters(bookId: number) {
   const book = await prisma.book.findUnique({
@@ -26,23 +21,7 @@ export async function extractPassageAndChapters(bookId: number) {
   }
 
   try {
-    const tempDir = os.tmpdir(); // Get the temporary directory
-    const tempFilePath = path.join(tempDir, `book-${bookId}.epub`); // Create a unique file name
-    await downloadFileFromAzure(storageUrl, 'books', tempFilePath);
-
-    // Check if the file exists after writing
-    const fileExists = await fs
-      .access(tempFilePath)
-      .then(() => true)
-      .catch(() => false);
-    console.log(`File exists after writing: ${fileExists}`);
-
-    if (!fileExists) {
-      throw new Error('File was not created or cannot be accessed.');
-    }
-    // Step 4: Create the EPUB object using the file path
-    const epub = new EPub(tempFilePath);
-    await parseEpub(epub);
+    const epub = await getEpub(storageUrl);
     await extractEpubPassagesAndChapters(bookId, epub);
   } catch (error: any) {
     console.error(`Error processing book ${bookId}:`, error);
@@ -52,20 +31,6 @@ export async function extractPassageAndChapters(bookId: number) {
     });
     progressManager.closeAllClients(bookId);
   }
-}
-
-function parseEpub(epub: EPub): Promise<void> {
-  return new Promise((resolve, reject) => {
-    epub.on('end', () => {
-      resolve();
-    });
-
-    epub.on('error', (err) => {
-      reject(err);
-    });
-
-    epub.parse();
-  });
 }
 
 export async function extractCanonicalNames(bookId: number): Promise<void> {

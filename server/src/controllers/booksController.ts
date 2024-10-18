@@ -7,7 +7,10 @@ import {
   extractPassageAndChapters,
   processPassagesWithContextForChapter,
 } from '../services/bookService.js';
-import { detectScenesForChapter } from '../services/epubService.js';
+import {
+  detectScenesForChapter,
+  processEpubCoverImage,
+} from '../services/epubService.js';
 import { uploadFileToAzure } from '../utils/azureStorage.js';
 import { progressManager } from '../utils/progressManager.js';
 import {
@@ -39,11 +42,6 @@ export async function listBooks(req: Request, res: Response) {
         title: 'asc', // Optional: order books alphabetically by title
       },
     });
-
-    if (books.length === 0) {
-      res.status(404).json({ message: 'No books found in the database.' });
-      return;
-    }
 
     res.json(books);
   } catch (error) {
@@ -142,16 +140,20 @@ export async function uploadBookController(req: Request, res: Response) {
     const file = req.file;
 
     // Check if the file type is valid
-    const validTypes = ['application/pdf', 'application/epub+zip'];
+    const validTypes = ['application/epub+zip'];
     if (!validTypes.includes(file.mimetype)) {
-      res.status(400).send('Invalid file type. Only PDF and EPUB are allowed.');
+      res.status(400).send('Invalid file type. Only EPUB is allowed.');
       return;
     }
 
     // Upload file to Azure Blob Storage
-    const fileUrl = await uploadFileToAzure(file.buffer, file.originalname);
+    const fileUrl = await uploadFileToAzure(
+      file.buffer,
+      file.originalname,
+      'books'
+    );
 
-    await prisma.book.create({
+    const book = await prisma.book.create({
       data: {
         userId,
         title: file.originalname,
@@ -159,7 +161,8 @@ export async function uploadBookController(req: Request, res: Response) {
       },
     });
 
-    // Respond with the URL of the uploaded file
+    await processEpubCoverImage(book);
+
     res.status(200).json({
       message: 'File uploaded successfully!',
       fileUrl,

@@ -84,7 +84,7 @@ const AIEnhancedReaderPage: React.FC = () => {
       .then((response) => setBooks(response.data))
       .catch((error) => {
         console.error('Error fetching books:', error);
-        message.error('Failed to fetch books.');
+        // message.error('Failed to fetch books.');
       });
   }, [baseUrl]);
 
@@ -102,7 +102,7 @@ const AIEnhancedReaderPage: React.FC = () => {
       })
       .catch((error) => {
         console.error('Error fetching chapters:', error);
-        message.error('Failed to fetch chapters.');
+        // message.error('Failed to fetch chapters.');
       })
       .finally(() => setLoadingChapters(false));
   };
@@ -206,7 +206,7 @@ const AIEnhancedReaderPage: React.FC = () => {
       })
       .catch((error) => {
         console.error('Error fetching passages:', error);
-        message.error('Failed to fetch passages.');
+        // message.error('Failed to fetch passages.');
       })
       .finally(() => setLoadingPassages(false));
   };

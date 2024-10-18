@@ -43,6 +43,7 @@ export interface Book {
   profiles: Profile[];
   title: string;
   storageUrl: string;
+  coverUrl: string;
   userId: string;
   chapters: Chapter[];
   passages: Passage[];

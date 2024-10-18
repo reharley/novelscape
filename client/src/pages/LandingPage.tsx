@@ -103,10 +103,9 @@ const LandingPage: React.FC = () => {
             <Col xs={24} md={12}>
               <Title>Experience Reading Like Never Before</Title>
               <Paragraph>
-                Upload your PDFs or audiobooks and let our AI transform your
-                reading journey. Visualize scenes, interact with characters, and
-                dive deeper into your favorite novels with immersive annotations
-                powered by GPT.
+                Upload your EPUBs and let our AI transform your reading journey.
+                Visualize scenes, interact with characters, and dive deeper into
+                your favorite novels with immersive annotations powered by GPT.
               </Paragraph>
               <Space>
                 <Button type='primary' size='large' onClick={handleLogin}>

@@ -1,13 +1,19 @@
-import { Scene } from '@prisma/client';
+import { Book, Scene } from '@prisma/client';
 import axios from 'axios';
 import DOMPurify from 'dompurify';
 import { EPub } from 'epub2';
 import fs from 'fs-extra';
 import { JSDOM } from 'jsdom';
+import os from 'os';
 import pLimit from 'p-limit'; // Import p-limit for concurrency control
 import path from 'path';
+import { v4 as uuidv4 } from 'uuid';
 
 import prisma from '../config/prisma.js';
+import {
+  downloadFileFromAzure,
+  uploadFileToAzure,
+} from '../utils/azureStorage.js';
 import { parseChapterContent } from '../utils/parseChapterContent.js';
 import { progressManager } from '../utils/progressManager.js';
 import { detectNewScene } from '../utils/prompts.js';
@@ -186,18 +192,6 @@ export async function extractProfiles(bookId: number): Promise<void> {
     });
 
     epub.parse();
-  } else if (fileType.ext === 'pdf') {
-    try {
-      // await processPdfFile(fileData, bookId);
-    } catch (error: any) {
-      console.error(`Error processing book ${bookId}:`, error);
-      progressManager.sendProgress(bookId, {
-        status: 'error',
-        message:
-          error.message || 'An error occurred during profile extraction.',
-      });
-      progressManager.closeAllClients(bookId);
-    }
   } else {
     throw new Error('Unsupported file type: ' + fileType.ext);
   }
@@ -421,5 +415,85 @@ export async function getChapterRawAsync(
         resolve(text || '');
       }
     });
+  });
+}
+
+export const processEpubCoverImage = async (book: Book) => {
+  const bookId = book.id;
+  try {
+    const epub = await getEpub(book.storageUrl);
+    const metadata = epub.metadata;
+
+    let coverId = metadata.cover;
+
+    if (!coverId) {
+      coverId = epub.manifest['cover-image']?.id;
+    }
+
+    const coverImage = await epub.getFileAsync(coverId);
+
+    if (!coverImage) {
+      throw new Error('Failed to retrieve cover image from EPUB.');
+    }
+
+    // const coverImageBuffer = Buffer.from(coverImage[0]);
+    const filename = `cover-${book.id}.jpg`;
+
+    const coverImageUrl = await uploadFileToAzure(
+      coverImage[0],
+      filename,
+      'images'
+    );
+
+    // Update the Book record with the cover URL in the database
+    await prisma.book.update({
+      where: { id: book.id },
+      data: { coverUrl: coverImageUrl }, // Assuming the `storageUrl` field stores the cover URL
+    });
+
+    console.log(`Cover image uploaded and URL saved for book ID: ${bookId}`);
+    return coverImageUrl;
+  } catch (error) {
+    console.error(
+      `Error processing EPUB cover image for book ID ${bookId}:`,
+      error
+    );
+    throw error;
+  }
+};
+
+export async function getEpub(storageUrl: string) {
+  const tempDir = os.tmpdir();
+  const tempFilePath = path.join(tempDir, `book-${uuidv4()}.epub`);
+  await downloadFileFromAzure(storageUrl, 'books', tempFilePath);
+
+  const fileExists = await fs
+    .access(tempFilePath)
+    .then(() => true)
+    .catch(() => false);
+  console.log(`File exists after writing: ${fileExists}`);
+
+  if (!fileExists) {
+    throw new Error('File was not created or cannot be accessed.');
+  }
+  const epub = new EPub(tempFilePath);
+  await parseEpub(epub);
+  // cleanup the temporary file after parsing
+  await fs.unlink(tempFilePath);
+
+  return epub;
+}
+
+function parseEpub(epub: EPub): Promise<void> {
+  return new Promise((resolve, reject) => {
+    epub.on('end', () => {
+      resolve();
+    });
+
+    epub.on('error', (err) => {
+      reject(err);
+    });
+
+    epub.parse();
   });
 }

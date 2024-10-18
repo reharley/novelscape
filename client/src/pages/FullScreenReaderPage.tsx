@@ -41,6 +41,7 @@ const FullScreenReaderPage: React.FC = () => {
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
   const [loadingImage, setLoadingImage] = useState<boolean>(false);
   const [loadingPassages, setLoadingPassages] = useState<boolean>(false);
+  const [processingModalVisible, setProcessingModalVisible] = useState(false);
 
   // State variables for chapters
   const [chapters, setChapters] = useState<Chapter[]>([]);
@@ -50,19 +51,17 @@ const FullScreenReaderPage: React.FC = () => {
     useState<boolean>(false);
   const [isPreviewVisible, setIsPreviewVisible] = useState<boolean>(false);
   const [previewModel, setPreviewModel] = useState<AiModel | null>(null);
-  const [isGenerateImagesModalVisible, setIsGenerateImagesModalVisible] =
-    useState<boolean>(false);
+
   const [loadingProfileImages, setLoadingProfileImages] =
     useState<boolean>(false);
   // Handler for opening the modal
-  const handleGenerateImages = () => {
-    setIsGenerateImagesModalVisible(true);
+  const handleGenerateImages = (
+    event?: React.MouseEvent<HTMLElement, MouseEvent>
+  ) => {
+    event?.stopPropagation();
+    setProcessingModalVisible(true);
   };
 
-  // Handler for closing the modal
-  const handleCloseGenerateImagesModal = () => {
-    setIsGenerateImagesModalVisible(false);
-  };
   // New state variable for force regenerate checkbox
   const [forceRegenerate, setForceRegenerate] = useState<boolean>(false);
 
@@ -192,12 +191,12 @@ const FullScreenReaderPage: React.FC = () => {
         }
       } else {
         // No chapters, redirect to processing page
-        navigate(`/processing/${bookId}`);
+        setProcessingModalVisible(true);
       }
     } catch (error) {
       console.error('Error fetching chapters:', error);
       message.error('Failed to fetch chapters.');
-      navigate(`/processing/${bookId}`);
+      setProcessingModalVisible(true);
     }
   };
 
@@ -305,7 +304,10 @@ const FullScreenReaderPage: React.FC = () => {
     }
   };
 
-  const handleNextChapter = () => {
+  const handleNextChapter = (
+    event: React.MouseEvent<HTMLElement, MouseEvent>
+  ) => {
+    event.stopPropagation();
     const currentChapterIndex = chapters.findIndex(
       (chapter) => chapter.id === parseInt(chapterId || '', 10)
     );
@@ -317,7 +319,11 @@ const FullScreenReaderPage: React.FC = () => {
     }
   };
 
-  const handlePreviousChapter = () => {
+  const handlePreviousChapter = (
+    event: React.MouseEvent<HTMLElement, MouseEvent>
+  ) => {
+    event.stopPropagation();
+
     const currentChapterIndex = chapters.findIndex(
       (chapter) => chapter.id === parseInt(chapterId || '', 10)
     );
@@ -444,6 +450,7 @@ const FullScreenReaderPage: React.FC = () => {
   const currentChapterIndex = chapters.findIndex(
     (chapter) => chapter.id === parseInt(chapterId || '', 10)
   );
+  console.log('chapterId', chapterId);
 
   console.log('currentPassage:', currentPassage);
   return (
@@ -656,10 +663,11 @@ const FullScreenReaderPage: React.FC = () => {
       )}
       {/* Generate Images Modal */}
       <GenerateImagesModal
-        visible={isGenerateImagesModalVisible}
-        onClose={handleCloseGenerateImagesModal}
+        visible={processingModalVisible}
+        onClose={() => setProcessingModalVisible(false)}
         bookId={bookId || ''}
         chapterId={chapterId || ''}
+        onProcessingComplete={() => window.location.reload()}
       />
     </div>
   );

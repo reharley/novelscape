@@ -1,11 +1,20 @@
-import { Button, Modal, Progress, Steps, Typography, message } from 'antd';
+import {
+  Button,
+  message,
+  Modal,
+  Progress,
+  Select,
+  Steps,
+  Typography,
+} from 'antd';
 import axios from 'axios';
 import { EventSourcePolyfill } from 'event-source-polyfill';
 import React, { useEffect, useState } from 'react';
 import { apiUrl } from '../../utils/general';
 
-const { Text } = Typography;
+const { Text, Title } = Typography;
 const { Step } = Steps;
+const { Option } = Select;
 
 interface ProgressData {
   status: string;
@@ -15,11 +24,18 @@ interface ProgressData {
   total?: number;
 }
 
+interface Chapter {
+  id: number;
+  order: number;
+  title: string;
+}
+
 interface GenerateImagesModalProps {
   visible: boolean;
   onClose: () => void;
   bookId: string;
   chapterId: string;
+  onProcessingComplete: () => void; // Callback to inform parent component
 }
 
 const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
@@ -27,28 +43,133 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
   onClose,
   bookId,
   chapterId,
+  onProcessingComplete,
 }) => {
   const [currentPhase, setCurrentPhase] = useState<number>(0);
   const [progress, setProgress] = useState<ProgressData | null>(null);
-  const [generating, setGenerating] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [selectedChapterId, setSelectedChapterId] = useState<number | null>(
+    chapterId ? parseInt(chapterId) : null
+  );
 
+  if (selectedChapterId === null && chapterId) {
+    setSelectedChapterId(parseInt(chapterId));
+  }
   useEffect(() => {
     if (visible) {
-      startGeneratingImages();
+      checkBookProcessingStatus();
     }
     // Cleanup on modal close
     return () => {
       setCurrentPhase(0);
       setProgress(null);
-      setGenerating(false);
+      setProcessing(false);
+      setSelectedChapterId(null);
     };
   }, [visible]);
 
-  const startGeneratingImages = async () => {
-    setGenerating(true);
-    setProgress(null);
+  const checkBookProcessingStatus = async () => {
+    if (!bookId) {
+      message.error('Book ID is missing.');
+      return;
+    }
+    try {
+      // Check if passages and chapters exist
+      const passagesResponse = await axios.get(
+        `${apiUrl}/api/books/${bookId}/passages`
+      );
+      const passages = passagesResponse.data;
+
+      const chaptersResponse = await axios.get(
+        `${apiUrl}/api/books/${bookId}/chapters`
+      );
+      const chaptersData = chaptersResponse.data;
+
+      if (passages.length > 0 && chaptersData.length > 0) {
+        setCurrentPhase(2);
+        setChapters(chaptersData);
+      } else {
+        setCurrentPhase(0);
+      }
+    } catch (error) {
+      console.error('Error checking book processing status:', error);
+      setCurrentPhase(0);
+    }
+  };
+
+  const startProcessing = async () => {
+    if (!bookId) {
+      message.error('Book ID is missing.');
+      return;
+    }
+
+    setProcessing(true);
+    setProgress(null); // Reset progress
 
     try {
+      // Start listening to progress updates
+      const eventSource = new EventSourcePolyfill(
+        `${apiUrl}/api/books/${bookId}/extract-profiles/progress`,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('accessToken')}`,
+          },
+        }
+      );
+
+      eventSource.onmessage = (event) => {
+        const data: ProgressData = JSON.parse(event.data);
+        setProgress(data);
+
+        if (data.status === 'phase') {
+          const phaseNumber = getPhaseNumber(data.phase);
+          setCurrentPhase(phaseNumber - 1);
+        }
+
+        if (data.status === 'phase_completed') {
+          const phaseNumber = getPhaseNumber(data.phase);
+          setCurrentPhase(phaseNumber);
+        }
+
+        if (data.status === 'completed') {
+          message.success(data.message || 'Processing completed.');
+          eventSource.close();
+          setProcessing(false);
+          fetchChapters();
+        } else if (data.status === 'error') {
+          message.error(data.message || 'Error during processing.');
+          eventSource.close();
+          setProcessing(false);
+        }
+      };
+
+      eventSource.onerror = (err) => {
+        console.error('EventSource failed:', err);
+        message.error('Connection to progress stream failed.');
+        eventSource.close();
+        setProcessing(false);
+      };
+
+      // Trigger book processing
+      await axios.post(`${apiUrl}/api/books/${bookId}/extract-profiles`);
+    } catch (error) {
+      message.error('Error starting book processing.');
+      setProcessing(false);
+    }
+  };
+
+  const continueProcessing = async () => {
+    if (!bookId || !selectedChapterId) {
+      message.error('Book ID or Chapter ID is missing.');
+      return;
+    }
+
+    setProcessing(true);
+    setProgress(null); // Reset progress
+
+    try {
+      // Start listening to progress updates
       const eventSource = new EventSourcePolyfill(
         `${apiUrl}/api/books/${chapterId}/generate-chapter-images/progress`,
         {
@@ -73,13 +194,15 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
         }
 
         if (data.status === 'completed') {
-          message.success(data.message || 'Image generation completed.');
+          message.success(data.message || 'Processing completed.');
           eventSource.close();
-          setGenerating(false);
+          setProcessing(false);
+          onProcessingComplete();
+          onClose();
         } else if (data.status === 'error') {
-          message.error(data.message || 'Error during image generation.');
+          message.error(data.message || 'Error during processing.');
           eventSource.close();
-          setGenerating(false);
+          setProcessing(false);
         }
       };
 
@@ -87,7 +210,7 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
         console.error('EventSource failed:', err);
         message.error('Connection to progress stream failed.');
         eventSource.close();
-        setGenerating(false);
+        setProcessing(false);
       };
 
       // Trigger image generation
@@ -95,19 +218,40 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
         `${apiUrl}/api/books/${chapterId}/generate-chapter-images`
       );
     } catch (error) {
-      message.error('Error starting image generation.');
-      setGenerating(false);
+      message.error('Error continuing book processing.');
+      setProcessing(false);
+    }
+  };
+
+  const fetchChapters = async () => {
+    if (!bookId) return;
+
+    try {
+      const response = await axios.get(
+        `${apiUrl}/api/books/${bookId}/chapters`
+      );
+      setChapters(response.data);
+      setCurrentPhase(2);
+    } catch (error) {
+      console.error('Error fetching chapters:', error);
+      message.error('Failed to fetch chapters.');
     }
   };
 
   const getPhaseNumber = (phaseName?: string): number => {
     switch (phaseName) {
       case 'Phase 1':
-      case 'Phase 1: Generating Images...':
+      case 'Phase 1: Extracting passages and chapters...':
         return 1;
       case 'Phase 2':
-      case 'Phase 2: Finalizing Images...':
+      case 'Phase 2: Extracting canonical character names...':
         return 2;
+      case 'Phase 3':
+      case 'Phase 3: Processing passages with context...':
+        return 3;
+      case 'Phase 4':
+      case 'Phase 4: Detecting scenes...':
+        return 4;
       default:
         return 0;
     }
@@ -116,20 +260,22 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
   return (
     <Modal
       visible={visible}
-      title='Generating Images'
+      title='Processing Book'
       onCancel={onClose}
       footer={[
-        <Button key='close' onClick={onClose} disabled={generating}>
+        <Button key='close' onClick={onClose} disabled={processing}>
           Close
         </Button>,
       ]}
     >
       <Steps current={currentPhase}>
-        <Step title='Generating Images' />
-        <Step title='Finalizing Images' />
+        <Step title='Extract Passages and Chapters' />
+        <Step title='Extract Canonical Names' />
+        <Step title='Process Passages with Context' />
+        <Step title='Detect Scenes' />
       </Steps>
 
-      {generating && progress && (
+      {processing && progress && (
         <div style={{ marginTop: '20px' }}>
           {progress.status === 'started' && <Text>{progress.message}</Text>}
           {progress.status === 'phase' && (
@@ -158,6 +304,54 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
           {progress.status === 'error' && (
             <Text type='danger'>{progress.message}</Text>
           )}
+        </div>
+      )}
+
+      {currentPhase === 0 && !processing && (
+        <div style={{ marginTop: '20px' }}>
+          <Button type='primary' onClick={startProcessing} loading={processing}>
+            Start Processing
+          </Button>
+        </div>
+      )}
+
+      {currentPhase >= 2 && !processing && (
+        <div style={{ marginTop: '20px' }}>
+          <Title level={4}>Select Chapter to Continue</Title>
+          <Select
+            placeholder='Select a chapter'
+            style={{ width: 300, marginBottom: '20px' }}
+            onChange={(value) => setSelectedChapterId(value)}
+            value={selectedChapterId || undefined}
+          >
+            {chapters.map((chapter) => (
+              <Option key={chapter.id} value={chapter.id}>
+                {chapter.title}
+              </Option>
+            ))}
+          </Select>
+          <Button
+            type='primary'
+            onClick={continueProcessing}
+            disabled={!selectedChapterId}
+            loading={processing}
+          >
+            Continue Processing
+          </Button>
+        </div>
+      )}
+
+      {currentPhase === 4 && !processing && (
+        <div style={{ marginTop: '20px' }}>
+          <Button
+            type='primary'
+            onClick={() => {
+              onProcessingComplete(); // Inform parent component
+              onClose(); // Close modal
+            }}
+          >
+            Go to Reader
+          </Button>
         </div>
       )}
     </Modal>

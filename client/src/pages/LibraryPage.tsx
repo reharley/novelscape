@@ -53,13 +53,9 @@ const LibraryPage: React.FC = () => {
   return (
     <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
       <h1>Your Library</h1>
-      <Upload
-        beforeUpload={handleUpload}
-        accept='.pdf,.epub'
-        showUploadList={false}
-      >
+      <Upload beforeUpload={handleUpload} accept='.epub' showUploadList={false}>
         <Button icon={<UploadOutlined />} loading={uploading}>
-          {uploading ? 'Uploading' : 'Upload PDF/EPUB'}
+          {uploading ? 'Uploading' : 'Upload EPUB'}
         </Button>
       </Upload>
 
@@ -76,7 +72,7 @@ const LibraryPage: React.FC = () => {
                 cover={
                   <img
                     alt='placeholder'
-                    src='https://via.placeholder.com/150'
+                    src={book.coverUrl || 'https://via.placeholder.com/150'}
                   />
                 }
               >
