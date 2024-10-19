@@ -1,6 +1,4 @@
-FROM node:20-alpine
-
-RUN apk add --no-cache postgresql-client
+FROM node:20-bullseye-slim
 
 WORKDIR /usr/src/app
 
@@ -11,7 +9,6 @@ COPY ./server ./server
 WORKDIR /usr/src/app/server
 RUN npm install
 
-RUN npx prisma generate
 RUN npm run build
 
 EXPOSE 8080
