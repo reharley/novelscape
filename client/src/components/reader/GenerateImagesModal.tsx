@@ -171,7 +171,7 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
     try {
       // Start listening to progress updates
       const eventSource = new EventSourcePolyfill(
-        `${apiUrl}/api/books/${chapterId}/generate-chapter-images/progress`,
+        `${apiUrl}/api/books/${selectedChapterId}/generate-chapter-images/progress`,
         {
           headers: {
             Authorization: `Bearer ${localStorage.getItem('accessToken')}`,
@@ -197,8 +197,8 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
           message.success(data.message || 'Processing completed.');
           eventSource.close();
           setProcessing(false);
-          onProcessingComplete();
-          onClose();
+          // onProcessingComplete();
+          // onClose();
         } else if (data.status === 'error') {
           message.error(data.message || 'Error during processing.');
           eventSource.close();
@@ -215,7 +215,7 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
 
       // Trigger image generation
       await axios.get(
-        `${apiUrl}/api/books/${chapterId}/generate-chapter-images`
+        `${apiUrl}/api/books/${selectedChapterId}/generate-chapter-images`
       );
     } catch (error) {
       message.error('Error continuing book processing.');
@@ -268,11 +268,12 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
         </Button>,
       ]}
     >
-      <Steps current={currentPhase}>
+      <Steps current={currentPhase} direction='vertical' size='small'>
         <Step title='Extract Passages and Chapters' />
-        <Step title='Extract Canonical Names' />
-        <Step title='Process Passages with Context' />
-        <Step title='Detect Scenes' />
+        <Step title='Building Character List' />
+        <Step title='Processing Passages' />
+        <Step title='Detecting Scenes' />
+        <Step title='Generating Images' />
       </Steps>
 
       {processing && progress && (

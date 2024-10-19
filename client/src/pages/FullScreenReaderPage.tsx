@@ -169,7 +169,6 @@ const FullScreenReaderPage: React.FC = () => {
       }
     } catch (error) {
       console.error('Error fetching last read position:', error);
-      message.error('Failed to fetch last read position.');
       // Default to first chapter
       fetchChapters(bookId);
     }
@@ -195,7 +194,6 @@ const FullScreenReaderPage: React.FC = () => {
       }
     } catch (error) {
       console.error('Error fetching chapters:', error);
-      message.error('Failed to fetch chapters.');
       setProcessingModalVisible(true);
     }
   };
@@ -259,7 +257,6 @@ const FullScreenReaderPage: React.FC = () => {
       })
       .catch((error) => {
         console.error('Error fetching passages:', error);
-        message.error('Failed to fetch passages.');
         // navigate(`/processing/${bookId}`);
       })
       .finally(() => setLoadingPassages(false));
