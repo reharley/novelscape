@@ -50,7 +50,7 @@ const router = createBrowserRouter(
             element={<FullScreenReaderPage />}
           />
           <Route path='/' element={<LayoutRoute />}>
-            {/* <Route index element={<HomePage />} /> */}
+            <Route index element={<LibraryPage />} />
             <Route path='models' element={<ModelManagerPage />} />
             <Route path='library' element={<LibraryPage />} />
             <Route path='ai-reader' element={<AIEnhancedReaderPage />} />

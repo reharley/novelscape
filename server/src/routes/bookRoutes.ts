@@ -11,7 +11,6 @@ import {
   getPassagesForChapter,
   getProfilesForBook,
   getReadingProgress,
-  listBookFiles,
   listBooks,
   processBookController,
   updateReadingProgress,
@@ -20,13 +19,6 @@ import {
 import { upload } from '../utils/multer.js';
 
 const router = express.Router();
-
-/**
- * @route GET /api/books/files
- * @desc List EPUB files
- * @access Public
- */
-router.get('/files', listBookFiles);
 
 /**
  * @route GET /api/books/:bookId/passages

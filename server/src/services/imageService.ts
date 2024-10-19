@@ -116,6 +116,7 @@ export async function generateImage(
     let imageBase64: string = response.data.images[0]; // Assuming a single image is returned
     if (doRemoveBackground) {
       const imageBlob = base64ToBlob(imageBase64);
+      //@ts-ignore
       const blob = await removeBackground(imageBlob, {
         debug: false,
         progress: () => {},

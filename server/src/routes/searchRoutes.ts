@@ -1,4 +1,3 @@
-// src/routes/search.ts
 import express from 'express';
 import { searchModels } from '../controllers/searchController.js';
 

@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import prisma from '../config/prisma';
+import prisma from '../config/prisma.js';
 
 export async function generateImageForProfile(req: Request, res: Response) {
   const { profileId } = req.params;

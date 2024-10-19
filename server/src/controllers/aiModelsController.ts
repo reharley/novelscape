@@ -1,12 +1,12 @@
 import { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
-import prisma from '../config/prisma';
+import prisma from '../config/prisma.js';
 import {
   listModels,
   loadModel,
   setActiveModel,
-} from '../services/modelService';
+} from '../services/modelService.js';
 
 // List Checkpoints
 export async function listCheckpoints(req: Request, res: Response) {

@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-import fs from 'fs-extra';
 
 import prisma from '../config/prisma.js';
 import {
@@ -18,28 +17,18 @@ import {
   generateProfileImagesForChapter,
 } from './imageController.js';
 
-if (!process.env.BOOKS_PATH) {
-  console.error('Books path not configured.');
-  process.exit(1);
-}
-const booksDir = process.env.BOOKS_PATH;
-
-export async function listBookFiles(req: Request, res: Response) {
-  try {
-    const files = await fs.readdir(booksDir);
-    const bookFiles = files.filter((file) => file.endsWith('.epub'));
-    res.json(bookFiles); // Return only EPUB files
-  } catch (error) {
-    console.error('Error fetching book files:', error);
-    res.status(500).json({ error: 'Failed to fetch book files.' });
-  }
-}
-
 export async function listBooks(req: Request, res: Response) {
   try {
+    const userId = req.user.oid;
+    await prisma.user.upsert({
+      where: { id: userId },
+      update: {},
+      create: { id: userId },
+    });
+
     const books = await prisma.book.findMany({
       orderBy: {
-        title: 'asc', // Optional: order books alphabetically by title
+        title: 'asc',
       },
     });
 

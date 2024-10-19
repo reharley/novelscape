@@ -7,6 +7,7 @@ import prisma from './config/prisma.js';
 import { auth } from './middleware/auth.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import routes from './routes/index.js';
+import './utils/appInsights.js';
 
 prisma; // Initialize Prisma Client
 const app = express();

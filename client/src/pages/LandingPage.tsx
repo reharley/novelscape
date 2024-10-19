@@ -118,7 +118,7 @@ const LandingPage: React.FC = () => {
             </Col>
             <Col xs={24} md={12}>
               <Image
-                src='https://via.placeholder.com/400x300.png?text=App+Preview+1'
+                src='https://novelscapestorage.blob.core.windows.net/images/351ed99b-9377-47db-9326-8c0619b7610f.webp'
                 alt='App Preview 1'
                 // bordered
               />
@@ -271,7 +271,9 @@ const LandingPage: React.FC = () => {
 
       {/* Footer */}
       <Footer style={{ textAlign: 'center' }}>
-        ImmersiveReader ©2024 Created by Your Company Name
+        In the pages of books lie the keys to realms unknown, where every word
+        is a gateway to adventure and wonder. Begin your journey, for the story
+        awaits.
       </Footer>
     </Layout>
   );

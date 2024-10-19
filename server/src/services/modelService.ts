@@ -1,8 +1,8 @@
 import axios from 'axios';
 import fs from 'fs-extra';
 import path from 'path';
-import prisma from '../config/prisma';
-import { downloadFile } from '../utils/downloadFile';
+import prisma from '../config/prisma.js';
+import { downloadFile } from '../utils/downloadFile.js';
 
 export async function listModels(type: string, profileId?: string) {
   if (profileId) {

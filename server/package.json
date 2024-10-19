@@ -8,7 +8,8 @@
     "dev": "tsx watch src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "pm2-start": "pm2-runtime npm -- start"
   },
   "keywords": [],
   "author": "",
@@ -17,7 +18,9 @@
     "@azure/storage-blob": "^12.25.0",
     "@imgly/background-removal-node": "^1.4.5",
     "@prisma/client": "^5.20.0",
+    "applicationinsights": "^3.3.0",
     "axios": "^1.7.7",
+    "basic-auth": "^2.0.1",
     "cheerio": "^1.0.0",
     "civitai": "^0.1.15",
     "cors": "^2.8.5",
@@ -35,12 +38,14 @@
     "openai": "^4.65.0",
     "p-limit": "^3.1.0",
     "path": "^0.12.7",
+    "pm2": "^5.4.2",
     "prisma": "^5.20.0",
     "sharp": "^0.33.5",
     "socket.io": "^4.8.0",
     "uuid": "^10.0.0"
   },
   "devDependencies": {
+    "@types/basic-auth": "^1.1.8",
     "@types/cheerio": "^0.22.35",
     "@types/cors": "^2.8.17",
     "@types/dompurify": "^3.0.5",

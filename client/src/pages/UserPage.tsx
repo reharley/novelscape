@@ -13,7 +13,7 @@ const UserPage: React.FC = () => {
 
   return (
     <Layout>
-      <Header style={{ backgroundColor: '#fff', padding: 0 }}>
+      <Header style={{ padding: 0 }}>
         <div style={{ float: 'right', marginRight: '16px' }}>
           <Button
             type='primary'

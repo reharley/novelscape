@@ -1,2 +1,3 @@
 **/node_modules
 backend/models
+/scripts/dockerRun.ps1
