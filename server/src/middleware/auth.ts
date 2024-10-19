@@ -33,7 +33,11 @@ export type User = {
   ver: string;
   iat: number;
 };
+const webhooks = ['/api/ad/roles'];
 export function auth(req: any, res: any, next: NextFunction) {
+  if (webhooks.includes(req.url)) {
+    return next();
+  }
   if (!req.headers.authorization) {
     res.status(401).send('Unauthorized');
     return;

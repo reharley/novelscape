@@ -11,6 +11,7 @@ model Book {
     id              Int               @id @default(autoincrement())
     title           String
     storageUrl      String
+    coverUrl        String?
     userId          String
     chapters        Chapter[]
     profiles        Profile[]
@@ -213,4 +214,5 @@ model ReadingProgress {
 model User {
     id              String            @id
     readingProgress ReadingProgress[]
+    roles           String?
 }
