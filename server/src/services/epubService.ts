@@ -229,7 +229,7 @@ function getChapterText(
 export async function detectScenesForChapter(chapterId: number): Promise<void> {
   progressManager.sendProgress(chapterId, {
     status: 'phase',
-    phase: 'Phase 2: Detecting scenes for chapter...',
+    phase: 'Phase 4',
   });
 
   // Fetch the specific chapter with its passages ordered by their order
@@ -256,7 +256,15 @@ export async function detectScenesForChapter(chapterId: number): Promise<void> {
   const processChapter = async () => {
     const { order: chapterOrder } = chapter;
 
-    for (const passage of passages) {
+    // for (const passage of passages) {
+    for (let i = 0; i < passages.length; i++) {
+      const passage = passages[i];
+      progressManager.sendProgress(chapterId, {
+        status: 'phase_progress',
+        phase: 'Phase 4',
+        completed: i + 1,
+        total: passages.length,
+      });
       let isNewScene = false;
       const contextText =
         accumulatedPassages.join(' ') + ' ' + passage.textContent;
@@ -275,7 +283,7 @@ export async function detectScenesForChapter(chapterId: number): Promise<void> {
           status: 'error',
           message: `Error during scene detection in Chapter ${chapterOrder}: ${error.message}`,
         });
-        continue; // Skip to the next passage
+        continue;
       }
       accumulatedPassages.push(passage.textContent);
 
@@ -340,7 +348,7 @@ export async function detectScenesForChapter(chapterId: number): Promise<void> {
 
   progressManager.sendProgress(chapterId, {
     status: 'phase_completed',
-    phase: 'Phase 2',
+    phase: 'Phase 4',
     message: 'Scene detection for the chapter completed successfully.',
   });
 }

@@ -33,8 +33,11 @@ export async function extractPassageAndChapters(bookId: number) {
   }
 }
 
-export async function extractCanonicalNames(bookId: number): Promise<void> {
-  progressManager.sendProgress(bookId, {
+export async function extractCanonicalNames(
+  bookId: number,
+  chapterId?: number
+): Promise<void> {
+  progressManager.sendProgress(chapterId ?? bookId, {
     status: 'phase',
     phase: 'Phase 2: Extracting canonical character names...',
   });
@@ -44,7 +47,7 @@ export async function extractCanonicalNames(bookId: number): Promise<void> {
 
   // Fetch all passages for the book
   const passages = await prisma.passage.findMany({
-    where: { bookId: bookId },
+    where: { bookId, chapterId },
     select: { textContent: true },
   });
 
@@ -57,10 +60,8 @@ export async function extractCanonicalNames(bookId: number): Promise<void> {
       if (!textContent) return;
 
       try {
-        // Send text to OpenAI API for canonical NER
         const canonicalEntities = await extractFullNames(textContent);
         if (!canonicalEntities || !Array.isArray(canonicalEntities)) return;
-        // Upsert canonical profiles
         try {
           for (const entityObject of canonicalEntities) {
             const entity = entityObject.name;
@@ -113,7 +114,7 @@ export async function extractCanonicalNames(bookId: number): Promise<void> {
         }
         // Update progress after processing each passage
         processedPassages += 1;
-        progressManager.sendProgress(bookId, {
+        progressManager.sendProgress(chapterId ?? bookId, {
           status: 'phase_progress',
           phase: 'Phase 2',
           completed: processedPassages,
@@ -121,7 +122,7 @@ export async function extractCanonicalNames(bookId: number): Promise<void> {
         });
       } catch (apiError: any) {
         console.error('Error with OpenAI API (canonical NER):', apiError);
-        progressManager.sendProgress(bookId, {
+        progressManager.sendProgress(chapterId ?? bookId, {
           status: 'error',
           message: `OpenAI API error during canonical NER: ${apiError.message}`,
         });
@@ -132,7 +133,7 @@ export async function extractCanonicalNames(bookId: number): Promise<void> {
   // Await all passage processing tasks
   await Promise.all(tasks);
 
-  progressManager.sendProgress(bookId, {
+  progressManager.sendProgress(chapterId ?? bookId, {
     status: 'phase_completed',
     phase: 'Phase 2',
     message: 'Canonical character names extracted successfully.',
@@ -144,7 +145,7 @@ export async function processPassagesWithContextForChapter(
 ): Promise<void> {
   progressManager.sendProgress(chapterId, {
     status: 'phase',
-    phase: 'Phase 1: Processing passages with context for chapter...',
+    phase: 'Phase 3',
   });
 
   const concurrencyLimit = 7; // Adjust based on your system's capabilities
@@ -281,7 +282,7 @@ export async function processPassagesWithContextForChapter(
         processedPassages += 1;
         progressManager.sendProgress(chapterId, {
           status: 'phase_progress',
-          phase: 'Phase 1',
+          phase: 'Phase 3',
           completed: processedPassages,
           total: totalPassages,
         });
@@ -296,7 +297,7 @@ export async function processPassagesWithContextForChapter(
 
   progressManager.sendProgress(chapterId, {
     status: 'phase_completed',
-    phase: 'Phase 1',
+    phase: 'Phase 3',
     message: 'Passages processed with context for the chapter successfully.',
   });
 }

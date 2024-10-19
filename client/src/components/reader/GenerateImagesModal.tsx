@@ -252,6 +252,8 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
       case 'Phase 4':
       case 'Phase 4: Detecting scenes...':
         return 4;
+      case 'Phase 5':
+        return 5;
       default:
         return 0;
     }

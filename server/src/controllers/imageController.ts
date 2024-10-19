@@ -4,6 +4,7 @@ import { Request, Response } from 'express';
 import prisma from '../config/prisma.js';
 import { getCanonicalNames } from '../services/bookService.js';
 import { generateImage } from '../services/imageService.js';
+import { progressManager } from '../utils/progressManager.js';
 import {
   generateBackgroundPrompt,
   generateProfilePrompt,
@@ -296,6 +297,12 @@ export async function generateImagesForChapter(req: Request, res: Response) {
             progress: 100.0,
           },
         });
+        progressManager.sendProgress(job.targetId, {
+          status: 'phase_completed',
+          phase: 'Phase 5',
+          completed: job.totalTasks,
+          total: job.totalTasks,
+        });
       } catch (error: any) {
         console.error('Error generating images for chapter:', error);
 
@@ -305,6 +312,14 @@ export async function generateImagesForChapter(req: Request, res: Response) {
           data: {
             status: 'failed',
           },
+        });
+
+        progressManager.sendProgress(job.targetId, {
+          status: 'error',
+          phase: 'Phase 5',
+          message: error.message || 'Image generation failed.',
+          completed: job.totalTasks,
+          total: job.totalTasks,
         });
       }
     })();
@@ -344,7 +359,7 @@ export async function generateBackgroundImagesForChapter(
       );
 
       // Update job progress
-      await prisma.imageGenerationJob.update({
+      const jobTmp = await prisma.imageGenerationJob.update({
         where: { id: job.id },
         data: {
           completedTasks: { increment: 1 },
@@ -353,17 +368,30 @@ export async function generateBackgroundImagesForChapter(
           },
         },
       });
+
+      progressManager.sendProgress(job.targetId, {
+        status: 'phase_progress',
+        phase: 'Phase 5',
+        completed: jobTmp.completedTasks,
+        total: jobTmp.totalTasks,
+      });
     } catch (error: any) {
       console.error(
         `Error generating background image for scene ${scene.id}:`,
         error
       );
       // Update job with failed task
-      await prisma.imageGenerationJob.update({
+      const jobTmp = await prisma.imageGenerationJob.update({
         where: { id: job.id },
         data: {
           failedTasks: { increment: 1 },
         },
+      });
+      progressManager.sendProgress(job.targetId, {
+        status: 'phase_progress',
+        phase: 'Phase 5',
+        completed: jobTmp.completedTasks,
+        total: jobTmp.totalTasks,
       });
     }
   }
@@ -416,7 +444,7 @@ export async function generateProfileImagesForChapter(
       );
 
       // Update job progress
-      await prisma.imageGenerationJob.update({
+      const jobTmp = await prisma.imageGenerationJob.update({
         where: { id: job.id },
         data: {
           completedTasks: { increment: 1 },
@@ -424,6 +452,12 @@ export async function generateProfileImagesForChapter(
             increment: (1 / job.totalTasks) * 100,
           },
         },
+      });
+      progressManager.sendProgress(job.targetId, {
+        status: 'phase_progress',
+        phase: 'Phase 5',
+        completed: jobTmp.completedTasks,
+        total: jobTmp.totalTasks,
       });
     } catch (error: any) {
       console.error(`Error generating image for profile ${profile.id}:`, error);

@@ -697,58 +697,62 @@ export async function generateChapterImages(chapterId: number) {
     },
   });
 
-  // Process images asynchronously
-  (async () => {
-    try {
-      // Generate background images
-      await generateBackgroundImagesForChapter(
-        chapter,
-        job,
-        forceRegenerate,
-        backgroundOptions
-      );
+  progressManager.sendProgress(chapterId, {
+    status: 'phase',
+    phase: 'Phase 5',
+    completed: 0,
+    total: totalTasks,
+  });
 
-      // Generate profile images
-      await generateProfileImagesForChapter(
-        chapter,
-        profiles,
-        job,
-        forceRegenerate,
-        profileOptions
-      );
+  try {
+    // Generate background images
+    await generateBackgroundImagesForChapter(
+      chapter,
+      job,
+      forceRegenerate,
+      backgroundOptions
+    );
 
-      // Finalize job status
-      await prisma.imageGenerationJob.update({
-        where: { id: job.id },
-        data: {
-          status: 'completed',
-          progress: 100.0,
-        },
-      });
-      // Processing completed
-      progressManager.sendProgress(chapterId, {
+    // Generate profile images
+    await generateProfileImagesForChapter(
+      chapter,
+      profiles,
+      job,
+      forceRegenerate,
+      profileOptions
+    );
+
+    // Finalize job status
+    await prisma.imageGenerationJob.update({
+      where: { id: job.id },
+      data: {
         status: 'completed',
-        message: 'Book processing completed successfully.',
-      });
-      progressManager.closeAllClients(chapterId);
-    } catch (error: any) {
-      console.error('Error generating images for chapter:', error);
+        progress: 100.0,
+      },
+    });
+    // Processing completed
+    progressManager.sendProgress(chapterId, {
+      status: 'completed',
+      phase: 'Phase 5',
+      message: 'Book processing completed successfully.',
+    });
+    progressManager.closeAllClients(chapterId);
+  } catch (error: any) {
+    console.error('Error generating images for chapter:', error);
 
-      // Update job with failed status
-      await prisma.imageGenerationJob.update({
-        where: { id: job.id },
-        data: {
-          status: 'failed',
-        },
-      });
-      progressManager.sendProgress(chapterId, {
-        status: 'error',
-        message:
-          error.message || 'An error occurred during profile extraction.',
-      });
-      progressManager.closeAllClients(chapterId);
-    }
-  })();
+    // Update job with failed status
+    await prisma.imageGenerationJob.update({
+      where: { id: job.id },
+      data: {
+        status: 'failed',
+      },
+    });
+    progressManager.sendProgress(chapterId, {
+      status: 'error',
+      message: error.message || 'An error occurred during profile extraction.',
+    });
+    progressManager.closeAllClients(chapterId);
+  }
 }
 
 export async function generateChapterImagesController(
@@ -763,6 +767,7 @@ export async function generateChapterImagesController(
     if (!chapter) {
       throw new Error('Chapter not found.');
     }
+    const bookId = chapter.bookId;
     if (!chapter.processed) {
       await processPassagesWithContextForChapter(chapterId);
 
@@ -772,12 +777,8 @@ export async function generateChapterImagesController(
         data: { processed: true },
       });
     }
-    generateChapterImages(chapterId);
-    progressManager.sendProgress(chapterId, {
-      status: 'completed',
-      message: 'Book processing completed successfully.',
-    });
-    res.status(202).json({ message: 'Image generation started.' });
+    await generateChapterImages(chapterId);
+    res.status(200).json({ message: 'Image generation completed.' });
   } catch (error: any) {
     console.error('Error starting image generation:', error);
     res
