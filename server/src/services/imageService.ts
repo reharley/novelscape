@@ -291,9 +291,7 @@ async function makeRequest(
         input: {
           method: actionType,
           url: `http://127.0.0.1:7860${endpoint}`,
-          ...(actionType === 'POST' && requestBody),
-          ...(actionType === 'GET' && { params: {} }),
-          // ...(actionType === 'POST' && { body: requestBody }),
+          ...(actionType === 'POST' && { body: requestBody }),
         },
       };
       const config: AxiosRequestConfig = {
