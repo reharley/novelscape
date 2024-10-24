@@ -63,34 +63,38 @@ const FullScreenReaderPage: React.FC = () => {
   const passageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (bookId) {
+    const fetchData = async () => {
+      if (!bookId) return;
+
+      console.log('Book ID:', bookId);
+
       if (chapterId) {
         const chapterIdNum = parseInt(chapterId, 10);
         fetchPassages(bookId, chapterIdNum);
       } else {
-        // Fetch last read position
-        fetchLastReadPosition(bookId).then((navigated) => {
-          if (!navigated) {
-            fetchChapters(bookId).then(() => {
-              if (chapters.length > 0) {
-                const firstChapterId = chapters[0].id;
-                navigate(`/reader/${bookId}/${firstChapterId}/0`);
-              } else {
-                // No chapters, show processing modal
-                setProcessingModalVisible(true);
-              }
-            });
-          }
-        });
-      }
-    }
-  }, [bookId, chapterId]);
+        console.log(
+          'Fetching chapters and last read position for book:',
+          bookId
+        );
+        const [fetchedChapters, navigated] = await Promise.all([
+          fetchChapters(bookId),
+          fetchLastReadPosition(bookId),
+        ]);
 
-  useEffect(() => {
-    if (bookId) {
-      fetchChapters(bookId);
-    }
-  }, [bookId]);
+        if (!navigated) {
+          if (fetchedChapters.length > 0) {
+            const firstChapterId = fetchedChapters[0].id;
+            navigate(`/reader/${bookId}/${firstChapterId}/0`);
+          } else {
+            // No chapters, show processing modal
+            setProcessingModalVisible(true);
+          }
+        }
+      }
+    };
+
+    fetchData();
+  }, [bookId, chapterId]);
 
   useEffect(() => {
     // Update currentPassageIndex when passageIndex param changes
@@ -176,21 +180,24 @@ const FullScreenReaderPage: React.FC = () => {
     }
   };
 
-  const fetchChapters = async (bookId: string) => {
+  const fetchChapters = async (bookId: string): Promise<Chapter[]> => {
     try {
       const response = await axios.get<Chapter[]>(
         `${baseUrl}/books/${bookId}/chapters`
       );
       const chapters = response.data;
+      console.log('Fetched chapters:', chapters);
       setChapters(chapters);
 
       if (chapters.length === 0) {
         // No chapters, show processing modal
         setProcessingModalVisible(true);
       }
+      return chapters;
     } catch (error) {
       console.error('Error fetching chapters:', error);
       setProcessingModalVisible(true);
+      return [];
     }
   };
 
