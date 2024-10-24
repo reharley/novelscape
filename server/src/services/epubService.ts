@@ -483,6 +483,7 @@ export async function getEpub(storageUrl: string) {
   console.log(`File exists after writing: ${fileExists}`);
 
   if (!fileExists) {
+    await fs.unlink(tempFilePath);
     throw new Error('File was not created or cannot be accessed.');
   }
   const epub = new EPub(tempFilePath);

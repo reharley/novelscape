@@ -8,13 +8,15 @@ import { auth } from './middleware/auth.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import routes from './routes/index.js';
 import './utils/appInsights.js';
+import corsOptions from './utils/cors.js';
 
 prisma; // Initialize Prisma Client
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
-app.use(cors());
+// @ts-ignore
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(auth);
 app.use(bodyParser.json({ limit: '100mb' })); // Adjust the limit as needed

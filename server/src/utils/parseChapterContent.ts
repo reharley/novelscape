@@ -11,10 +11,12 @@ export function parseChapterContent(text: string) {
     // If the element contains child elements, process them recursively first
     const children = $(element).children();
     if (children.length > 0) {
-      children.each((_, child) => {
-        processElement(child);
-      });
-      return; // After processing children, skip further processing of this element
+      if (tagName !== 'p') {
+        children.each((_, child) => {
+          processElement(child);
+        });
+        return;
+      }
     }
 
     const elementText = $(element).text().trim();
@@ -24,6 +26,7 @@ export function parseChapterContent(text: string) {
         type: 'title',
         text: elementText,
         size: tagName, // e.g., h1, h2
+        tag: tagName,
       });
     } else if (tagName === 'p') {
       const imagesInParagraph = $(element).find('img');
@@ -35,6 +38,7 @@ export function parseChapterContent(text: string) {
             type: 'paragraph',
             text: elementText, // Extract text of the paragraph
             src, // Attach image source if present
+            tag: tagName,
           });
         });
       } else {
@@ -42,6 +46,7 @@ export function parseChapterContent(text: string) {
         contents.push({
           type: 'paragraph',
           text: elementText,
+          tag: tagName,
         });
       }
     } else if (tagName === 'img') {
@@ -49,11 +54,12 @@ export function parseChapterContent(text: string) {
       contents.push({
         type: 'image',
         src,
+        tag: tagName,
       });
     } else {
       if (elementText.length === 0) return; // Skip empty elements
       contents.push({
-        type: 'unknown',
+        type: 'paragraph',
         text: elementText,
         tag: tagName,
       });

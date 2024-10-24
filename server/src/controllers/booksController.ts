@@ -397,6 +397,10 @@ export async function deleteBook(req: Request, res: Response) {
         where: { bookId },
       }),
 
+      prisma.readingProgress.deleteMany({
+        where: { bookId },
+      }),
+
       prisma.chapter.deleteMany({
         where: { bookId },
       }),
