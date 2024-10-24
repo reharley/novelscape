@@ -20,7 +20,7 @@ const LibraryPage: React.FC = () => {
         setBooks(response.data);
       })
       .catch((error) => {
-        message.error(`Error fetching books: ${error}`);
+        console.error(`Error fetching books: ${error}`);
       });
   };
 

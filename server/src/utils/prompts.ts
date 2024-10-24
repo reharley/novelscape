@@ -1,4 +1,8 @@
+import { CompletionUsage } from 'openai/resources/index.mjs';
 import openai from '../config/openai.js';
+import prisma from '../config/prisma.js';
+
+const model = 'gpt-4o-mini';
 
 /**
  * @desc Generates positive and negative prompts using OpenAI's ChatGPT based on the provided text content, profiles, and book name.
@@ -14,7 +18,8 @@ export async function generateProfilePrompt(
     gender?: string | null;
     descriptions: string[];
   },
-  bookName: string
+  bookName: string,
+  userId: string
 ): Promise<{ positivePrompt: string; negativePrompt: string }> {
   const examples = [
     {
@@ -112,7 +117,7 @@ ${profile.descriptions.map((desc) => `- ${desc}`).join('\n')}
     ];
     // Make a request to OpenAI's ChatGPT
     const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo', // Use the latest GPT model
+      model, // Use the latest GPT model
       messages: [
         {
           role: 'system',
@@ -133,6 +138,10 @@ ${profile.descriptions.map((desc) => `- ${desc}`).join('\n')}
     message = response.choices[0]?.message;
 
     if (message?.function_call?.name === 'generate_prompts') {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { credits: { decrement: calculateCost(response.usage!) } },
+      });
       const args = JSON.parse(message.function_call.arguments);
       if (!args.positivePrompt || !args.negativePrompt) {
         throw new Error('Incomplete prompt data received from OpenAI.');
@@ -173,7 +182,8 @@ export async function generateBackgroundPrompt(
     name: string;
     descriptions: string[];
   }[],
-  bookName: string
+  bookName: string,
+  userId: string
 ): Promise<{ positivePrompt: string; negativePrompt: string }> {
   const examples = [
     {
@@ -288,7 +298,7 @@ export async function generateBackgroundPrompt(
   try {
     // Make a request to OpenAI's ChatGPT
     const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+      model,
       messages: [
         {
           role: 'system',
@@ -305,6 +315,10 @@ export async function generateBackgroundPrompt(
     message = response.choices[0]?.message;
 
     if (message?.function_call?.name === 'generate_prompts') {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { credits: { decrement: calculateCost(response.usage!) } },
+      });
       const args = JSON.parse(message.function_call.arguments);
       if (!args.positivePrompt || !args.negativePrompt) {
         throw new Error('Incomplete prompt data received from OpenAI.');
@@ -338,7 +352,8 @@ interface Entity {
 }
 export async function performNERWithAliases(
   contextText: string,
-  aliases: string[]
+  aliases: string[],
+  userId: string
 ): Promise<Entity[]> {
   // Prepare the list of known aliases
   const aliasList = aliases.map((alias) => `"${alias}"`).join(', ');
@@ -399,7 +414,7 @@ export async function performNERWithAliases(
     },
   ];
   const response = await openai.chat.completions.create({
-    model: 'gpt-3.5-turbo',
+    model,
     messages: [
       {
         role: 'system',
@@ -424,6 +439,10 @@ Output the result as a JSON array of entities through extract_entities.`,
 
   const message = response.choices[0]?.message;
   if (message?.function_call?.name === 'extract_entities') {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { credits: { decrement: calculateCost(response.usage!) } },
+    });
     const args = JSON.parse(message.function_call.arguments);
     const entities: Entity[] = args.entities;
     console.log('Extracted entities:', entities);
@@ -435,7 +454,8 @@ Output the result as a JSON array of entities through extract_entities.`,
 // **Scene Detection with Accumulated Passages**
 export async function detectNewScene(
   contextText: string,
-  nextPassageText: string
+  nextPassageText: string,
+  userId: string
 ): Promise<{ newScene: boolean }> {
   const functions = [
     {
@@ -454,7 +474,7 @@ export async function detectNewScene(
     },
   ];
   const response = await openai.chat.completions.create({
-    model: 'gpt-3.5-turbo',
+    model,
     messages: [
       {
         role: 'system',
@@ -499,6 +519,10 @@ ${nextPassageText}`,
 
   const message = response.choices[0]?.message;
   if (message?.function_call?.name === 'report_scene') {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { credits: { decrement: calculateCost(response.usage!) } },
+    });
     const args = JSON.parse(message.function_call.arguments);
     const newScene = args.newScene;
     console.log('Scene detection result:', newScene);
@@ -508,16 +532,7 @@ ${nextPassageText}`,
   }
 }
 
-// **Sanitize Assistant Message**
-function sanitizeAssistantMessage(message: string): string {
-  return message
-    .trim()
-    .replace(/```(?:json|)/g, '')
-    .replace(/```/g, '')
-    .trim();
-}
-
-export async function extractFullNames(textContent: string) {
+export async function extractFullNames(textContent: string, userId: string) {
   // Define the function schema for function calling
   const functions = [
     {
@@ -550,7 +565,7 @@ export async function extractFullNames(textContent: string) {
     },
   ];
   const response = await openai.chat.completions.create({
-    model: 'gpt-3.5-turbo',
+    model,
     messages: [
       {
         role: 'system',
@@ -574,6 +589,10 @@ Focus on extracting full names (e.g. Harry Potter, not just Harry) and avoid par
   const message = response.choices[0]?.message;
 
   if (message?.function_call?.name === 'provide_full_names') {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { credits: { decrement: calculateCost(response.usage!) } },
+    });
     const args = JSON.parse(message.function_call.arguments);
     const fullNames: { name: string; type: 'PERSON' | 'NON_PERSON' }[] =
       args.fullNames;
@@ -582,4 +601,19 @@ Focus on extracting full names (e.g. Harry Potter, not just Harry) and avoid par
   } else {
     throw new Error('No function call was made by the assistant.');
   }
+}
+
+export function countTokens(passages: { textContent: string }[]): number {
+  const totalLength = passages.reduce((totalTokens, passage) => {
+    // Split textContent by spaces to get tokens (words)
+    return passage.textContent.length;
+  }, 0);
+
+  return Math.round(totalLength / 4);
+}
+
+export function calculateCost(usage: CompletionUsage): number {
+  const inputCost = 0.000015 * usage.prompt_tokens;
+  const outputCost = 0.00006 * usage.completion_tokens;
+  return (inputCost + outputCost) * 10000;
 }

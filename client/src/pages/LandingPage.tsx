@@ -118,7 +118,7 @@ const LandingPage: React.FC = () => {
             </Col>
             <Col xs={24} md={12}>
               <Image
-                src='https://novelscapestorage.blob.core.windows.net/images/351ed99b-9377-47db-9326-8c0619b7610f.webp'
+                src='https://novelscapestorage.blob.core.windows.net/images/rand_logo123.png'
                 alt='App Preview 1'
                 // bordered
               />

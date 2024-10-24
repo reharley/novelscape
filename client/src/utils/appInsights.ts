@@ -17,9 +17,9 @@ const initializeAppInsights = () => {
   const customHistory = createBrowserHistory();
   appInsights = new ApplicationInsights({
     config: {
-      connectionString: process.env.REACT_APP_INSIGHTS_CONNECTION_STRING,
+      connectionString: process.env.VITE_APP_INSIGHTS_CONNECTION_STRING,
       extensions: [reactPlugin, clickPluginInstance],
-      namePrefix: process.env.REACT_APP_INSIGHTS_NAME,
+      namePrefix: process.env.VITE_APP_INSIGHTS_NAME,
       extensionConfig: {
         [reactPlugin.identifier]: {
           history: customHistory,

@@ -552,6 +552,11 @@ export async function processingProgress(req: Request, res: Response) {
 
 // Implement processBook function to handle the processing logic
 async function processBook(bookId: number) {
+  const book = await prisma.book.findUnique({
+    where: { id: bookId },
+  });
+  if (!book) throw new Error('Book not found.');
+  if (book.processed) return;
   // Phase 1: Extract Passages and Chapters
   progressManager.sendProgress(bookId, {
     status: 'phase',
@@ -586,6 +591,11 @@ async function processBook(bookId: number) {
     message: 'Book processing completed successfully.',
   });
   progressManager.closeAllClients(bookId);
+
+  await prisma.book.update({
+    where: { id: bookId },
+    data: { processed: true },
+  });
 }
 
 export async function generateChapterImages(chapterId: number) {
@@ -760,7 +770,7 @@ export async function generateChapterImagesController(
   res: Response
 ) {
   const chapterId = Number(req.params.chapterId);
-  try {
+  (async () => {
     const chapter = await prisma.chapter.findUnique({
       where: { id: chapterId },
     });
@@ -778,11 +788,8 @@ export async function generateChapterImagesController(
       });
     }
     await generateChapterImages(chapterId);
-    res.status(200).json({ message: 'Image generation completed.' });
-  } catch (error: any) {
+  })().catch((error) => {
     console.error('Error starting image generation:', error);
-    res
-      .status(500)
-      .json({ error: error.message || 'Failed to start image generation.' });
-  }
+  });
+  res.status(200).json({ message: 'Initiated image generation.' });
 }

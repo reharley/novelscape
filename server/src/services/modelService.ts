@@ -4,6 +4,8 @@ import path from 'path';
 import prisma from '../config/prisma.js';
 import { downloadFile } from '../utils/downloadFile.js';
 
+const SD_API_URL = process.env.SD_API_URL || 'http://localhost:7860';
+
 export async function listModels(type: string, profileId?: string) {
   if (profileId) {
     return await prisma.aiModel.findMany({
@@ -109,13 +111,13 @@ export async function loadModel(modelId: string, skipLoadModel = false) {
 
   // Refresh models in Stable Diffusion WebUI if necessary
   if (refreshEndpoint && !skipLoadModel) {
-    await axios.post(`http://localhost:7860${refreshEndpoint}`);
+    await axios.post(`${SD_API_URL}${refreshEndpoint}`);
   }
 
   // Set the model as active only if it's a Checkpoint
   if (modelType === 'Checkpoint' && !skipLoadModel) {
     // Set the model as the active model
-    await axios.post('http://localhost:7860/sdapi/v1/options', {
+    await axios.post(SD_API_URL + '/sdapi/v1/options', {
       sd_model_checkpoint: modelFileName,
     });
   }
@@ -156,7 +158,7 @@ export async function setActiveModel(modelName: string, basePath: string) {
   }
 
   // Set the model as the active model
-  await axios.post('http://localhost:7860/sdapi/v1/options', {
+  await axios.post(SD_API_URL + '/sdapi/v1/options', {
     sd_model_checkpoint: modelName,
   });
 

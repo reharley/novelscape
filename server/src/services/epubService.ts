@@ -235,7 +235,7 @@ export async function detectScenesForChapter(chapterId: number): Promise<void> {
   // Fetch the specific chapter with its passages ordered by their order
   const chapter = await prisma.chapter.findUnique({
     where: { id: chapterId },
-    include: { passages: { orderBy: { order: 'asc' } } },
+    include: { passages: { orderBy: { order: 'asc' } }, book: true },
   });
 
   if (!chapter) {
@@ -271,7 +271,8 @@ export async function detectScenesForChapter(chapterId: number): Promise<void> {
       try {
         const sceneFlagResponse = await detectNewScene(
           contextText,
-          passage.textContent
+          passage.textContent,
+          chapter.book.userId
         );
         isNewScene = sceneFlagResponse.newScene || false;
       } catch (error: any) {

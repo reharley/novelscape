@@ -13,10 +13,8 @@ import html2canvas from 'html2canvas';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import GenerateImagesModal from '../components/reader/GenerateImagesModal';
-import ModelPreview from '../components/reader/ModelPreview';
-import ModelSelectionModal from '../components/reader/ModelSelectionModal';
 import { apiUrl } from '../utils/general';
-import { AiModel, ModelImage, Passage, Profile } from '../utils/types';
+import { Passage } from '../utils/types';
 
 const { Title, Text, Paragraph } = Typography;
 const { Option } = Select; // Destructure Option from Select
@@ -46,14 +44,7 @@ const FullScreenReaderPage: React.FC = () => {
   // State variables for chapters
   const [chapters, setChapters] = useState<Chapter[]>([]);
   // New state variables for modal and preview
-  const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
-  const [isModelModalVisible, setIsModelModalVisible] =
-    useState<boolean>(false);
-  const [isPreviewVisible, setIsPreviewVisible] = useState<boolean>(false);
-  const [previewModel, setPreviewModel] = useState<AiModel | null>(null);
 
-  const [loadingProfileImages, setLoadingProfileImages] =
-    useState<boolean>(false);
   // Handler for opening the modal
   const handleGenerateImages = (
     event?: React.MouseEvent<HTMLElement, MouseEvent>
@@ -61,19 +52,10 @@ const FullScreenReaderPage: React.FC = () => {
     event?.stopPropagation();
     setProcessingModalVisible(true);
   };
-
-  // New state variable for force regenerate checkbox
-  const [forceRegenerate, setForceRegenerate] = useState<boolean>(false);
-
   // New state for scene passage ranges
   const [scenePassageRanges, setScenePassageRanges] = useState<{
     [sceneOrder: number]: { start: number; end: number };
   }>({});
-
-  // New state for multiple scenes
-  const [numberOfScenes, setNumberOfScenes] = useState<number>(1);
-  const [loadingMultipleScenes, setLoadingMultipleScenes] =
-    useState<boolean>(false);
 
   const baseUrl = apiUrl + '/api';
 
@@ -337,38 +319,6 @@ const FullScreenReaderPage: React.FC = () => {
     navigate(`/reader/${bookId}/${value}/0`);
   };
 
-  // New handler for image selection
-  const handleImageSelect = async (image: ModelImage) => {
-    if (!selectedProfile) {
-      message.error('No profile selected.');
-      return;
-    }
-
-    setIsModelModalVisible(false); // Close the modal
-
-    try {
-      const response = await axios.post(`${baseUrl}/profiles/setup-profile`, {
-        profileId: selectedProfile.id,
-        image,
-      });
-
-      message.success(response.data.message || 'Profile setup successfully.');
-
-      // Optionally, update local state with the updated profile
-      if (response.data.profile) {
-        setSelectedProfile(response.data.profile);
-      }
-    } catch (error: any) {
-      console.error('Error setting up profile:', error);
-      message.error(error.response?.data?.error || 'Failed to set up profile.');
-    }
-  };
-
-  const handlePreviewClose = () => {
-    setIsPreviewVisible(false);
-    setPreviewModel(null);
-  };
-
   // Safely access currentPassage
   const currentPassage =
     passages.length > 0 ? passages[currentPassageIndex] : null;
@@ -436,6 +386,7 @@ const FullScreenReaderPage: React.FC = () => {
   const handleScreenClick = (event: React.MouseEvent<HTMLDivElement>) => {
     const { clientX } = event;
     const screenWidth = window.innerWidth;
+    if (processingModalVisible) return;
     if (clientX < screenWidth / 2) {
       handlePreviousPassage();
     } else {
@@ -534,7 +485,7 @@ const FullScreenReaderPage: React.FC = () => {
                       e.stopPropagation();
                     }}
                     style={{
-                      width: '150px',
+                      width: '161px',
                       margin: '0 10px',
                       borderRadius: '10px',
                       boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
@@ -561,18 +512,34 @@ const FullScreenReaderPage: React.FC = () => {
             zIndex: 4,
           }}
         >
-          {/* Chapter Dropdown */}
-          <Select
-            value={parseInt(chapterId || '', 10)}
-            onChange={handleChapterSelect}
-            style={{ width: 200, marginBottom: 10 }}
-          >
-            {chapters.map((chapter) => (
-              <Option key={chapter.id} value={chapter.id}>
-                {chapter.title || `Chapter ${chapter.order}`}
-              </Option>
-            ))}
-          </Select>
+          <Space align='start' style={{ marginBottom: 10 }}>
+            {/* Chapter Dropdown */}
+            <Select
+              value={parseInt(chapterId || '', 10)}
+              onClick={(e) => e.stopPropagation()}
+              onChange={handleChapterSelect}
+              style={{ width: 200 }}
+            >
+              {chapters.map((chapter) => (
+                <Option key={chapter.id} value={chapter.id}>
+                  {chapter.title || `Chapter ${chapter.order}`}
+                </Option>
+              ))}
+            </Select>
+
+            <Button
+              onClick={handlePreviousChapter}
+              disabled={currentChapterIndex === 0}
+            >
+              Previous Chapter
+            </Button>
+            <Button
+              onClick={handleNextChapter}
+              disabled={currentChapterIndex === chapters.length - 1}
+            >
+              Next Chapter
+            </Button>
+          </Space>
           {currentPassage && (
             <Paragraph style={{ fontSize: '1.2em', margin: 0 }}>
               {currentPassage.textContent}
@@ -587,23 +554,13 @@ const FullScreenReaderPage: React.FC = () => {
               justifyContent: 'space-between',
             }}
           >
-            <Button onClick={handleDownload}>Download</Button>
-            <Button type='primary' onClick={handleGenerateImages}>
-              Generate Images
-            </Button>
             <Space>
-              <Button
-                onClick={handlePreviousChapter}
-                disabled={currentChapterIndex === 0}
-              >
-                Previous Chapter
+              <Button onClick={handleDownload}>Download</Button>
+              <Button type='primary' onClick={handleGenerateImages}>
+                Generate Images
               </Button>
-              <Button
-                onClick={handleNextChapter}
-                disabled={currentChapterIndex === chapters.length - 1}
-              >
-                Next Chapter
-              </Button>
+            </Space>
+            <Space>
               <Button
                 onClick={handlePreviousPassage}
                 disabled={currentPassageIndex === 0}
@@ -642,22 +599,6 @@ const FullScreenReaderPage: React.FC = () => {
         )}
       </div>
 
-      {/* Model Selection Modal */}
-      <ModelSelectionModal
-        visible={isModelModalVisible}
-        onCancel={() => setIsModelModalVisible(false)}
-        onSelectImage={handleImageSelect} // Updated handler
-        profileId={selectedProfile?.id || 0}
-      />
-
-      {/* Model Preview Modal */}
-      {previewModel && (
-        <ModelPreview
-          visible={isPreviewVisible}
-          onClose={handlePreviewClose}
-          model={previewModel}
-        />
-      )}
       {/* Generate Images Modal */}
       <GenerateImagesModal
         visible={processingModalVisible}

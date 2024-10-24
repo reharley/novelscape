@@ -20,8 +20,8 @@ const characterImageSize = {
   height: 768,
 };
 const backgroundSceneSize = {
-  width: 768,
-  height: 512,
+  width: 512,
+  height: 768,
 };
 
 export async function generateImageController(req: Request, res: Response) {
@@ -148,7 +148,8 @@ export async function generateImageForProfile(req: Request, res: Response) {
       bookTitle,
       forceRegenerate,
       characterImageSize,
-      null
+      null,
+      profile.book.userId
     );
 
     res.json(result);
@@ -355,7 +356,8 @@ export async function generateBackgroundImagesForChapter(
         forceRegenerate,
         backgroundSceneSize,
         backgroundOptions,
-        canonicalNames
+        canonicalNames,
+        chapter.book.userId
       );
 
       // Update job progress
@@ -440,7 +442,8 @@ export async function generateProfileImagesForChapter(
         chapter.book.title,
         forceRegenerate,
         characterImageSize,
-        profileOptions
+        profileOptions,
+        chapter.book.userId
       );
 
       // Update job progress
@@ -517,7 +520,8 @@ async function generateImageForProfileHelper(
   bookTitle: string,
   forceRegenerate: boolean,
   characterImageSize: { width: number; height: number },
-  profileOptions: any // Add this parameter
+  profileOptions: any,
+  userId: string
 ): Promise<{
   profileId: number;
   profileName: string;
@@ -590,7 +594,8 @@ async function generateImageForProfileHelper(
               .map((desc) => desc.appearance!),
             gender: profile.gender ?? undefined,
           },
-          bookTitle
+          bookTitle,
+          userId
         );
 
         finalPrompt = `${profile.name}, ${prompts.positivePrompt}`;
@@ -681,7 +686,8 @@ async function generateBackgroundImageForScene(
   forceRegenerate: boolean,
   backgroundSceneSize: { width: number; height: number },
   backgroundOptions: any,
-  personNames: string[]
+  personNames: string[],
+  userId: string
 ): Promise<{ image: string | null; error?: string }> {
   try {
     // Ensure GenerationData exists for the scene background
@@ -716,7 +722,8 @@ async function generateBackgroundImageForScene(
       const prompts = await generateBackgroundPrompt(
         combinedSceneText,
         [], // No profiles in this context
-        bookTitle
+        bookTitle,
+        userId
       );
 
       const prompt = removeNamesFromString(personNames, prompts.positivePrompt);
@@ -871,7 +878,8 @@ export async function generateImagesForPassage(req: Request, res: Response) {
         passage.book.title,
         forceRegenerate,
         characterImageSize,
-        null
+        null,
+        passage.book.userId
       )
     );
 
@@ -884,7 +892,8 @@ export async function generateImagesForPassage(req: Request, res: Response) {
       forceRegenerate,
       backgroundSceneSize,
       null,
-      canonicalNames
+      canonicalNames,
+      passage.book.userId
     ).then((result) => ({
       profileId: 0,
       profileName: 'Background Scene',
@@ -977,7 +986,8 @@ export async function generateImagesForScene(req: Request, res: Response) {
         scene.book.title,
         forceRegenerate,
         characterImageSize,
-        null
+        null,
+        scene.book.userId
       )
     );
 
@@ -990,7 +1000,8 @@ export async function generateImagesForScene(req: Request, res: Response) {
       forceRegenerate,
       backgroundSceneSize,
       null,
-      canonicalNames
+      canonicalNames,
+      scene.book.userId
     );
 
     // Prepare response
@@ -1081,7 +1092,8 @@ async function generateImagesForSceneLogic(
       scene.book.title,
       forceRegenerate,
       characterImageSize,
-      profileOptions
+      profileOptions,
+      scene.book.userId
     )
   );
 
@@ -1093,7 +1105,8 @@ async function generateImagesForSceneLogic(
     forceRegenerate,
     backgroundSceneSize,
     backgroundOptions,
-    canonicalNames
+    canonicalNames,
+    scene.book.userId
   );
 
   // Prepare response (optional, since this function doesn't return HTTP response)

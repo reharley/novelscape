@@ -99,6 +99,7 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
   };
 
   const startProcessing = async () => {
+    console.log('starting processing');
     if (!bookId) {
       message.error('Book ID is missing.');
       return;
@@ -176,6 +177,7 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
           headers: {
             Authorization: `Bearer ${localStorage.getItem('accessToken')}`,
           },
+          heartbeatTimeout: 120000,
         }
       );
 

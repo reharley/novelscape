@@ -52,6 +52,13 @@ export async function extractCanonicalNames(
   });
 
   const totalPassages = passages.length;
+  const book = await prisma.book.findUnique({
+    where: { id: bookId },
+  });
+  if (!book) {
+    throw new Error('Book not found in database.');
+  }
+
   let processedPassages = 0;
 
   const tasks = passages.map((passage) =>
@@ -60,7 +67,10 @@ export async function extractCanonicalNames(
       if (!textContent) return;
 
       try {
-        const canonicalEntities = await extractFullNames(textContent);
+        const canonicalEntities = await extractFullNames(
+          textContent,
+          book.userId
+        );
         if (!canonicalEntities || !Array.isArray(canonicalEntities)) return;
         try {
           for (const entityObject of canonicalEntities) {
@@ -153,6 +163,7 @@ export async function processPassagesWithContextForChapter(
 
   const chapter = await prisma.chapter.findUnique({
     where: { id: chapterId },
+    include: { book: true },
   });
   if (!chapter) {
     throw new Error('Chapter not found in database.');
@@ -182,7 +193,11 @@ export async function processPassagesWithContextForChapter(
         const aliases = identifyAliases(textContent, canonicalNames);
 
         // Send text to OpenAI API for NER with aliases
-        const entities = await performNERWithAliases(textContent, aliases);
+        const entities = await performNERWithAliases(
+          textContent,
+          aliases,
+          chapter.book.userId
+        );
 
         // Handle Entities
         if (entities && Array.isArray(entities)) {

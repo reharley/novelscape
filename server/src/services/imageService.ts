@@ -1,6 +1,5 @@
-import removeBackground from '@imgly/background-removal-node';
 import { GenerationData } from '@prisma/client';
-import axios from 'axios';
+import axios, { AxiosRequestConfig } from 'axios';
 import path from 'path';
 import prisma from '../config/prisma.js';
 import { getContainerClient } from '../utils/azureStorage.js';
@@ -45,22 +44,19 @@ export async function generateImage(
 
   try {
     // Fetch current model options from Stable Diffusion WebUI API
-    const optionsResponse = await axios.get(
-      'http://localhost:7860/sdapi/v1/options'
-    );
-    const currentModel = optionsResponse.data.sd_model_checkpoint;
+    const optionsResponse = await makeRequest('/sdapi/v1/options', 'GET');
+    const currentModel = optionsResponse?.data?.sd_model_checkpoint;
 
     // If the selected model is different from the current model, set it as active
     if (model && model !== currentModel) {
-      await axios.post('http://localhost:7860/sdapi/v1/options', {
+      await makeRequest('/sdapi/v1/options', 'POST', {
         sd_model_checkpoint: model,
       });
     }
 
     // Retrieve LORA data from the WebUI API
-    const loraResponse = await axios.get(
-      'http://localhost:7860/sdapi/v1/loras'
-    );
+    const loraResponse = await makeRequest('/sdapi/v1/loras', 'GET');
+    if (!loraResponse?.data) throw new Error('Could not retrieve LORA data.');
     const loraData = loraResponse.data; // Assuming this is an array of LORA objects
 
     // Create a mapping from filename to alias
@@ -101,29 +97,21 @@ export async function generateImage(
       )} ${finalNegativePrompt}`;
     }
     // Send request to Stable Diffusion WebUI API
-    const response = await axios.post(
-      'http://localhost:7860/sdapi/v1/txt2img',
-      {
-        prompt: finalPrompt,
-        negative_prompt: negative_prompt || '',
-        steps: steps || 20,
-        width: width || 512,
-        height: height || 512,
-        // Include other parameters as needed
-      }
-    );
+    const response = await makeRequest('/sdapi/v1/txt2img', 'POST', {
+      prompt: finalPrompt,
+      negative_prompt: negative_prompt || '',
+      steps: steps || 20,
+      width: width || 512,
+      height: height || 512,
+    });
 
-    let imageBase64: string = response.data.images[0]; // Assuming a single image is returned
+    if (!response?.data?.images || response.data.images.length === 0)
+      throw new Error('No images returned from Stable Diffusion.');
+    let imageBase64: string = response.data.images[0];
+
     if (doRemoveBackground) {
-      const imageBlob = base64ToBlob(imageBase64);
-      //@ts-ignore
-      const blob = await removeBackground(imageBlob, {
-        debug: false,
-        progress: () => {},
-        model: 'small',
-        output: { quality: 0.8, format: 'image/png' },
-      });
-      imageBase64 = await blobToBase64(blob);
+      const image = await removeImageBackground(imageBase64);
+      if (image) imageBase64 = image;
     }
     // Convert Base64 string to Buffer
     const imageBuffer = Buffer.from(imageBase64, 'base64');
@@ -164,7 +152,43 @@ export async function generateImage(
     throw new Error('An error occurred while generating the image.');
   }
 }
+interface RembgResponse {
+  image: string; // base64-encoded result image
+}
+async function removeImageBackground(
+  encodedImage: string
+): Promise<string | null> {
+  const apiUrl = '/rembg'; // Replace with your API URL
 
+  const payload = {
+    input_image: encodedImage,
+    // model: 'u2net', // You can change the model if needed
+    // return_mask: false,
+    // alpha_matting: false,
+    // alpha_matting_foreground_threshold: 240,
+    // alpha_matting_background_threshold: 10,
+    // alpha_matting_erode_size: 10,
+  };
+
+  try {
+    const response = await makeRequest(apiUrl, 'POST', payload);
+    if (!response) {
+      console.error('Failed to remove background:', response);
+      return null;
+    }
+
+    if (response.status === 200 && response.data.image) {
+      console.log('Background removed successfully!');
+      return response.data.image; // base64-encoded string of the result image
+    } else {
+      console.error('Failed to remove background:', response.data);
+      return null;
+    }
+  } catch (error) {
+    console.error('Error during API request:', error);
+    return null;
+  }
+}
 async function associateModelResources(
   generationData: GenerationData,
   resources: { name: string; weight: number }[],
@@ -243,4 +267,44 @@ function base64ToBlob(
   const blob = new Blob([arrayBuffer], { type: mimeType });
 
   return blob;
+}
+
+async function makeRequest(
+  endpoint: string,
+  actionType: 'GET' | 'POST',
+  requestBody?: Record<string, any>
+) {
+  const SD_API_URL = process.env.SD_API_URL || 'http://localhost:7860';
+
+  try {
+    const isLocalhost = !SD_API_URL.includes('runpod');
+
+    if (isLocalhost) {
+      const requestUrl = `${SD_API_URL}${endpoint}`;
+      if (actionType === 'GET') {
+        return await axios.get(requestUrl);
+      } else if (actionType === 'POST') {
+        return await axios.post(requestUrl, requestBody);
+      }
+    } else {
+      const body = {
+        input: {
+          method: actionType,
+          url: `http://127.0.0.1:7860${endpoint}`,
+          ...(actionType === 'POST' && requestBody),
+          ...(actionType === 'GET' && { params: {} }),
+        },
+      };
+      const config: AxiosRequestConfig = {
+        headers: {
+          Authorization: `Bearer ${process.env.RUNPOD_API_KEY}`,
+        },
+      };
+      const response = await axios.post(SD_API_URL, body, config);
+      return { ...response, data: response.data.output };
+    }
+  } catch (error) {
+    console.error(`Error with ${actionType} request to ${endpoint}:`, error);
+    throw error;
+  }
 }
