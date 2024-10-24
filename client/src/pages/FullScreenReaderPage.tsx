@@ -16,8 +16,8 @@ import GenerateImagesModal from '../components/reader/GenerateImagesModal';
 import { apiUrl } from '../utils/general';
 import { Passage } from '../utils/types';
 
-const { Title, Text, Paragraph } = Typography;
-const { Option } = Select; // Destructure Option from Select
+const { Text, Paragraph } = Typography;
+const { Option } = Select;
 
 interface Chapter {
   id: number;
@@ -69,7 +69,19 @@ const FullScreenReaderPage: React.FC = () => {
         fetchPassages(bookId, chapterIdNum);
       } else {
         // Fetch last read position
-        fetchLastReadPosition(bookId);
+        fetchLastReadPosition(bookId).then((navigated) => {
+          if (!navigated) {
+            fetchChapters(bookId).then(() => {
+              if (chapters.length > 0) {
+                const firstChapterId = chapters[0].id;
+                navigate(`/reader/${bookId}/${firstChapterId}/0`);
+              } else {
+                // No chapters, show processing modal
+                setProcessingModalVisible(true);
+              }
+            });
+          }
+        });
       }
     }
   }, [bookId, chapterId]);
@@ -95,6 +107,7 @@ const FullScreenReaderPage: React.FC = () => {
       updateLastReadPosition(bookId, chapterId, currentPassageIndex);
     }
   }, [currentPassageIndex]);
+
   const splitPassage = (passage: Passage): Passage[] => {
     const text = passage.textContent;
     if (text.length <= 280) {
@@ -135,24 +148,31 @@ const FullScreenReaderPage: React.FC = () => {
     return newPassages;
   };
 
-  const fetchLastReadPosition = async (bookId: string) => {
+  const fetchLastReadPosition = async (bookId: string): Promise<boolean> => {
     try {
       const response = await axios.get(
         `${baseUrl}/books/${bookId}/reading-progress`
       );
       const { chapterId, passageIndex } = response.data;
+      console.log(
+        'Fetching last read position for book:',
+        bookId,
+        chapterId,
+        passageIndex
+      );
 
       if (chapterId != null) {
         // Navigate to the last read position
         navigate(`/reader/${bookId}/${chapterId}/${passageIndex || 0}`);
+        return true;
       } else {
-        // No last read position, fetch chapters
-        fetchChapters(bookId);
+        // No last read position
+        return false;
       }
     } catch (error) {
       console.error('Error fetching last read position:', error);
       // Default to first chapter
-      fetchChapters(bookId);
+      return false;
     }
   };
 
@@ -164,14 +184,8 @@ const FullScreenReaderPage: React.FC = () => {
       const chapters = response.data;
       setChapters(chapters);
 
-      if (chapters.length > 0) {
-        const firstChapterId = chapters[0].id;
-        // Only navigate if no chapterId is present
-        if (!chapterId) {
-          navigate(`/reader/${bookId}/${firstChapterId}/0`);
-        }
-      } else {
-        // No chapters, redirect to processing page
+      if (chapters.length === 0) {
+        // No chapters, show processing modal
         setProcessingModalVisible(true);
       }
     } catch (error) {
@@ -250,10 +264,16 @@ const FullScreenReaderPage: React.FC = () => {
     passageIndex: number
   ) => {
     try {
-      // await axios.post(`${baseUrl}/books/${bookId}/reading-progress`, {
-      //   chapterId: parseInt(chapterId, 10),
-      //   passageIndex,
-      // });
+      console.log(
+        'Updating last read position:',
+        bookId,
+        chapterId,
+        passageIndex
+      );
+      await axios.post(`${baseUrl}/books/${bookId}/reading-progress`, {
+        chapterId: parseInt(chapterId, 10),
+        passageIndex,
+      });
     } catch (error) {
       console.error('Error updating last read position:', error);
     }
@@ -342,10 +362,10 @@ const FullScreenReaderPage: React.FC = () => {
       passageRef.current.style.borderRadius = '0px';
 
       const canvas = await html2canvas(passageRef.current, {
-        useCORS: true, // Enable cross-origin images
+        useCORS: true,
         allowTaint: true,
         logging: true,
-        scale: 2, // Increase resolution
+        scale: 2,
       });
       const imgData = canvas.toDataURL('image/png');
 
@@ -459,12 +479,11 @@ const FullScreenReaderPage: React.FC = () => {
             wrap
             style={{
               position: 'absolute',
-              top: '10%', // Adjust vertical position as needed
+              top: '10%',
               left: '50%',
               transform: 'translateX(-50%)',
               display: 'flex',
               justifyContent: 'space-around',
-              // overflowY: 'auto',
               width: '90%',
               zIndex: 3,
             }}
@@ -528,16 +547,12 @@ const FullScreenReaderPage: React.FC = () => {
             </Select>
 
             <Button
-              onClick={handlePreviousChapter}
-              disabled={currentChapterIndex === 0}
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate('/');
+              }}
             >
-              Previous Chapter
-            </Button>
-            <Button
-              onClick={handleNextChapter}
-              disabled={currentChapterIndex === chapters.length - 1}
-            >
-              Next Chapter
+              Library
             </Button>
           </Space>
           {currentPassage && (

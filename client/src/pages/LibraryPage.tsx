@@ -1,5 +1,5 @@
-import { UploadOutlined } from '@ant-design/icons';
-import { Button, Card, Col, message, Row, Upload } from 'antd';
+import { DeleteOutlined, UploadOutlined } from '@ant-design/icons';
+import { Button, Card, Col, message, Popconfirm, Row, Upload } from 'antd';
 import { RcFile } from 'antd/es/upload/interface';
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
@@ -50,6 +50,18 @@ const LibraryPage: React.FC = () => {
     return false; // Prevent default upload behavior
   };
 
+  const handleDelete = (bookId: number) => {
+    axios
+      .delete(`${apiUrl}/api/books/${bookId}`)
+      .then(() => {
+        message.success('Book deleted successfully.');
+        fetchBooks(); // Refresh the list of books after deletion
+      })
+      .catch((error) => {
+        message.error(`Error deleting book: ${error}`);
+      });
+  };
+
   return (
     <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
       <h1>Your Library</h1>
@@ -68,13 +80,23 @@ const LibraryPage: React.FC = () => {
             <Col key={book.id} xs={24} sm={12} md={8} lg={6}>
               <Card
                 hoverable
-                onClick={() => navigate(`/reader/${book.id}`)}
                 cover={
                   <img
+                    onClick={() => navigate(`/reader/${book.id}`)}
                     alt='placeholder'
                     src={book.coverUrl || 'https://via.placeholder.com/150'}
                   />
                 }
+                actions={[
+                  <Popconfirm
+                    title='Are you sure you want to delete this book?'
+                    onConfirm={() => handleDelete(book.id)}
+                    okText='Yes'
+                    cancelText='No'
+                  >
+                    <DeleteOutlined key='delete' />
+                  </Popconfirm>,
+                ]}
               >
                 <Card.Meta
                   title={book.title}
