@@ -241,10 +241,7 @@ const FullScreenReaderPage: React.FC = () => {
       setCurrentPassageIndex(newIndex);
       navigate(`/reader/${bookId}/${chapterId}/${newIndex}`);
     } else {
-      // If auto-play is enabled and it's the last passage, attempt to go to the next chapter
-      if (autoPlay) {
-        handleNextChapter();
-      }
+      handleNextChapter();
     }
   };
 
@@ -256,6 +253,8 @@ const FullScreenReaderPage: React.FC = () => {
       const newIndex = currentPassageIndex - 1;
       setCurrentPassageIndex(newIndex);
       navigate(`/reader/${bookId}/${chapterId}/${newIndex}`);
+    } else {
+      handlePreviousChapter();
     }
   };
 
@@ -274,11 +273,7 @@ const FullScreenReaderPage: React.FC = () => {
     }
   };
 
-  const handlePreviousChapter = (
-    event: React.MouseEvent<HTMLElement, MouseEvent>
-  ) => {
-    event.stopPropagation();
-
+  const handlePreviousChapter = () => {
     const currentChapterIndex = chapters.findIndex(
       (chapter) => chapter.id === parseInt(chapterId || '', 10)
     );
