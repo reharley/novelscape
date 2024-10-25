@@ -125,7 +125,7 @@ const PassageText: React.FC<PassageTextProps> = ({
           key={index}
           style={{
             backgroundColor:
-              index === currentWordIndex ? 'grey' : 'transparent',
+              index === currentWordIndex && autoPlay ? 'grey' : 'transparent',
             borderRadius: '5px',
             //   marginLeft: isFirstWord ? undefined : '0.17em',
             //   marginRight: isLastWord ? undefined : '0.17rem',
