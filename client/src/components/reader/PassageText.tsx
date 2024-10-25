@@ -1,3 +1,4 @@
+import { PauseCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { Button, InputNumber, Typography } from 'antd';
 import React, { useEffect, useRef, useState } from 'react';
 
@@ -18,11 +19,12 @@ const PassageText: React.FC<PassageTextProps> = ({
 }) => {
   const [wpm, setWpm] = useState(initialWpm);
   const words = text.split(/[ \n]+/).filter((word) => word.trim() !== '');
+  console.log(words);
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const [isPaused, setIsPaused] = useState(false);
+  const [isPaused, setIsPaused] = useState(true);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
-
+  console.log(isPaused);
   // Function to request a wake lock
   const requestWakeLock = async () => {
     try {
@@ -153,7 +155,8 @@ const PassageText: React.FC<PassageTextProps> = ({
             style={{ marginRight: '10px' }}
           />
           <Button size='small' onClick={togglePause}>
-            {isPaused ? 'Resume' : 'Pause'}
+            {isPaused ? <PlayCircleOutlined /> : <PauseCircleOutlined />}{' '}
+            Auto-Play
           </Button>
         </div>
       )}
