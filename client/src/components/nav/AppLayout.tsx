@@ -29,7 +29,15 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
             height: '100%',
           }}
         >
-          <h2 style={{ color: 'white', margin: 0 }}>Library Escape</h2>
+          <h2
+            style={{
+              color: 'white',
+              margin: 0,
+              marginRight: '0.3rem',
+            }}
+          >
+            Libscape
+          </h2>
         </div>
         <Menu theme='dark' mode='horizontal' selectedKeys={selectedKeys}>
           <Menu.Item key='/'>

@@ -1,4 +1,8 @@
-import { DeleteOutlined, UploadOutlined } from '@ant-design/icons';
+import {
+  DeleteOutlined,
+  DiscordOutlined,
+  UploadOutlined,
+} from '@ant-design/icons';
 import { Button, Card, Col, message, Popconfirm, Row, Upload } from 'antd';
 import { RcFile } from 'antd/es/upload/interface';
 import axios from 'axios';
@@ -64,6 +68,14 @@ const LibraryPage: React.FC = () => {
 
   return (
     <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
+      <Button
+        href='https://discord.gg/9gSKPA3x'
+        size='large'
+        target='_blank'
+        rel='noopener noreferrer'
+      >
+        <DiscordOutlined /> Join the Discord!
+      </Button>
       <h1>Your Library</h1>
       <Upload beforeUpload={handleUpload} accept='.epub' showUploadList={false}>
         <Button icon={<UploadOutlined />} loading={uploading}>

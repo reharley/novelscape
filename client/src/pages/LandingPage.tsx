@@ -1,4 +1,4 @@
-import { DownloadOutlined } from '@ant-design/icons';
+import { DiscordOutlined, DownloadOutlined } from '@ant-design/icons';
 import { useIsAuthenticated, useMsal } from '@azure/msal-react';
 import {
   Button,
@@ -95,7 +95,7 @@ const LandingPage: React.FC = () => {
             color: '#1890ff',
           }}
         >
-          ImmersiveReader
+          Library Escape
         </Title>
         <Button
           type='primary'
@@ -126,8 +126,8 @@ const LandingPage: React.FC = () => {
                 <Button type='primary' size='large' onClick={handleLogin}>
                   Get Started
                 </Button>
-                <Button size='large'>
-                  <DownloadOutlined /> Download
+                <Button href='https://discord.gg/9gSKPA3x' size='large'>
+                  <DiscordOutlined /> Join the Community!
                 </Button>
               </Space>
             </Col>
