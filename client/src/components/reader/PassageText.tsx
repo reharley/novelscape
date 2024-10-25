@@ -21,11 +21,64 @@ const PassageText: React.FC<PassageTextProps> = ({
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const [isPaused, setIsPaused] = useState(false);
-  console.log(words);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
+
+  // Function to request a wake lock
+  const requestWakeLock = async () => {
+    try {
+      if ('wakeLock' in navigator) {
+        wakeLockRef.current = await navigator.wakeLock.request('screen');
+        wakeLockRef.current.addEventListener('release', () => {
+          console.log('Wake Lock was released');
+        });
+        console.log('Wake Lock is active');
+      } else {
+        console.warn('Wake Lock API is not supported in this browser.');
+      }
+    } catch (err: any) {
+      console.error(`${err.name}, ${err.message}`);
+    }
+  };
+
+  // Function to release the wake lock
+  const releaseWakeLock = async () => {
+    if (wakeLockRef.current !== null) {
+      await wakeLockRef.current.release();
+      wakeLockRef.current = null;
+      console.log('Wake Lock released');
+    }
+  };
+
   // Reset currentWordIndex when text changes
   useEffect(() => {
     setCurrentWordIndex(0);
   }, [text]);
+
+  // Handle autoPlay and wake lock
+  useEffect(() => {
+    let isComponentMounted = true;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && autoPlay && !isPaused) {
+        requestWakeLock();
+      } else {
+        releaseWakeLock();
+      }
+    };
+
+    if (autoPlay && !isPaused) {
+      handleVisibilityChange();
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    } else {
+      releaseWakeLock();
+    }
+
+    return () => {
+      isComponentMounted = false;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      releaseWakeLock();
+    };
+  }, [autoPlay, isPaused]);
 
   useEffect(() => {
     if (autoPlay && !isPaused) {
