@@ -572,7 +572,7 @@ export async function extractFullNames(textContent: string, userId: string) {
         content: `
 You are an assistant that performs named entity recognition (NER) to identify complete (full) character names. Extract only the entities of type that are people with their full names present from the following text and provide them as a JSON array of strings.
 Ignore any other types of entities.
-Focus on extracting full names (e.g. Harry Potter, not just Harry) and avoid partial names or titles.
+Focus on extracting full names and avoid partial names or titles.
 `,
       },
       {
@@ -596,6 +596,11 @@ Focus on extracting full names (e.g. Harry Potter, not just Harry) and avoid par
     const args = JSON.parse(message.function_call.arguments);
     const fullNames: { name: string; type: 'PERSON' | 'NON_PERSON' }[] =
       args.fullNames;
+    for (let i = 0; i < fullNames.length; i++) {
+      if (fullNames[i].name === 'Harry Potter') {
+        console.log('Harry Potter is a full name');
+      }
+    }
     console.log('Extracted full names:', fullNames);
     return fullNames;
   } else {

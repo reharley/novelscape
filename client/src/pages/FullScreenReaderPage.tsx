@@ -1,3 +1,5 @@
+// pages/FullScreenReaderPage.tsx
+
 import {
   Button,
   Image,
@@ -13,10 +15,11 @@ import html2canvas from 'html2canvas';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import GenerateImagesModal from '../components/reader/GenerateImagesModal';
+import PassageText from '../components/reader/PassageText';
 import { apiUrl } from '../utils/general';
 import { Passage } from '../utils/types';
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 const { Option } = Select;
 
 interface Chapter {
@@ -37,64 +40,56 @@ const FullScreenReaderPage: React.FC = () => {
   const [passages, setPassages] = useState<Passage[]>([]);
   const [currentPassageIndex, setCurrentPassageIndex] = useState<number>(0);
   const [isPreviewVisible, setIsPreviewVisible] = useState<boolean>(false);
-  const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
   const [loadingImage, setLoadingImage] = useState<boolean>(false);
   const [loadingPassages, setLoadingPassages] = useState<boolean>(false);
   const [processingModalVisible, setProcessingModalVisible] = useState(false);
-
-  // State variables for chapters
   const [chapters, setChapters] = useState<Chapter[]>([]);
-  // New state variables for modal and preview
-
-  // Handler for opening the modal
-  const handleGenerateImages = (
-    event?: React.MouseEvent<HTMLElement, MouseEvent>
-  ) => {
-    event?.stopPropagation();
-    setProcessingModalVisible(true);
-  };
-  // New state for scene passage ranges
-  const [scenePassageRanges, setScenePassageRanges] = useState<{
-    [sceneOrder: number]: { start: number; end: number };
-  }>({});
+  const [autoPlay, setAutoPlay] = useState<boolean>(false);
+  const [wpm, setWpm] = useState<number>(200); // Default WPM
+  const passageRef = useRef<HTMLDivElement>(null);
 
   const baseUrl = apiUrl + '/api';
 
-  // Ref for the passage display area
-  const passageRef = useRef<HTMLDivElement>(null);
+  // Fetch user settings when component mounts
+  useEffect(() => {
+    const fetchUserSettings = async () => {
+      try {
+        const response = await axios.get(apiUrl + '/api/user/settings');
+        console.log('Fetched user settings:', response.data);
+        setAutoPlay(response.data.autoPlay);
+        setWpm(response.data.wpm);
+      } catch (error) {
+        console.error('Error fetching user settings:', error);
+      }
+    };
+    fetchUserSettings();
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
       if (!bookId) return;
 
-      console.log('Book ID:', bookId);
-
+      const [fetchedChapters, navigated] = await Promise.all([
+        fetchChapters(bookId),
+        fetchLastReadPosition(bookId),
+      ]);
+      if (!navigated) {
+        if (fetchedChapters.length > 0) {
+          const firstChapterId = fetchedChapters[0].id;
+          navigate(`/reader/${bookId}/${firstChapterId}/0`);
+        } else {
+          // No chapters, show processing modal
+          setProcessingModalVisible(true);
+        }
+      }
       if (chapterId) {
         const chapterIdNum = parseInt(chapterId, 10);
         fetchPassages(bookId, chapterIdNum);
-      } else {
-        console.log(
-          'Fetching chapters and last read position for book:',
-          bookId
-        );
-        const [fetchedChapters, navigated] = await Promise.all([
-          fetchChapters(bookId),
-          fetchLastReadPosition(bookId),
-        ]);
-
-        if (!navigated) {
-          if (fetchedChapters.length > 0) {
-            const firstChapterId = fetchedChapters[0].id;
-            navigate(`/reader/${bookId}/${firstChapterId}/0`);
-          } else {
-            // No chapters, show processing modal
-            setProcessingModalVisible(true);
-          }
-        }
       }
     };
 
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookId, chapterId]);
 
   useEffect(() => {
@@ -111,6 +106,7 @@ const FullScreenReaderPage: React.FC = () => {
     if (bookId && chapterId) {
       updateLastReadPosition(bookId, chapterId, currentPassageIndex);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPassageIndex]);
 
   const splitPassage = (passage: Passage): Passage[] => {
@@ -159,12 +155,6 @@ const FullScreenReaderPage: React.FC = () => {
         `${baseUrl}/books/${bookId}/reading-progress`
       );
       const { chapterId, passageIndex } = response.data;
-      console.log(
-        'Fetching last read position for book:',
-        bookId,
-        chapterId,
-        passageIndex
-      );
 
       if (chapterId != null) {
         // Navigate to the last read position
@@ -187,7 +177,6 @@ const FullScreenReaderPage: React.FC = () => {
         `${baseUrl}/books/${bookId}/chapters`
       );
       const chapters = response.data;
-      console.log('Fetched chapters:', chapters);
       setChapters(chapters);
 
       if (chapters.length === 0) {
@@ -218,50 +207,9 @@ const FullScreenReaderPage: React.FC = () => {
         });
 
         setPassages(processedPassages);
-        setBackgroundImage(null);
-
-        // Calculate scene passage ranges
-        if (processedPassages.length > 0) {
-          const ranges: {
-            [sceneOrder: number]: { start: number; end: number };
-          } = {};
-          let currentSceneOrder: number | undefined = undefined;
-          let startIndex = 0;
-
-          processedPassages.forEach((passage, index) => {
-            const sceneOrder = passage.scene?.order;
-
-            if (sceneOrder !== currentSceneOrder) {
-              if (currentSceneOrder !== undefined) {
-                // Set the end index for the previous scene
-                ranges[currentSceneOrder] = {
-                  start: startIndex,
-                  end: index - 1,
-                };
-              }
-              // Update to the new scene
-              currentSceneOrder = sceneOrder;
-              startIndex = index;
-            }
-
-            // If it's the last passage, set the end index
-            if (
-              index === processedPassages.length - 1 &&
-              currentSceneOrder !== undefined
-            ) {
-              ranges[currentSceneOrder] = {
-                start: startIndex,
-                end: index,
-              };
-            }
-          });
-
-          setScenePassageRanges(ranges);
-        }
       })
       .catch((error) => {
         console.error('Error fetching passages:', error);
-        // navigate(`/processing/${bookId}`);
       })
       .finally(() => setLoadingPassages(false));
   };
@@ -295,7 +243,11 @@ const FullScreenReaderPage: React.FC = () => {
       const newIndex = currentPassageIndex + 1;
       setCurrentPassageIndex(newIndex);
       navigate(`/reader/${bookId}/${chapterId}/${newIndex}`);
-      setBackgroundImage(null);
+    } else {
+      // If auto-play is enabled and it's the last passage, attempt to go to the next chapter
+      if (autoPlay) {
+        handleNextChapter();
+      }
     }
   };
 
@@ -307,14 +259,13 @@ const FullScreenReaderPage: React.FC = () => {
       const newIndex = currentPassageIndex - 1;
       setCurrentPassageIndex(newIndex);
       navigate(`/reader/${bookId}/${chapterId}/${newIndex}`);
-      setBackgroundImage(null);
     }
   };
 
   const handleNextChapter = (
-    event: React.MouseEvent<HTMLElement, MouseEvent>
+    event?: React.MouseEvent<HTMLElement, MouseEvent>
   ) => {
-    event.stopPropagation();
+    event?.stopPropagation();
     const currentChapterIndex = chapters.findIndex(
       (chapter) => chapter.id === parseInt(chapterId || '', 10)
     );
@@ -422,13 +373,6 @@ const FullScreenReaderPage: React.FC = () => {
     }
   };
 
-  // Get current chapter index
-  const currentChapterIndex = chapters.findIndex(
-    (chapter) => chapter.id === parseInt(chapterId || '', 10)
-  );
-  console.log('chapterId', chapterId);
-
-  console.log('currentPassage:', currentPassage);
   return (
     <div
       style={{
@@ -529,7 +473,7 @@ const FullScreenReaderPage: React.FC = () => {
           </Space>
         )}
 
-        {/* Text Box with Passage Text, Chapter Dropdown, and Navigation Buttons */}
+        {/* Text Box with PassageText Component, Chapter Dropdown, and Navigation Buttons */}
         <div
           style={{
             position: 'absolute',
@@ -545,15 +489,20 @@ const FullScreenReaderPage: React.FC = () => {
           }}
         >
           {currentPassage && (
-            <Paragraph style={{ fontSize: '1.2em', margin: 0 }}>
-              {currentPassage.textContent}
-            </Paragraph>
+            <PassageText
+              text={currentPassage.textContent}
+              autoPlay={autoPlay}
+              initialWpm={wpm}
+              onComplete={() => {
+                if (autoPlay) {
+                  handleNextPassage();
+                }
+              }}
+            />
           )}
-          <Space align='start' style={{ marginBottom: 10 }}></Space>
           {/* Navigation Buttons inside the text box */}
           <div
             style={{
-              marginTop: '20px',
               display: 'flex',
               justifyContent: 'space-between',
             }}
@@ -586,7 +535,10 @@ const FullScreenReaderPage: React.FC = () => {
               <Button
                 type='primary'
                 size='small'
-                onClick={handleGenerateImages}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setProcessingModalVisible(true);
+                }}
               >
                 Generate Images
               </Button>
