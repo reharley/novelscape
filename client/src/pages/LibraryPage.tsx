@@ -68,6 +68,14 @@ const LibraryPage: React.FC = () => {
 
   return (
     <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
+      <iframe
+        width='100%'
+        height='315'
+        src={`https://www.youtube.com/embed/kWb0I-cmLw4`}
+        frameBorder='0'
+        allow='accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture'
+        allowFullScreen
+      ></iframe>
       <Button
         href='https://discord.gg/9gSKPA3x'
         size='large'

@@ -132,11 +132,14 @@ const LandingPage: React.FC = () => {
               </Space>
             </Col>
             <Col xs={24} md={12}>
-              <Image
-                src='https://novelscapestorage.blob.core.windows.net/images/rand_logo123.png'
-                alt='App Preview 1'
-                // bordered
-              />
+              <iframe
+                width='100%'
+                height='315'
+                src={`https://www.youtube.com/embed/kWb0I-cmLw4`}
+                frameBorder='0'
+                allow='accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture'
+                allowFullScreen
+              ></iframe>
             </Col>
           </Row>
         </div>
