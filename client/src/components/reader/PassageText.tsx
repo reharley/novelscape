@@ -1,5 +1,5 @@
 import { PauseCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
-import { Button, InputNumber, Typography } from 'antd';
+import { Button, InputNumber, Space, Typography } from 'antd';
 import React, { useEffect, useRef, useState } from 'react';
 
 const { Paragraph } = Typography;
@@ -146,7 +146,7 @@ const PassageText: React.FC<PassageTextProps> = ({
       </Paragraph>
 
       {autoPlay && (
-        <div
+        <Space
           style={{ marginBottom: '10px' }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -162,7 +162,7 @@ const PassageText: React.FC<PassageTextProps> = ({
             {isPaused ? <PlayCircleOutlined /> : <PauseCircleOutlined />}{' '}
             Auto-Play
           </Button>
-        </div>
+        </Space>
       )}
     </>
   );
