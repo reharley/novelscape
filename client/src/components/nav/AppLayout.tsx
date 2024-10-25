@@ -18,12 +18,18 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Header style={{ position: 'fixed', zIndex: 1, width: '100%' }}>
-        {/* You can replace this div with your logo */}
         <div
           className='logo'
-          style={{ float: 'left', color: 'white', marginRight: '20px' }}
+          style={{
+            float: 'left',
+            color: 'white',
+            marginRight: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            height: '100%',
+          }}
         >
-          <h2 style={{ color: 'white' }}>NovelScape</h2>
+          <h2 style={{ color: 'white', margin: 0 }}>Library Escape</h2>
         </div>
         <Menu theme='dark' mode='horizontal' selectedKeys={selectedKeys}>
           <Menu.Item key='/'>
