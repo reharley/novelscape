@@ -124,8 +124,10 @@ const PassageText: React.FC<PassageTextProps> = ({
         <span
           key={index}
           style={{
-            backgroundColor:
-              index === currentWordIndex && autoPlay ? 'grey' : 'transparent',
+            textDecoration:
+              index === currentWordIndex && autoPlay ? 'underline' : 'none',
+            // backgroundColor:
+            //   index === currentWordIndex && autoPlay ? 'grey' : 'transparent',
             borderRadius: '5px',
             //   marginLeft: isFirstWord ? undefined : '0.17em',
             //   marginRight: isLastWord ? undefined : '0.17rem',
