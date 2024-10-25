@@ -88,9 +88,8 @@ const FullScreenReaderPage: React.FC = () => {
               lastReadingPosition.passageIndex || 0
             }`
           );
-        }
-        if (fetchedChapters.length > 0) {
-          const firstChapterId = fetchedChapters[0].id;
+        } else if (fetchedChapters.length > 0) {
+          const firstChapterId = chapterId ?? fetchedChapters[0].id;
           navigate(`/reader/${bookId}/${firstChapterId}/0`);
         } else {
           // No chapters, show processing modal
