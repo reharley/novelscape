@@ -31,7 +31,7 @@ const testimonials = [
   {
     name: 'Jane Doe',
     feedback:
-      'ImmersiveReader transformed the way I read. The AI annotations are a game-changer!',
+      'Library Escape transformed the way I read. The AI annotations are a game-changer!',
     rating: 5,
     avatar: 'https://via.placeholder.com/100.png?text=Jane',
   },
@@ -67,7 +67,22 @@ const LandingPage: React.FC = () => {
         console.error('Authentication error:', e);
       });
   };
+  const carouselHeight = 600; // Height for carousel and images
 
+  const contentStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: carouselHeight,
+    overflow: 'hidden',
+  };
+  const imgStyle: any = {
+    maxHeight: '100%',
+    height: carouselHeight,
+    maxWidth: '100%',
+    objectFit: 'contain', // Scales image proportionally within the container
+    margin: '0 auto', // Centers image horizontally
+  };
   return (
     <Layout>
       <Header style={{ padding: '0 50px' }}>
@@ -129,40 +144,98 @@ const LandingPage: React.FC = () => {
         {/* Slideshow Section */}
         <div style={{ padding: '50px 0' }}>
           <Title level={2} style={{ textAlign: 'center' }}>
-            How It Works
+            Example Passages
           </Title>
-          <Carousel autoplay arrows draggable>
-            <div>
-              <Image
-                src='https://via.placeholder.com/800x400.png?text=Upload+Your+Content'
-                alt='Upload Content'
-                width='100%'
-              />
-              <h3 style={contentStyle}>Upload Your Content</h3>
+          <Carousel
+            autoplay
+            arrows
+            draggable
+            style={{ height: carouselHeight }}
+          >
+            <div style={contentStyle}>
+              <div
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <img
+                  src='https://novelscapestorage.blob.core.windows.net/images/passage_1_2024-10-11T00-33-12-163Z.png'
+                  alt='Immersive Reading'
+                  style={imgStyle}
+                />
+              </div>
             </div>
-            <div>
-              <Image
-                src='https://via.placeholder.com/800x400.png?text=AI+Processing'
-                alt='AI Processing'
-                width='100%'
-              />
-              <h3 style={contentStyle}>AI Processing</h3>
+            <div style={contentStyle}>
+              <div
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <img
+                  src='https://novelscapestorage.blob.core.windows.net/images/passage_10_2024-10-25T17-49-43-031Z.png'
+                  alt='Immersive Reading'
+                  style={imgStyle}
+                />
+              </div>
             </div>
-            <div>
-              <Image
-                src='https://via.placeholder.com/800x400.png?text=Visual+Annotations'
-                alt='Visual Annotations'
-                width='100%'
-              />
-              <h3 style={contentStyle}>Visual Annotations</h3>
+            <div style={contentStyle}>
+              <div
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <img
+                  src='https://novelscapestorage.blob.core.windows.net/images/passage_4.png'
+                  alt='Upload Content'
+                  style={imgStyle}
+                />
+              </div>
             </div>
-            <div>
-              <Image
-                src='https://via.placeholder.com/800x400.png?text=Immersive+Reading'
-                alt='Immersive Reading'
-                width='100%'
-              />
-              <h3 style={contentStyle}>Immersive Reading</h3>
+            <div style={contentStyle}>
+              <div
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <img
+                  src='https://novelscapestorage.blob.core.windows.net/images/passage_5.png'
+                  alt='AI Processing'
+                  style={imgStyle}
+                />
+              </div>
+            </div>
+            <div style={contentStyle}>
+              <div
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <img
+                  src='https://novelscapestorage.blob.core.windows.net/images/passage_6.png'
+                  alt='Visual Annotations'
+                  style={imgStyle}
+                />
+              </div>
             </div>
           </Carousel>
         </div>
@@ -180,7 +253,7 @@ const LandingPage: React.FC = () => {
           <Row gutter={[16, 16]} justify='center'>
             <Col xs={24} md={8}>
               <Image
-                src='https://via.placeholder.com/200.png?text=AI+Reading'
+                src='https://novelscapestorage.blob.core.windows.net/images/coming-soon-2550190_640.jpg'
                 alt='AI Reading'
                 width='100%'
                 preview={false}
@@ -193,7 +266,7 @@ const LandingPage: React.FC = () => {
             </Col>
             <Col xs={24} md={8}>
               <Image
-                src='https://via.placeholder.com/200.png?text=Scene+Rendering'
+                src='https://novelscapestorage.blob.core.windows.net/images/passage_8_2024-10-25T19-44-59-625Z.png'
                 alt='Scene Rendering'
                 width='100%'
                 preview={false}
@@ -206,7 +279,7 @@ const LandingPage: React.FC = () => {
             </Col>
             <Col xs={24} md={8}>
               <Image
-                src='https://via.placeholder.com/200.png?text=Cross-Platform'
+                src='https://novelscapestorage.blob.core.windows.net/images/coming-soon-2550190_640.jpg'
                 alt='Cross-Platform'
                 width='100%'
                 preview={false}
