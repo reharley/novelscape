@@ -36,6 +36,7 @@ const FullScreenReaderPage: React.FC = () => {
   // State variables
   const [passages, setPassages] = useState<Passage[]>([]);
   const [currentPassageIndex, setCurrentPassageIndex] = useState<number>(0);
+  const [isPreviewVisible, setIsPreviewVisible] = useState<boolean>(false);
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
   const [loadingImage, setLoadingImage] = useState<boolean>(false);
   const [loadingPassages, setLoadingPassages] = useState<boolean>(false);
@@ -413,7 +414,7 @@ const FullScreenReaderPage: React.FC = () => {
   const handleScreenClick = (event: React.MouseEvent<HTMLDivElement>) => {
     const { clientX } = event;
     const screenWidth = window.innerWidth;
-    if (processingModalVisible) return;
+    if (processingModalVisible || isPreviewVisible) return;
     if (clientX < screenWidth / 2) {
       handlePreviousPassage();
     } else {
@@ -507,6 +508,11 @@ const FullScreenReaderPage: React.FC = () => {
                   <Image
                     src={profile.imageUrl}
                     alt={`${profile.name} Image`}
+                    preview={{
+                      onVisibleChange: (visible) => {
+                        setIsPreviewVisible(visible);
+                      },
+                    }}
                     onClick={(e: React.MouseEvent) => {
                       e.stopPropagation();
                     }}
@@ -538,36 +544,12 @@ const FullScreenReaderPage: React.FC = () => {
             zIndex: 4,
           }}
         >
-          <Space align='start' style={{ marginBottom: 10 }}>
-            {/* Chapter Dropdown */}
-            <Select
-              value={parseInt(chapterId || '', 10)}
-              onClick={(e) => e.stopPropagation()}
-              onChange={handleChapterSelect}
-              style={{ width: 200 }}
-            >
-              {chapters.map((chapter) => (
-                <Option key={chapter.id} value={chapter.id}>
-                  {chapter.title || `Chapter ${chapter.order}`}
-                </Option>
-              ))}
-            </Select>
-
-            <Button
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate('/');
-              }}
-            >
-              Library
-            </Button>
-          </Space>
           {currentPassage && (
             <Paragraph style={{ fontSize: '1.2em', margin: 0 }}>
               {currentPassage.textContent}
             </Paragraph>
           )}
-
+          <Space align='start' style={{ marginBottom: 10 }}></Space>
           {/* Navigation Buttons inside the text box */}
           <div
             style={{
@@ -576,25 +558,40 @@ const FullScreenReaderPage: React.FC = () => {
               justifyContent: 'space-between',
             }}
           >
-            <Space>
-              <Button onClick={handleDownload}>Download</Button>
-              <Button type='primary' onClick={handleGenerateImages}>
+            <Space wrap>
+              {/* Chapter Dropdown */}
+              <Select
+                value={parseInt(chapterId || '', 10)}
+                onClick={(e) => e.stopPropagation()}
+                onChange={handleChapterSelect}
+                size='small'
+                style={{ width: 200 }}
+              >
+                {chapters.map((chapter) => (
+                  <Option key={chapter.id} value={chapter.id}>
+                    {chapter.title || `Chapter ${chapter.order}`}
+                  </Option>
+                ))}
+              </Select>
+
+              <Button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate('/');
+                }}
+                size='small'
+              >
+                Library
+              </Button>
+              <Button
+                type='primary'
+                size='small'
+                onClick={handleGenerateImages}
+              >
                 Generate Images
               </Button>
-            </Space>
-            <Space>
-              <Button
-                onClick={handlePreviousPassage}
-                disabled={currentPassageIndex === 0}
-              >
-                Previous
-              </Button>
-              <Button
-                onClick={handleNextPassage}
-                type='primary'
-                disabled={currentPassageIndex === passages.length - 1}
-              >
-                Next
+              <Button onClick={handleDownload} size='small'>
+                Download
               </Button>
             </Space>
           </div>
