@@ -19,12 +19,10 @@ const PassageText: React.FC<PassageTextProps> = ({
 }) => {
   const [wpm, setWpm] = useState(initialWpm);
   const words = text.split(/[ \n]+/).filter((word) => word.trim() !== '');
-  console.log(words);
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const [isPaused, setIsPaused] = useState(true);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
-  console.log(isPaused);
   // Function to request a wake lock
   const requestWakeLock = async () => {
     try {
@@ -106,6 +104,7 @@ const PassageText: React.FC<PassageTextProps> = ({
     };
   }, [autoPlay, wpm, currentWordIndex, isPaused, words.length, onComplete]);
 
+  console.log(words);
   const handleWpmChange = (value: number | null) => {
     if (value) {
       setWpm(value);
@@ -116,8 +115,10 @@ const PassageText: React.FC<PassageTextProps> = ({
     setIsPaused((prev) => !prev);
   };
 
-  // Construct the passage with highlighted current word
   const renderedText = words.map((word, index) => {
+    const isFirstWord = index === 0;
+    const isLastWord = index === words.length - 1;
+
     return (
       <>
         <span
@@ -126,11 +127,12 @@ const PassageText: React.FC<PassageTextProps> = ({
             backgroundColor:
               index === currentWordIndex ? 'grey' : 'transparent',
             borderRadius: '5px',
-            padding: index === currentWordIndex ? '2px' : undefined,
+            //   marginLeft: isFirstWord ? undefined : '0.17em',
+            //   marginRight: isLastWord ? undefined : '0.17rem',
           }}
         >
-          {word}
-        </span>{' '}
+          {word + ' '}
+        </span>
       </>
     );
   });
