@@ -83,12 +83,17 @@ const FullScreenReaderPage: React.FC = () => {
 
       if (!passageIndex) {
         if (lastReadingPosition) {
+          console.log(
+            'Navigating to last reading position:',
+            lastReadingPosition
+          );
           navigate(
             `/reader/${bookId}/${lastReadingPosition.chapterId}/${
               lastReadingPosition.passageIndex || 0
             }`
           );
         } else if (fetchedChapters.length > 0) {
+          console.log('Navigating to first chapter:', fetchedChapters[0].id);
           const firstChapterId = chapterId ?? fetchedChapters[0].id;
           navigate(`/reader/${bookId}/${firstChapterId}/0`);
         } else {
@@ -164,10 +169,12 @@ const FullScreenReaderPage: React.FC = () => {
       const response = await axios.get(
         `${baseUrl}/books/${bookId}/reading-progress`
       );
-      return {
-        chapterId: response.data.chapterId,
-        passageIndex: response.data.passageIndex,
-      };
+      if (response.data.chapterId && response.data.passageIndex) {
+        return {
+          chapterId: response.data.chapterId,
+          passageIndex: response.data.passageIndex,
+        };
+      }
     } catch (error) {
       console.error('Error fetching last read position:', error);
     }

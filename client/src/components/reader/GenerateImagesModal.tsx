@@ -81,7 +81,7 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
       if (job && job.status !== 'completed' && job.status !== 'failed') {
         setExistingJob(job);
         setProcessing(true);
-        setCurrentPhase(getPhaseNumberFromStatus(job.status));
+        setCurrentPhase(getPhaseNumberFromPhase(job.phase));
         startProgressPolling(job.id);
       } else {
         setExistingJob(null);
@@ -99,6 +99,9 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
         `${apiUrl}/api/books/${bookId}/chapters`
       );
       setChapters(response.data);
+      if (response.data?.length > 0) {
+        setCurrentPhase(2);
+      }
     } catch (error) {
       console.error('Error fetching chapters:', error);
     }
@@ -137,9 +140,9 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
 
     try {
       setProcessing(true);
-      setCurrentPhase(2);
+      setCurrentPhase(4);
       const jobResponse = await axios.get(
-        `${apiUrl}/api/chapters/${selectedChapterId}/generate-images`
+        `${apiUrl}/api/books/${selectedChapterId}/generate-images`
       );
       const job: ProcessingJob = jobResponse.data;
       setExistingJob(job);
@@ -168,7 +171,7 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
       const response = await axios.get(`${apiUrl}/api/jobs/${jobId}`);
       const job: ProcessingJob = response.data;
       setExistingJob(job);
-      setCurrentPhase(getPhaseNumberFromStatus(job.phase));
+      setCurrentPhase(getPhaseNumberFromPhase(job.phase));
 
       // Update progress
       setProgress({
@@ -185,18 +188,27 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
         }
         if (job.status === 'completed') {
           message.success('Processing completed.');
-          onProcessingComplete();
+          // For book processing, fetch chapters after completion
+          if (job.jobType === 'book') {
+            fetchChapters();
+            setCurrentPhase(2); // Move to the phase where chapters are available
+          }
+          // For chapter processing, you may want to notify the parent
+          if (job.jobType === 'chapter') {
+            onProcessingComplete();
+          }
         } else {
           message.error('Processing failed.');
         }
+        setExistingJob(null);
       }
     } catch (error) {
       console.error('Error fetching job progress:', error);
     }
   };
 
-  const getPhaseNumberFromStatus = (status: string): number => {
-    switch (status) {
+  const getPhaseNumberFromPhase = (phase: string): number => {
+    switch (phase) {
       case 'Phase 1':
         return 0;
       case 'Phase 2':
@@ -260,7 +272,8 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
         </div>
       )}
 
-      {currentPhase === 0 && !processing && !existingJob && (
+      {/* Show Start Processing button only if no chapters are present */}
+      {chapters.length === 0 && !processing && !existingJob && (
         <div style={{ marginTop: '20px' }}>
           <Button type='primary' onClick={startProcessing} loading={processing}>
             Start Processing
@@ -268,7 +281,8 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
         </div>
       )}
 
-      {currentPhase >= 2 && !processing && !existingJob && (
+      {/* Show Continue Processing if chapters are present */}
+      {chapters.length > 0 && !processing && !existingJob && (
         <div style={{ marginTop: '20px' }}>
           <Title level={4}>Select Chapter to Continue</Title>
           <Select
@@ -303,6 +317,7 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
         </div>
       )}
 
+      {/* Optionally, show Go to Reader button after chapter processing completes */}
       {currentPhase === 5 && !processing && (
         <div style={{ marginTop: '20px' }}>
           <Button

@@ -1,10 +1,8 @@
-import { ImageGenerationJob } from '@prisma/client';
 import { Request, Response } from 'express';
 
 import prisma from '../config/prisma.js';
 import { getCanonicalNames } from '../services/bookService.js';
 import { generateImage } from '../services/imageService.js';
-import { progressManager } from '../utils/progressManager.js';
 import {
   generateBackgroundPrompt,
   generateProfilePrompt,
@@ -212,7 +210,7 @@ export async function generateImagesForChapter(req: Request, res: Response) {
     }
 
     // Collect all scene IDs in the chapter
-    const sceneIds = chapter.scenes.map((scene) => scene.id);
+    const sceneIds = chapter.scenes.map((scene: any) => scene.id);
 
     if (sceneIds.length === 0) {
       res.status(400).json({ error: 'No scenes found in this chapter.' });
@@ -221,9 +219,9 @@ export async function generateImagesForChapter(req: Request, res: Response) {
 
     // Collect all unique profiles in the chapter
     const profileIdsSet = new Set<number>();
-    chapter.scenes.forEach((scene) => {
-      scene.passages.forEach((passage) => {
-        passage.profiles.forEach((profile) => {
+    chapter.scenes.forEach((scene: any) => {
+      scene.passages.forEach((passage: any) => {
+        passage.profiles.forEach((profile: any) => {
           profileIdsSet.add(profile.id);
         });
       });
@@ -256,14 +254,36 @@ export async function generateImagesForChapter(req: Request, res: Response) {
 
     const totalTasks = sceneIds.length + profiles.length;
 
+    // Check if a job is already running for this chapter
+    const existingJob = await prisma.processingJob.findFirst({
+      where: {
+        chapterId: chapter.id,
+        status: {
+          in: ['in_progress', 'pending'],
+        },
+      },
+    });
+
+    if (existingJob && existingJob.status === 'in_progress') {
+      res.status(409).json({
+        error: 'A processing job is already running for this chapter.',
+      });
+      return;
+    }
+
     // Create a new job
-    const job = await prisma.imageGenerationJob.create({
+    const job = await prisma.processingJob.create({
       data: {
-        type: 'chapter',
-        targetId: chapter.id,
+        phase: 'init',
+        jobType: 'chapter',
+        bookId: chapter.bookId,
+        chapterId: chapter.id,
         status: 'in_progress',
         totalTasks: totalTasks,
         progress: 0.0,
+        completedTasks: 0,
+        failedTasks: 0,
+        startTime: new Date(),
       },
     });
 
@@ -291,36 +311,24 @@ export async function generateImagesForChapter(req: Request, res: Response) {
         );
 
         // Finalize job status
-        await prisma.imageGenerationJob.update({
+        await prisma.processingJob.update({
           where: { id: job.id },
           data: {
             status: 'completed',
             progress: 100.0,
+            endTime: new Date(),
           },
-        });
-        progressManager.sendProgress(job.targetId, {
-          status: 'phase_completed',
-          phase: 'Phase 5',
-          completed: job.totalTasks,
-          total: job.totalTasks,
         });
       } catch (error: any) {
         console.error('Error generating images for chapter:', error);
 
         // Update job with failed status
-        await prisma.imageGenerationJob.update({
+        await prisma.processingJob.update({
           where: { id: job.id },
           data: {
             status: 'failed',
+            endTime: new Date(),
           },
-        });
-
-        progressManager.sendProgress(job.targetId, {
-          status: 'error',
-          phase: 'Phase 5',
-          message: error.message || 'Image generation failed.',
-          completed: job.totalTasks,
-          total: job.totalTasks,
         });
       }
     })();
@@ -334,10 +342,10 @@ export async function generateImagesForChapter(req: Request, res: Response) {
   }
 }
 
-// New helper function to generate all background images sequentially
+// Helper function to generate all background images sequentially
 export async function generateBackgroundImagesForChapter(
   chapter: ChapterWithRelations,
-  job: ImageGenerationJob,
+  job: any,
   forceRegenerate: boolean,
   backgroundOptions: any
 ) {
@@ -346,7 +354,9 @@ export async function generateBackgroundImagesForChapter(
     try {
       // Aggregate all passages' textContent in the scene
       let passages = scene.passages || [];
-      const combinedSceneText = passages.map((p) => p.textContent).join('\n');
+      const combinedSceneText = passages
+        .map((p: any) => p.textContent)
+        .join('\n');
 
       // Generate background image for scene
       await generateBackgroundImageForScene(
@@ -361,7 +371,7 @@ export async function generateBackgroundImagesForChapter(
       );
 
       // Update job progress
-      const jobTmp = await prisma.imageGenerationJob.update({
+      await prisma.processingJob.update({
         where: { id: job.id },
         data: {
           completedTasks: { increment: 1 },
@@ -370,34 +380,22 @@ export async function generateBackgroundImagesForChapter(
           },
         },
       });
-
-      progressManager.sendProgress(job.targetId, {
-        status: 'phase_progress',
-        phase: 'Phase 5',
-        completed: jobTmp.completedTasks,
-        total: jobTmp.totalTasks,
-      });
     } catch (error: any) {
       console.error(
         `Error generating background image for scene ${scene.id}:`,
         error
       );
       // Update job with failed task
-      const jobTmp = await prisma.imageGenerationJob.update({
+      const jobTmp = await prisma.processingJob.update({
         where: { id: job.id },
         data: {
           failedTasks: { increment: 1 },
         },
       });
-      progressManager.sendProgress(job.targetId, {
-        status: 'phase_progress',
-        phase: 'Phase 5',
-        completed: jobTmp.completedTasks,
-        total: jobTmp.totalTasks,
-      });
     }
   }
 }
+
 /**
  * Removes any substrings from a comma-separated string that contain any of the first or last names as whole words.
  * The matching is case-insensitive.
@@ -419,18 +417,19 @@ function removeNamesFromString(names: string[], str: string): string {
 
   return filteredArray.join(',');
 }
-// New helper function to generate all profile images sequentially
+
+// Helper function to generate all profile images sequentially
 export async function generateProfileImagesForChapter(
   chapter: ChapterWithRelations,
   profiles: ProfileWithRelations[],
-  job: ImageGenerationJob,
+  job: any,
   forceRegenerate: boolean,
   profileOptions: any
 ) {
   // Aggregate all passages' textContent in the chapter
   const combinedChapterText = chapter.scenes
-    .flatMap((scene) => scene.passages)
-    .map((p) => p!.textContent)
+    .flatMap((scene: any) => scene.passages)
+    .map((p: any) => p!.textContent)
     .join(' ');
 
   for (const profile of profiles) {
@@ -447,7 +446,7 @@ export async function generateProfileImagesForChapter(
       );
 
       // Update job progress
-      const jobTmp = await prisma.imageGenerationJob.update({
+      const jobTmp = await prisma.processingJob.update({
         where: { id: job.id },
         data: {
           completedTasks: { increment: 1 },
@@ -456,16 +455,10 @@ export async function generateProfileImagesForChapter(
           },
         },
       });
-      progressManager.sendProgress(job.targetId, {
-        status: 'phase_progress',
-        phase: 'Phase 5',
-        completed: jobTmp.completedTasks,
-        total: jobTmp.totalTasks,
-      });
     } catch (error: any) {
       console.error(`Error generating image for profile ${profile.id}:`, error);
       // Update job with failed task
-      await prisma.imageGenerationJob.update({
+      await prisma.processingJob.update({
         where: { id: job.id },
         data: {
           failedTasks: { increment: 1 },
@@ -479,7 +472,7 @@ export async function getJobStatus(req: Request, res: Response) {
   const { jobId } = req.params;
 
   try {
-    const job = await prisma.imageGenerationJob.findUnique({
+    const job = await prisma.processingJob.findUnique({
       where: { id: Number(jobId) },
     });
 
@@ -499,7 +492,7 @@ export async function getJobStatus(req: Request, res: Response) {
 
 export async function listJobs(req: Request, res: Response) {
   try {
-    const jobs = await prisma.imageGenerationJob.findMany({
+    const jobs = await prisma.processingJob.findMany({
       orderBy: { createdAt: 'desc' },
       take: 20, // Fetch last 20 jobs
     });

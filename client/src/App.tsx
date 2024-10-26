@@ -12,7 +12,6 @@ import AppTheme from './components/nav/AppTheme.tsx';
 import AIEnhancedReaderPage from './components/reader/AIEnhancedReaderPage.tsx';
 import ProtectedRoute from './components/routing/ProtectedRoute.tsx';
 import FullScreenReaderPage from './pages/FullScreenReaderPage.tsx';
-import ChapterImageGenerator from './pages/ImageGenerationPage.tsx';
 import LoraAssociationPage from './pages/LoraAssociationPage.tsx';
 import ProfileLoraPage from './pages/ProfileLoraPage.tsx';
 
@@ -59,10 +58,6 @@ const router = createBrowserRouter(
             <Route path='processing/:bookId' element={<BookProcessingPage />} />
             <Route path='profiles' element={<ProfileListPage />} />
             <Route path='associate-loras' element={<LoraAssociationPage />} />
-            <Route
-              path='chapter-generation'
-              element={<ChapterImageGenerator />}
-            />
           </Route>
         </Route>
       </Route>

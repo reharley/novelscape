@@ -1,10 +1,8 @@
 // src/routes/books.ts
 import express from 'express';
 import {
-  chapterProgress,
   deleteBook,
   detectSceneController,
-  extractProfilesProgress,
   generateChapterImagesController,
   getChaptersForBook,
   getPassagesForBook,
@@ -55,18 +53,12 @@ router.get('/', listBooks);
 // router.get('/epub/:bookId', getEpubContent);
 
 /**
- * @route POST /api/books/:bookId/extract-profiles
+ * @route POST /api/books/:bookId/process
  * @desc Extract profiles from a book
  * @access Public
  */
-router.post('/:bookId/extract-profiles', processBookController);
-router.get('/:bookId/extract-profiles/progress', extractProfilesProgress);
-
-router.get(
-  '/:chapterId/generate-chapter-images',
-  generateChapterImagesController
-);
-router.get('/:chapterId/generate-chapter-images/progress', chapterProgress);
+router.post('/:bookId/process', processBookController);
+router.get('/:chapterId/generate-images', generateChapterImagesController);
 
 /**
  * @route DELETE /api/books/:bookId
@@ -83,7 +75,6 @@ router.delete('/:bookId', deleteBook);
 router.get('/:bookId/profiles', getProfilesForBook);
 
 router.post('/:bookId/detect-scenes', detectSceneController);
-router.get('/:bookId/detect-scenes/progress', extractProfilesProgress);
 
 router.post('/upload', upload.single('file'), uploadBookController);
 

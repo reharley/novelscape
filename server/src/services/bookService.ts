@@ -1,11 +1,10 @@
 import pLimit from 'p-limit';
 
 import prisma from '../config/prisma.js';
-import { progressManager } from '../utils/progressManager.js';
 import { extractFullNames, performNERWithAliases } from '../utils/prompts.js';
 import { extractEpubPassagesAndChapters, getEpub } from './epubService.js';
 
-export async function extractPassageAndChapters(bookId: number) {
+export async function extractPassageAndChapters(bookId: number, jobId: number) {
   const book = await prisma.book.findUnique({
     where: { id: bookId },
   });
@@ -20,35 +19,30 @@ export async function extractPassageAndChapters(bookId: number) {
     throw new Error('Book storageUrl is missing.');
   }
 
-  try {
-    const epub = await getEpub(storageUrl);
-    await extractEpubPassagesAndChapters(bookId, epub);
-  } catch (error: any) {
-    console.error(`Error processing book ${bookId}:`, error);
-    progressManager.sendProgress(bookId, {
-      status: 'error',
-      message: error.message || 'An error occurred during profile extraction.',
-    });
-    progressManager.closeAllClients(bookId);
-  }
+  const epub = await getEpub(storageUrl);
+  await extractEpubPassagesAndChapters(bookId, epub, jobId);
 }
 
-export async function extractCanonicalNames(bookId: number): Promise<void> {
-  progressManager.sendProgress(bookId, {
-    status: 'phase',
-    phase: 'Phase 2: Extracting canonical character names...',
-  });
-
-  const concurrencyLimit = 5; // Adjust based on your system's capabilities
+export async function extractCanonicalNames(
+  bookId: number,
+  jobId: number
+): Promise<void> {
+  const concurrencyLimit = 5;
   const limit = pLimit(concurrencyLimit);
 
-  // Fetch all passages for the book
   const passages = await prisma.passage.findMany({
     where: { bookId },
     select: { textContent: true },
   });
+  await prisma.processingJob.update({
+    where: { id: jobId },
+    data: {
+      phase: 'Phase 2',
+      completedTasks: 0,
+      totalTasks: passages.length,
+    },
+  });
 
-  const totalPassages = passages.length;
   const book = await prisma.book.findUnique({
     where: { id: bookId },
   });
@@ -60,6 +54,11 @@ export async function extractCanonicalNames(bookId: number): Promise<void> {
 
   const tasks = passages.map((passage) =>
     limit(async () => {
+      processedPassages += 1;
+      await prisma.processingJob.update({
+        where: { id: jobId },
+        data: { completedTasks: processedPassages },
+      });
       const textContent = passage.textContent.trim();
       if (!textContent) return;
 
@@ -119,42 +118,19 @@ export async function extractCanonicalNames(bookId: number): Promise<void> {
         } catch (e) {
           console.error('Error upserting canonical profiles:', e);
         }
-        // Update progress after processing each passage
-        processedPassages += 1;
-        progressManager.sendProgress(bookId, {
-          status: 'phase_progress',
-          phase: 'Phase 2',
-          completed: processedPassages,
-          total: totalPassages,
-        });
       } catch (apiError: any) {
         console.error('Error with OpenAI API (canonical NER):', apiError);
-        progressManager.sendProgress(bookId, {
-          status: 'error',
-          message: `OpenAI API error during canonical NER: ${apiError.message}`,
-        });
       }
     })
   );
 
-  // Await all passage processing tasks
   await Promise.all(tasks);
-
-  progressManager.sendProgress(bookId, {
-    status: 'phase_completed',
-    phase: 'Phase 2',
-    message: 'Canonical character names extracted successfully.',
-  });
 }
 
 export async function processPassagesWithContextForChapter(
-  chapterId: number
+  chapterId: number,
+  jobId: number
 ): Promise<void> {
-  progressManager.sendProgress(chapterId, {
-    status: 'phase',
-    phase: 'Phase 3',
-  });
-
   const concurrencyLimit = 7; // Adjust based on your system's capabilities
   const limit = pLimit(concurrencyLimit);
 
@@ -175,13 +151,22 @@ export async function processPassagesWithContextForChapter(
     include: { chapter: true, book: true },
   });
 
-  const totalPassages = passages.length;
+  await prisma.processingJob.update({
+    where: { id: jobId },
+    data: { phase: 'Phase 3', completedTasks: 0, totalTasks: passages.length },
+  });
+
   let processedPassages = 0;
   const bookId = chapter.bookId;
   const canonicalNames = await getCanonicalNames(bookId);
 
   const tasks = passages.map((passage) =>
     limit(async () => {
+      processedPassages += 1;
+      await prisma.processingJob.update({
+        where: { id: jobId },
+        data: { completedTasks: processedPassages },
+      });
       const textContent = passage.textContent.trim();
       if (!textContent) return;
 
@@ -289,29 +274,13 @@ export async function processPassagesWithContextForChapter(
             })
           );
         }
-
-        // Update progress after processing each passage
-        processedPassages += 1;
-        progressManager.sendProgress(chapterId, {
-          status: 'phase_progress',
-          phase: 'Phase 3',
-          completed: processedPassages,
-          total: totalPassages,
-        });
       } catch (apiError: any) {
         console.error('Error with OpenAI API (NER):', apiError);
       }
     })
   );
 
-  // Await all passage processing tasks
   await Promise.all(tasks);
-
-  progressManager.sendProgress(chapterId, {
-    status: 'phase_completed',
-    phase: 'Phase 3',
-    message: 'Passages processed with context for the chapter successfully.',
-  });
 }
 
 export async function getCanonicalNames(bookId: number): Promise<string[]> {

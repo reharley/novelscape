@@ -57,9 +57,6 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
               <Menu.Item key='/profiles'>
                 <Link to='/profiles'>Profiles</Link>
               </Menu.Item>
-              <Menu.Item key='/chapter-generation'>
-                <Link to='/chapter-generation'>Chapter Generation</Link>
-              </Menu.Item>
             </>
           )}
           <Menu.Item key='/user'>

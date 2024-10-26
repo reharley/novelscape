@@ -119,15 +119,18 @@ export interface ModelImage {
   modelId: number;
 }
 
-export interface ImageGenerationJob {
+export interface ProcessingJob {
   id: number;
-  type: string; // e.g., 'chapter', 'scene'
-  targetId: number; // ID of the chapter or scene
-  status: string; // 'pending', 'in_progress', 'completed', 'completed_with_errors'
+  jobType: string;
+  targetId: number;
+  status: string;
+  phase: string;
   totalTasks: number;
   completedTasks: number;
   failedTasks: number;
-  progress: number; // 0 - 100
-  createdAt: string; // ISO date string
-  updatedAt: string; // ISO date string
+  progress: number;
+  startTime: string | null;
+  endTime: string | null;
+  createdAt: string;
+  updatedAt: string;
 }

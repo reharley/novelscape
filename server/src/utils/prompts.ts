@@ -596,11 +596,7 @@ Focus on extracting full names and avoid partial names or titles.
     const args = JSON.parse(message.function_call.arguments);
     const fullNames: { name: string; type: 'PERSON' | 'NON_PERSON' }[] =
       args.fullNames;
-    for (let i = 0; i < fullNames.length; i++) {
-      if (fullNames[i].name === 'Harry Potter') {
-        console.log('Harry Potter is a full name');
-      }
-    }
+
     console.log('Extracted full names:', fullNames);
     return fullNames;
   } else {

@@ -11,7 +11,6 @@ import {
   processEpubCoverImage,
 } from '../services/epubService.js';
 import { uploadFileToAzure } from '../utils/azureStorage.js';
-import { progressManager } from '../utils/progressManager.js';
 import {
   generateBackgroundImagesForChapter,
   generateProfileImagesForChapter,
@@ -165,20 +164,6 @@ export async function uploadBookController(req: Request, res: Response) {
 export async function detectSceneController(req: Request, res: Response) {
   try {
     const chapterId = Number(req.params.chapterId);
-    // detectScenes(chapterId)
-    //   .then(() => {
-    //     // Extraction completed successfully
-    //     // Progress updates are handled within extractProfiles via progressManager
-    //   })
-    //   .catch((error) => {
-    //     console.error(`Error extracting profiles for book ${bookId}:`, error);
-    //     // Send error via progressManager
-    //     progressManager.sendProgress(bookId, {
-    //       status: 'error',
-    //       message: error.message,
-    //     });
-    //     progressManager.closeAllClients(bookId);
-    //   });
     res.status(202).json({ message: 'Scenes detected.' });
   } catch (error: any) {
     console.error('Error starting profile extraction:', error);
@@ -186,75 +171,6 @@ export async function detectSceneController(req: Request, res: Response) {
       .status(500)
       .json({ error: error.message || 'Failed to start profile extraction.' });
   }
-}
-
-export async function extractProfilesController(req: Request, res: Response) {
-  try {
-    const bookId = Number(req.params.bookId);
-    // Start profile extraction asynchronously
-    // extractProfiles(bookId)
-    //   .then(() => {
-    //     // Extraction completed successfully
-    //     // Progress updates are handled within extractProfiles via progressManager
-    //   })
-    //   .catch((error) => {
-    //     console.error(`Error extracting profiles for book ${bookId}:`, error);
-    //     // Send error via progressManager
-    //     progressManager.sendProgress(bookId, {
-    //       status: 'error',
-    //       message: error.message,
-    //     });
-    //     progressManager.closeAllClients(bookId);
-    //   });
-
-    // Immediately respond to acknowledge the request
-    res.status(202).json({ message: 'Profile extraction started.' });
-  } catch (error: any) {
-    console.error('Error starting profile extraction:', error);
-    res
-      .status(500)
-      .json({ error: error.message || 'Failed to start profile extraction.' });
-  }
-}
-
-export async function extractProfilesProgress(req: Request, res: Response) {
-  const bookId = Number(req.params.bookId);
-
-  // Set headers for SSE
-  res.set({
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
-  });
-  res.flushHeaders();
-
-  // Add client to ProgressManager
-  progressManager.addClient(bookId, res);
-
-  // Handle client disconnect
-  req.on('close', () => {
-    progressManager.removeClient(bookId, res);
-  });
-}
-
-export async function chapterProgress(req: Request, res: Response) {
-  const chapterId = Number(req.params.chapterId);
-
-  // Set headers for SSE
-  res.set({
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
-  });
-  res.flushHeaders();
-
-  // Add client to ProgressManager
-  progressManager.addClient(chapterId, res);
-
-  // Handle client disconnect
-  req.on('close', () => {
-    progressManager.removeClient(chapterId, res);
-  });
 }
 
 export async function getPassagesForBook(req: Request, res: Response) {
@@ -507,25 +423,32 @@ export async function updateReadingProgress(req: Request, res: Response) {
 export async function processBookController(req: Request, res: Response) {
   try {
     const bookId = Number(req.params.bookId);
+    const processingJob = await prisma.processingJob.create({
+      data: {
+        startTime: new Date(),
+        jobType: 'book',
+        bookId,
+        phase: 'init',
+        status: 'in_progress',
+      },
+    });
 
     // Start the processing asynchronously
-    processBook(bookId)
+    processBook(bookId, processingJob.id)
       .then(() => {
         // Processing completed successfully
         // Progress updates are handled within processBook via progressManager
       })
-      .catch((error) => {
+      .catch(async (error) => {
         console.error(`Error processing book ${bookId}:`, error);
-        // Send error via progressManager
-        progressManager.sendProgress(bookId, {
-          status: 'error',
-          message: error.message,
+        await prisma.processingJob.update({
+          where: { id: processingJob.id },
+          data: { status: 'failed' },
         });
-        progressManager.closeAllClients(bookId);
       });
 
     // Immediately respond to acknowledge the request
-    res.status(202).json({ message: 'Book processing started.' });
+    res.status(202).json(processingJob);
   } catch (error: any) {
     console.error('Error starting book processing:', error);
     res
@@ -534,67 +457,29 @@ export async function processBookController(req: Request, res: Response) {
   }
 }
 
-export async function processingProgress(req: Request, res: Response) {
-  const bookId = Number(req.params.bookId);
-
-  // Set headers for SSE
-  res.set({
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
-  });
-  res.flushHeaders();
-
-  // Add client to ProgressManager
-  progressManager.addClient(bookId, res);
-
-  // Handle client disconnect
-  req.on('close', () => {
-    progressManager.removeClient(bookId, res);
-  });
-}
-
 // Implement processBook function to handle the processing logic
-async function processBook(bookId: number) {
+async function processBook(bookId: number, jobId: number) {
   const book = await prisma.book.findUnique({
     where: { id: bookId },
   });
   if (!book) throw new Error('Book not found.');
   if (book.processed) return;
-  // Phase 1: Extract Passages and Chapters
-  progressManager.sendProgress(bookId, {
-    status: 'phase',
-    phase: 'Phase 1',
-    message: 'Extracting Passages and Chapters',
+  await prisma.processingJob.update({
+    where: { id: jobId },
+    data: {
+      phase: 'Phase 1',
+    },
   });
-  await extractPassageAndChapters(bookId); // Implement this function
-  progressManager.sendProgress(bookId, {
-    status: 'phase_progress',
-    phase: 'Phase 1',
-    completed: 1,
-    total: 1,
-  });
+  await extractPassageAndChapters(bookId, jobId); // Implement this function
 
-  // Phase 2: Extract Canonical Names
-  progressManager.sendProgress(bookId, {
-    status: 'phase',
-    phase: 'Phase 2',
-    message: 'Extracting Canonical Names',
-  });
-  await extractCanonicalNames(bookId); // Implement this function
-  progressManager.sendProgress(bookId, {
-    status: 'phase_progress',
-    phase: 'Phase 2',
-    completed: 1,
-    total: 1,
-  });
+  await extractCanonicalNames(bookId, jobId); // Implement this function
 
-  // Processing completed
-  progressManager.sendProgress(bookId, {
-    status: 'completed',
-    message: 'Book processing completed successfully.',
+  await prisma.processingJob.update({
+    where: { id: jobId },
+    data: {
+      status: 'completed',
+    },
   });
-  progressManager.closeAllClients(bookId);
 
   await prisma.book.update({
     where: { id: bookId },
@@ -602,7 +487,10 @@ async function processBook(bookId: number) {
   });
 }
 
-export async function generateChapterImages(chapterId: number) {
+export async function generateChapterImages(
+  chapterId: number,
+  processingJobId: number
+) {
   const forceRegenerate = false;
 
   const backgroundOptions = {
@@ -700,22 +588,18 @@ export async function generateChapterImages(chapterId: number) {
 
   const totalTasks = sceneIds.length + profiles.length;
 
-  // Create a new job
-  const job = await prisma.imageGenerationJob.create({
+  const job = await prisma.processingJob.update({
+    where: { id: processingJobId },
     data: {
-      type: 'chapter',
-      targetId: chapter.id,
+      jobType: 'chapter',
+      phase: 'Phase 5',
+      bookId: chapter.bookId,
+      chapterId: chapter.id,
+      completedTasks: 0,
       status: 'in_progress',
       totalTasks: totalTasks,
       progress: 0.0,
     },
-  });
-
-  progressManager.sendProgress(chapterId, {
-    status: 'phase',
-    phase: 'Phase 5',
-    completed: 0,
-    total: totalTasks,
   });
 
   try {
@@ -737,35 +621,23 @@ export async function generateChapterImages(chapterId: number) {
     );
 
     // Finalize job status
-    await prisma.imageGenerationJob.update({
+    await prisma.processingJob.update({
       where: { id: job.id },
       data: {
         status: 'completed',
         progress: 100.0,
       },
     });
-    // Processing completed
-    progressManager.sendProgress(chapterId, {
-      status: 'completed',
-      phase: 'Phase 5',
-      message: 'Book processing completed successfully.',
-    });
-    progressManager.closeAllClients(chapterId);
   } catch (error: any) {
     console.error('Error generating images for chapter:', error);
 
     // Update job with failed status
-    await prisma.imageGenerationJob.update({
+    await prisma.processingJob.update({
       where: { id: job.id },
       data: {
         status: 'failed',
       },
     });
-    progressManager.sendProgress(chapterId, {
-      status: 'error',
-      message: error.message || 'An error occurred during profile extraction.',
-    });
-    progressManager.closeAllClients(chapterId);
   }
 }
 
@@ -774,26 +646,45 @@ export async function generateChapterImagesController(
   res: Response
 ) {
   const chapterId = Number(req.params.chapterId);
-  (async () => {
-    const chapter = await prisma.chapter.findUnique({
-      where: { id: chapterId },
-    });
-    if (!chapter) {
-      throw new Error('Chapter not found.');
-    }
-    const bookId = chapter.bookId;
-    if (!chapter.processed) {
-      await processPassagesWithContextForChapter(chapterId);
 
-      await detectScenesForChapter(chapterId);
+  const chapter = await prisma.chapter.findUnique({
+    where: { id: chapterId },
+  });
+  if (!chapter) {
+    res.status(404).json({ error: 'Chapter not found.' });
+    return;
+  }
+
+  const job = await prisma.processingJob.create({
+    data: {
+      startTime: new Date(),
+      jobType: 'generateChapterImages',
+      phase: 'init',
+      chapterId,
+      bookId: chapter.bookId,
+      status: 'in_progress',
+    },
+  });
+
+  (async () => {
+    if (!chapter.processed) {
+      await processPassagesWithContextForChapter(chapterId, job.id);
+
+      await detectScenesForChapter(chapterId, job.id);
       await prisma.chapter.update({
         where: { id: chapterId },
         data: { processed: true },
       });
     }
-    await generateChapterImages(chapterId);
-  })().catch((error) => {
+    await generateChapterImages(chapterId, job.id);
+  })().catch(async (error) => {
     console.error('Error starting image generation:', error);
+    await prisma.processingJob.update({
+      where: { id: job.id },
+      data: {
+        status: 'failed',
+      },
+    });
   });
-  res.status(200).json({ message: 'Initiated image generation.' });
+  res.status(200).json(job);
 }

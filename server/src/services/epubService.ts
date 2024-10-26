@@ -1,5 +1,4 @@
-import { Book, Scene } from '@prisma/client';
-import axios from 'axios';
+import { Book } from '@prisma/client';
 import DOMPurify from 'dompurify';
 import { EPub } from 'epub2';
 import fs from 'fs-extra';
@@ -15,7 +14,6 @@ import {
   uploadFileToAzure,
 } from '../utils/azureStorage.js';
 import { parseChapterContent } from '../utils/parseChapterContent.js';
-import { progressManager } from '../utils/progressManager.js';
 import { detectNewScene } from '../utils/prompts.js';
 
 // Initialize DOMPurify
@@ -24,22 +22,22 @@ const domPurify = DOMPurify(window);
 
 export async function extractEpubPassagesAndChapters(
   bookId: number,
-  epub: EPub
+  epub: EPub,
+  jobId: number
 ): Promise<void> {
   const chapters = epub.flow;
 
   if (chapters.length === 0) {
-    progressManager.sendProgress(bookId, {
-      status: 'error',
-      message: 'No chapters found in the book.',
+    await prisma.processingJob.update({
+      where: { id: jobId },
+      data: { status: 'failed' },
     });
-    progressManager.closeAllClients(bookId);
     throw new Error('No chapters found in the book');
   }
 
-  progressManager.sendProgress(bookId, {
-    status: 'phase',
-    phase: 'Phase 1: Extracting passages and chapters...',
+  await prisma.processingJob.update({
+    where: { id: jobId },
+    data: { status: 'in_progress', phase: 'Phase 1' },
   });
 
   const concurrencyLimit = 5; // Adjust based on your system's capabilities
@@ -60,10 +58,6 @@ export async function extractEpubPassagesAndChapters(
 
         if (!text) {
           console.error(`Error: Chapter ${chapterId} is empty.`);
-          progressManager.sendProgress(bookId, {
-            status: 'error',
-            message: `Chapter ${chapterId} is empty.`,
-          });
           return;
         }
 
@@ -104,113 +98,23 @@ export async function extractEpubPassagesAndChapters(
 
         // Update progress after processing each chapter
         processedChapters += 1;
-        progressManager.sendProgress(bookId, {
-          status: 'phase_progress',
-          phase: 'Phase 1',
-          completed: processedChapters,
-          total: totalChapters,
+        await prisma.processingJob.update({
+          where: { id: jobId },
+          data: {
+            completedTasks: processedChapters,
+            totalTasks: totalChapters,
+          },
         });
       } catch (chapterError: any) {
         console.error(
           `Error processing chapter ${chapterId} in Phase 1:`,
           chapterError
         );
-        progressManager.sendProgress(bookId, {
-          status: 'error',
-          message: `Error processing chapter ${chapterId}: ${chapterError.message}`,
-        });
       }
     })
   );
 
-  // Await all chapter processing tasks
   await Promise.all(tasks);
-
-  progressManager.sendProgress(bookId, {
-    status: 'phase_completed',
-    phase: 'Phase 1',
-    message: 'Passages and chapters extracted successfully.',
-  });
-}
-export async function extractProfiles(bookId: number): Promise<void> {
-  // Fetch the book from the database
-  const book = await prisma.book.findUnique({
-    where: { id: bookId },
-  });
-
-  if (!book) {
-    throw new Error('Book not found in database.');
-  }
-
-  // Get the storageUrl
-  const storageUrl = book.storageUrl;
-
-  if (!storageUrl) {
-    throw new Error('Book storageUrl is missing.');
-  }
-
-  // Fetch the book file from storageUrl
-  const response = await axios.get<ArrayBuffer>(storageUrl, {
-    responseType: 'arraybuffer',
-  });
-
-  // Get the file data
-  const fileData = response.data;
-
-  // Determine the file type
-  const { fileTypeFromBuffer } = await import('file-type');
-  const fileType = await fileTypeFromBuffer(fileData);
-
-  if (!fileType) {
-    throw new Error('Could not determine file type.');
-  }
-
-  if (fileType.ext === 'epub') {
-    const epub = new EPub(storageUrl);
-
-    epub.on('end', async () => {
-      try {
-        // **Phase 1: Extract Passages and Chapters**
-        await extractEpubPassagesAndChapters(bookId, epub);
-      } catch (error: any) {
-        console.error(`Error processing book ${bookId}:`, error);
-        progressManager.sendProgress(bookId, {
-          status: 'error',
-          message:
-            error.message || 'An error occurred during profile extraction.',
-        });
-        progressManager.closeAllClients(bookId);
-      }
-    });
-    epub.on('error', (err) => {
-      console.error('Error parsing EPUB:', err);
-      progressManager.sendProgress(bookId, {
-        status: 'error',
-        message: 'Error parsing EPUB file.',
-      });
-      progressManager.closeAllClients(bookId);
-    });
-
-    epub.parse();
-  } else {
-    throw new Error('Unsupported file type: ' + fileType.ext);
-  }
-
-  // // **Phase 2: Extract Canonical Names**
-  // await extractCanonicalNames(bookId);
-
-  // **Phase 3: Process Passages with Context**
-  // await processPassagesWithContext(bookId);
-
-  // // **Phase 4: Detect Scenes**
-  // await detectScenes(bookId);
-
-  // Send completion status
-  progressManager.sendProgress(bookId, {
-    status: 'completed',
-    message: 'All phases completed successfully.',
-  });
-  progressManager.closeAllClients(bookId);
 }
 function getChapterText(
   epub: EPub,
@@ -226,12 +130,10 @@ function getChapterText(
     });
   });
 }
-export async function detectScenesForChapter(chapterId: number): Promise<void> {
-  progressManager.sendProgress(chapterId, {
-    status: 'phase',
-    phase: 'Phase 4',
-  });
-
+export async function detectScenesForChapter(
+  chapterId: number,
+  jobId: number
+): Promise<void> {
   // Fetch the specific chapter with its passages ordered by their order
   const chapter = await prisma.chapter.findUnique({
     where: { id: chapterId },
@@ -239,19 +141,22 @@ export async function detectScenesForChapter(chapterId: number): Promise<void> {
   });
 
   if (!chapter) {
-    progressManager.sendProgress(chapterId, {
-      status: 'error',
-      message: `Chapter with ID ${chapterId} not found.`,
-    });
-    return;
+    throw new Error('Chapter not found in database.');
   }
 
   const bookId = chapter.bookId;
   const passages = chapter.passages;
   let accumulatedPassages: string[] = [];
-  let currentScene: Scene | null = null;
   let globalSceneOrder = 1; // To maintain global scene order across chapters
-
+  await prisma.processingJob.update({
+    where: { id: jobId },
+    data: {
+      status: 'in_progress',
+      phase: 'Phase 4',
+      completedTasks: 0,
+      totalTasks: passages.length,
+    },
+  });
   // Function to process the chapter
   const processChapter = async () => {
     const { order: chapterOrder } = chapter;
@@ -259,11 +164,9 @@ export async function detectScenesForChapter(chapterId: number): Promise<void> {
     // for (const passage of passages) {
     for (let i = 0; i < passages.length; i++) {
       const passage = passages[i];
-      progressManager.sendProgress(chapterId, {
-        status: 'phase_progress',
-        phase: 'Phase 4',
-        completed: i + 1,
-        total: passages.length,
+      await prisma.processingJob.update({
+        where: { id: jobId },
+        data: { completedTasks: i + 1 },
       });
       let isNewScene = false;
       const contextText =
@@ -280,10 +183,6 @@ export async function detectScenesForChapter(chapterId: number): Promise<void> {
           `Error during scene detection in Chapter ${chapterOrder}:`,
           error
         );
-        progressManager.sendProgress(chapterId, {
-          status: 'error',
-          message: `Error during scene detection in Chapter ${chapterOrder}: ${error.message}`,
-        });
         continue;
       }
       accumulatedPassages.push(passage.textContent);
@@ -344,87 +243,7 @@ export async function detectScenesForChapter(chapterId: number): Promise<void> {
     }
   };
 
-  // Process the chapter
   await processChapter();
-
-  progressManager.sendProgress(chapterId, {
-    status: 'phase_completed',
-    phase: 'Phase 4',
-    message: 'Scene detection for the chapter completed successfully.',
-  });
-}
-
-export async function extractAndSaveBookResources(
-  epub: EPub,
-  fileName: string,
-  extractedDir: string
-): Promise<void> {
-  const manifestItems = Object.values(epub.manifest); // Extract manifest entries as an array
-  const extractPath = path.join(extractedDir, fileName);
-
-  // Use p-limit to control concurrency for file extraction
-  const fileLimit = pLimit(5); // Adjust concurrency as needed
-
-  const tasks = manifestItems.map((item) =>
-    fileLimit(async () => {
-      if (!item.id || !item.href) return;
-      try {
-        const data = await getFileAsync(epub, item.id);
-        // Create the appropriate subdirectory if needed
-        const outputPath = path.join(extractPath, item.href);
-        const outputDir = path.dirname(outputPath);
-        await fs.mkdirp(outputDir); // Asynchronously create directories
-
-        // Write file to disk
-        if (data) await fs.writeFile(outputPath, data);
-      } catch (err: any) {
-        console.error(`Error extracting file ${item.href}:`, err);
-      }
-    })
-  );
-
-  // Await all file extraction tasks
-  await Promise.all(tasks);
-}
-
-async function getFileAsync(
-  epub: EPub,
-  fileId: string
-): Promise<Buffer | undefined> {
-  return new Promise((resolve, reject) => {
-    epub.getFile(fileId, (err, data, mimeType) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(data);
-      }
-    });
-  });
-}
-
-// **Get Next Scene Order**
-async function getNextSceneOrder(bookId: number): Promise<number> {
-  const lastScene = await prisma.scene.findFirst({
-    where: { bookId: bookId },
-    orderBy: { order: 'desc' },
-  });
-  return lastScene ? lastScene.order + 1 : 1;
-}
-
-// **Get Chapter Raw Text Asynchronously**
-export async function getChapterRawAsync(
-  epub: EPub,
-  chapterId: string
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    epub.getChapter(chapterId, (err, text) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(text || '');
-      }
-    });
-  });
 }
 
 export const processEpubCoverImage = async (book: Book) => {
