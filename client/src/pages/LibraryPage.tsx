@@ -68,6 +68,7 @@ const LibraryPage: React.FC = () => {
 
   return (
     <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
+      <h3>Quick Guide</h3>
       <iframe
         width='100%'
         height='315'
