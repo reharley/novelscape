@@ -8,9 +8,9 @@ import {
   Typography,
 } from 'antd';
 import axios from 'axios';
-import { EventSourcePolyfill } from 'event-source-polyfill';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { apiUrl } from '../../utils/general';
+import { ProcessingJob } from '../../utils/types';
 
 const { Text, Title } = Typography;
 const { Step } = Steps;
@@ -52,176 +52,42 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
   const [selectedChapterId, setSelectedChapterId] = useState<number | null>(
     chapterId ? parseInt(chapterId) : null
   );
+  const [existingJob, setExistingJob] = useState<ProcessingJob | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  if (selectedChapterId === null && chapterId) {
-    setSelectedChapterId(parseInt(chapterId));
-  }
   useEffect(() => {
     if (visible) {
-      checkBookProcessingStatus();
+      checkExistingJob();
+      fetchChapters();
     }
-    // Cleanup on modal close
+
     return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
       setCurrentPhase(0);
       setProgress(null);
       setProcessing(false);
       setSelectedChapterId(null);
+      setExistingJob(null);
     };
   }, [visible]);
 
-  const checkBookProcessingStatus = async () => {
-    if (!bookId) {
-      message.error('Book ID is missing.');
-      return;
-    }
+  const checkExistingJob = async () => {
     try {
-      // Check if passages and chapters exist
-      const passagesResponse = await axios.get(
-        `${apiUrl}/api/books/${bookId}/passages`
-      );
-      const passages = passagesResponse.data;
+      const response = await axios.get(`${apiUrl}/api/jobs/book/${bookId}`);
+      const job: ProcessingJob = response.data;
 
-      const chaptersResponse = await axios.get(
-        `${apiUrl}/api/books/${bookId}/chapters`
-      );
-      const chaptersData = chaptersResponse.data;
-
-      if (passages.length > 0 && chaptersData.length > 0) {
-        setCurrentPhase(2);
-        setChapters(chaptersData);
+      if (job && job.status !== 'completed' && job.status !== 'failed') {
+        setExistingJob(job);
+        setProcessing(true);
+        setCurrentPhase(getPhaseNumberFromStatus(job.status));
+        startProgressPolling(job.id);
       } else {
-        setCurrentPhase(0);
+        setExistingJob(null);
       }
     } catch (error) {
-      console.error('Error checking book processing status:', error);
-      setCurrentPhase(0);
-    }
-  };
-
-  const startProcessing = async () => {
-    console.log('starting processing');
-    if (!bookId) {
-      message.error('Book ID is missing.');
-      return;
-    }
-
-    setProcessing(true);
-    setProgress(null); // Reset progress
-
-    try {
-      // Start listening to progress updates
-      const eventSource = new EventSourcePolyfill(
-        `${apiUrl}/api/books/${bookId}/extract-profiles/progress`,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('accessToken')}`,
-          },
-        }
-      );
-
-      eventSource.onmessage = (event) => {
-        const data: ProgressData = JSON.parse(event.data);
-        setProgress(data);
-
-        if (data.status === 'phase') {
-          const phaseNumber = getPhaseNumber(data.phase);
-          setCurrentPhase(phaseNumber - 1);
-        }
-
-        if (data.status === 'phase_completed') {
-          const phaseNumber = getPhaseNumber(data.phase);
-          setCurrentPhase(phaseNumber);
-        }
-
-        if (data.status === 'completed') {
-          message.success(data.message || 'Processing completed.');
-          eventSource.close();
-          setProcessing(false);
-          fetchChapters();
-        } else if (data.status === 'error') {
-          message.error(data.message || 'Error during processing.');
-          eventSource.close();
-          setProcessing(false);
-        }
-      };
-
-      eventSource.onerror = (err) => {
-        console.error('EventSource failed:', err);
-        message.error('Connection to progress stream failed.');
-        eventSource.close();
-        setProcessing(false);
-      };
-
-      // Trigger book processing
-      await axios.post(`${apiUrl}/api/books/${bookId}/extract-profiles`);
-    } catch (error) {
-      message.error('Error starting book processing.');
-      setProcessing(false);
-    }
-  };
-
-  const continueProcessing = async () => {
-    if (!bookId || !selectedChapterId) {
-      message.error('Book ID or Chapter ID is missing.');
-      return;
-    }
-
-    setProcessing(true);
-    setProgress(null); // Reset progress
-
-    try {
-      // Start listening to progress updates
-      const eventSource = new EventSourcePolyfill(
-        `${apiUrl}/api/books/${selectedChapterId}/generate-chapter-images/progress`,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('accessToken')}`,
-          },
-          heartbeatTimeout: 120000,
-        }
-      );
-
-      eventSource.onmessage = (event) => {
-        const data: ProgressData = JSON.parse(event.data);
-        setProgress(data);
-
-        if (data.status === 'phase') {
-          const phaseNumber = getPhaseNumber(data.phase);
-          setCurrentPhase(phaseNumber - 1);
-        }
-
-        if (data.status === 'phase_completed') {
-          const phaseNumber = getPhaseNumber(data.phase);
-          setCurrentPhase(phaseNumber);
-        }
-
-        if (data.status === 'completed') {
-          message.success(data.message || 'Processing completed.');
-          eventSource.close();
-          setProcessing(false);
-          // onProcessingComplete();
-          // onClose();
-        } else if (data.status === 'error') {
-          message.error(data.message || 'Error during processing.');
-          eventSource.close();
-          setProcessing(false);
-        }
-      };
-
-      eventSource.onerror = (err) => {
-        console.error('EventSource failed:', err);
-        message.error('Connection to progress stream failed.');
-        eventSource.close();
-        setProcessing(false);
-      };
-
-      // Trigger image generation
-      await axios.get(
-        `${apiUrl}/api/books/${selectedChapterId}/generate-chapter-images`
-      );
-    } catch (error) {
-      message.error('Error continuing book processing.');
-      setProcessing(false);
+      console.error('Error checking existing job:', error);
     }
   };
 
@@ -233,29 +99,114 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
         `${apiUrl}/api/books/${bookId}/chapters`
       );
       setChapters(response.data);
-      setCurrentPhase(2);
     } catch (error) {
       console.error('Error fetching chapters:', error);
-      message.error('Failed to fetch chapters.');
     }
   };
 
-  const getPhaseNumber = (phaseName?: string): number => {
-    switch (phaseName) {
+  const startProcessing = async () => {
+    if (!bookId) {
+      message.error('Book ID is missing.');
+      return;
+    }
+
+    try {
+      setProcessing(true);
+      setCurrentPhase(0);
+      const jobResponse = await axios.post(
+        `${apiUrl}/api/books/${bookId}/process`
+      );
+      const job: ProcessingJob = jobResponse.data;
+      setExistingJob(job);
+      startProgressPolling(job.id);
+    } catch (error: any) {
+      if (error.response && error.response.status === 409) {
+        message.error('A processing job is already running for this book.');
+      } else {
+        message.error('Error starting book processing.');
+      }
+      setProcessing(false);
+    }
+  };
+
+  const continueProcessing = async () => {
+    if (!bookId || !selectedChapterId) {
+      message.error('Book ID or Chapter ID is missing.');
+      return;
+    }
+
+    try {
+      setProcessing(true);
+      setCurrentPhase(2);
+      const jobResponse = await axios.get(
+        `${apiUrl}/api/chapters/${selectedChapterId}/generate-images`
+      );
+      const job: ProcessingJob = jobResponse.data;
+      setExistingJob(job);
+      startProgressPolling(job.id);
+    } catch (error: any) {
+      if (error.response && error.response.status === 409) {
+        message.error('A processing job is already running for this chapter.');
+      } else {
+        message.error('Error continuing chapter processing.');
+      }
+      setProcessing(false);
+    }
+  };
+
+  const startProgressPolling = (jobId: number) => {
+    fetchJobProgress(jobId); // Initial fetch
+
+    // Poll every 5 seconds
+    intervalRef.current = setInterval(() => {
+      fetchJobProgress(jobId);
+    }, 5000);
+  };
+
+  const fetchJobProgress = async (jobId: number) => {
+    try {
+      const response = await axios.get(`${apiUrl}/api/jobs/${jobId}`);
+      const job: ProcessingJob = response.data;
+      setExistingJob(job);
+      setCurrentPhase(getPhaseNumberFromStatus(job.phase));
+
+      // Update progress
+      setProgress({
+        status: job.status,
+        message: `Completed ${job.completedTasks} of ${job.totalTasks} tasks.`,
+        completed: job.completedTasks,
+        total: job.totalTasks,
+      });
+
+      if (job.status === 'completed' || job.status === 'failed') {
+        setProcessing(false);
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+        }
+        if (job.status === 'completed') {
+          message.success('Processing completed.');
+          onProcessingComplete();
+        } else {
+          message.error('Processing failed.');
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching job progress:', error);
+    }
+  };
+
+  const getPhaseNumberFromStatus = (status: string): number => {
+    switch (status) {
       case 'Phase 1':
-      case 'Phase 1: Extracting passages and chapters...':
-        return 1;
+        return 0;
       case 'Phase 2':
-      case 'Phase 2: Extracting canonical character names...':
-        return 2;
+        return 1;
       case 'Phase 3':
-      case 'Phase 3: Processing passages with context...':
-        return 3;
+        return 2;
       case 'Phase 4':
-      case 'Phase 4: Detecting scenes...':
-        return 4;
+        return 3;
       case 'Phase 5':
-        return 5;
+        return 4;
       default:
         return 0;
     }
@@ -282,37 +233,34 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
 
       {processing && progress && (
         <div style={{ marginTop: '20px' }}>
-          {progress.status === 'started' && <Text>{progress.message}</Text>}
-          {progress.status === 'phase' && (
-            <Text>
-              {progress.phase}: {progress.message}
-            </Text>
-          )}
-          {progress.status === 'phase_progress' && (
-            <div>
-              <Text>
-                {progress.phase}: {progress.completed}/{progress.total}
-              </Text>
-              <Progress
-                percent={Number(
-                  ((progress.completed! / progress.total!) * 100).toFixed(2)
-                )}
-              />
-            </div>
-          )}
-          {progress.status === 'phase_completed' && (
-            <Text type='success'>{progress.message}</Text>
-          )}
-          {progress.status === 'completed' && (
-            <Text type='success'>{progress.message}</Text>
-          )}
-          {progress.status === 'error' && (
-            <Text type='danger'>{progress.message}</Text>
-          )}
+          <Text>
+            {progress.message} ({progress.completed}/{progress.total})
+          </Text>
+          <Progress
+            percent={Number(
+              ((progress.completed! / progress.total!) * 100).toFixed(2)
+            )}
+          />
         </div>
       )}
 
-      {currentPhase === 0 && !processing && (
+      {/* Display start and end times */}
+      {existingJob?.startTime && (
+        <div style={{ marginTop: '10px' }}>
+          <Text>
+            Started at: {new Date(existingJob.startTime).toLocaleString()}
+          </Text>
+        </div>
+      )}
+      {existingJob?.endTime && (
+        <div style={{ marginTop: '10px' }}>
+          <Text>
+            Ended at: {new Date(existingJob.endTime).toLocaleString()}
+          </Text>
+        </div>
+      )}
+
+      {currentPhase === 0 && !processing && !existingJob && (
         <div style={{ marginTop: '20px' }}>
           <Button type='primary' onClick={startProcessing} loading={processing}>
             Start Processing
@@ -320,7 +268,7 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
         </div>
       )}
 
-      {currentPhase >= 2 && !processing && (
+      {currentPhase >= 2 && !processing && !existingJob && (
         <div style={{ marginTop: '20px' }}>
           <Title level={4}>Select Chapter to Continue</Title>
           <Select
@@ -346,7 +294,16 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
         </div>
       )}
 
-      {currentPhase === 4 && !processing && (
+      {existingJob && existingJob.status !== 'completed' && processing && (
+        <div style={{ marginTop: '20px' }}>
+          <Text>
+            A processing job is already running for this {existingJob.jobType}.
+            Please wait until it completes.
+          </Text>
+        </div>
+      )}
+
+      {currentPhase === 5 && !processing && (
         <div style={{ marginTop: '20px' }}>
           <Button
             type='primary'
