@@ -2,7 +2,7 @@ import { PauseCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { Button, InputNumber, Space, Typography } from 'antd';
 import React, { useEffect, useRef, useState } from 'react';
 
-const { Paragraph } = Typography;
+const { Paragraph, Text } = Typography;
 
 interface PassageTextProps {
   text: string;
@@ -152,13 +152,14 @@ const PassageText: React.FC<PassageTextProps> = ({
         >
           <InputNumber
             min={50}
-            max={1000}
+            max={400}
             size='small'
             value={wpm}
             onChange={handleWpmChange}
-            style={{ marginRight: '10px' }}
+            style={{ width: '60px' }}
           />
-          <Button size='small' onClick={togglePause}>
+          <Text>WPM</Text>
+          <Button onClick={togglePause}>
             {isPaused ? <PlayCircleOutlined /> : <PauseCircleOutlined />}{' '}
             Auto-Play
           </Button>

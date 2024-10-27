@@ -16,7 +16,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import GenerateImagesModal from '../components/reader/GenerateImagesModal';
 import PassageText from '../components/reader/PassageText';
-import { apiUrl } from '../utils/general';
+import { apiUrl, isNumber } from '../utils/general';
 import { Passage } from '../utils/types';
 
 const { Text } = Typography;
@@ -80,7 +80,7 @@ const FullScreenReaderPage: React.FC = () => {
         fetchChapters(bookId),
         fetchLastReadPosition(bookId),
       ]);
-
+      console.log('lastReadingPosition:', lastReadingPosition);
       if (!passageIndex) {
         if (lastReadingPosition) {
           console.log(
@@ -169,7 +169,11 @@ const FullScreenReaderPage: React.FC = () => {
       const response = await axios.get(
         `${baseUrl}/books/${bookId}/reading-progress`
       );
-      if (response.data.chapterId && response.data.passageIndex) {
+      console.log('Last read position:', response.data);
+      if (
+        isNumber(response.data.chapterId) &&
+        isNumber(response.data.passageIndex)
+      ) {
         return {
           chapterId: response.data.chapterId,
           passageIndex: response.data.passageIndex,
@@ -279,18 +283,39 @@ const FullScreenReaderPage: React.FC = () => {
     }
   };
 
-  const handlePreviousChapter = () => {
+  const handlePreviousChapter = async () => {
     const currentChapterIndex = chapters.findIndex(
       (chapter) => chapter.id === parseInt(chapterId || '', 10)
     );
+
     if (currentChapterIndex > 0) {
       const prevChapterId = chapters[currentChapterIndex - 1].id;
-      navigate(`/reader/${bookId}/${prevChapterId}/0`);
+
+      // Fetch passages for the previous chapter
+      try {
+        const response = await axios.get<Passage[]>(
+          `${baseUrl}/books/${bookId}/chapters/${prevChapterId}/passages`
+        );
+
+        const fetchedPassages = response.data;
+        const processedPassages: Passage[] = [];
+
+        // Split passages if necessary
+        fetchedPassages.forEach((passage) => {
+          const splitPassages = splitPassage(passage);
+          processedPassages.push(...splitPassages);
+        });
+
+        // Navigate to the last passage index of the previous chapter
+        const lastIndex = processedPassages.length - 1;
+        navigate(`/reader/${bookId}/${prevChapterId}/${lastIndex}`);
+      } catch (error) {
+        console.error('Error fetching passages for previous chapter:', error);
+      }
     } else {
       message.info('This is the first chapter.');
     }
   };
-
   // Handler for chapter selection
   const handleChapterSelect = (value: number) => {
     navigate(`/reader/${bookId}/${value}/0`);
@@ -530,6 +555,15 @@ const FullScreenReaderPage: React.FC = () => {
                 size='small'
               >
                 Library
+              </Button>
+              <Button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate('/user');
+                }}
+                size='small'
+              >
+                Settings
               </Button>
               <Button
                 type='primary'

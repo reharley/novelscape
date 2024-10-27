@@ -233,7 +233,7 @@ model User {
 
 model UserSettings {
     id       Int     @id @default(autoincrement())
-    autoPlay Boolean @default(false)
+    autoPlay Boolean @default(true)
     wpm      Int     @default(200)
     userId   String  @unique
     user     User    @relation(fields: [userId], references: [id])

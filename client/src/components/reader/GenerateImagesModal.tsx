@@ -95,9 +95,12 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
     if (!bookId) return;
 
     try {
+      setProcessing(true);
       const response = await axios.get(
         `${apiUrl}/api/books/${bookId}/chapters`
       );
+      setProcessing(false);
+
       setChapters(response.data);
       if (response.data?.length > 0) {
         setCurrentPhase(2);
@@ -156,7 +159,6 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
       setProcessing(false);
     }
   };
-
   const startProgressPolling = (jobId: number) => {
     fetchJobProgress(jobId); // Initial fetch
 
@@ -223,6 +225,7 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
         return 0;
     }
   };
+  console.log('processing', processing);
 
   return (
     <Modal
