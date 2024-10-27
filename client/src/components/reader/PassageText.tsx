@@ -1,5 +1,5 @@
 import { PauseCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
-import { Button, InputNumber, Space, Typography } from 'antd';
+import { Button, InputNumber, Space, Tooltip, Typography } from 'antd';
 import React, { useEffect, useRef, useState } from 'react';
 
 const { Paragraph, Text } = Typography;
@@ -150,15 +150,17 @@ const PassageText: React.FC<PassageTextProps> = ({
           style={{ marginBottom: '10px' }}
           onClick={(e) => e.stopPropagation()}
         >
-          <InputNumber
-            min={50}
-            max={400}
-            size='small'
-            value={wpm}
-            onChange={handleWpmChange}
-            style={{ width: '60px' }}
-          />
-          <Text>WPM</Text>
+          <Tooltip title='Adjust speed of autoplay in words per minute (wpm)'>
+            <InputNumber
+              min={50}
+              max={400}
+              size='small'
+              value={wpm}
+              onChange={handleWpmChange}
+              style={{ width: '60px' }}
+            />
+            <Text>WPM</Text>
+          </Tooltip>
           <Button onClick={togglePause}>
             {isPaused ? <PlayCircleOutlined /> : <PauseCircleOutlined />}{' '}
             Auto-Play
