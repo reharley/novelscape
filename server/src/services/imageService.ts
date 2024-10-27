@@ -11,7 +11,6 @@ interface GenerateImageParams {
   width?: number;
   height?: number;
   positive_loras?: { name: string; weight: number }[];
-  negative_loras?: { name: string; weight: number }[];
   embeddings?: string[];
   negative_embeddings?: string[];
   model: string;
@@ -35,7 +34,6 @@ export async function generateImage(
     width,
     height,
     positive_loras,
-    negative_loras,
     embeddings,
     negative_embeddings,
     model,
@@ -87,14 +85,6 @@ export async function generateImage(
         (lora) => `<lora:${lora.name}:${lora.weight}>`
       );
       finalPrompt = `${loraPrompts.join(' ')} ${finalPrompt}`;
-    }
-    if (negative_loras && negative_loras.length > 0) {
-      const negativeLoraPrompts = negative_loras.map(
-        (lora) => `<lora:${lora.name}:${lora.weight}>`
-      );
-      finalNegativePrompt = `${negativeLoraPrompts.join(
-        ' '
-      )} ${finalNegativePrompt}`;
     }
     // Send request to Stable Diffusion WebUI API
     const response = await makeRequest('/sdapi/v1/txt2img', 'POST', {
@@ -151,9 +141,6 @@ export async function generateImage(
     );
     throw new Error('An error occurred while generating the image.');
   }
-}
-interface RembgResponse {
-  image: string; // base64-encoded result image
 }
 async function removeImageBackground(
   encodedImage: string
@@ -223,50 +210,6 @@ async function associateModelResources(
       generationDataId: generationData.id,
     })),
   });
-}
-
-/**
- * Converts a Blob to a Base64 encoded string in Node.js.
- *
- * @param blob - The Blob object to convert.
- * @returns A Promise that resolves to a Base64 encoded string.
- */
-async function blobToBase64(blob: Blob): Promise<string> {
-  // Step 1: Get the ArrayBuffer from the Blob
-  const arrayBuffer = await blob.arrayBuffer();
-
-  // Step 2: Convert ArrayBuffer to Buffer
-  const buffer = Buffer.from(arrayBuffer);
-
-  // Step 3: Convert Buffer to Base64 string
-  const base64String = buffer.toString('base64');
-
-  return base64String;
-}
-/**
- * Converts a Base64 string to a Blob in Node.js.
- *
- * @param base64 - The Base64 encoded string.
- * @param mimeType - (Optional) The MIME type of the resulting Blob. Defaults to 'application/octet-stream'.
- * @returns A Promise that resolves to a Blob representing the decoded data.
- */
-function base64ToBlob(
-  base64: string,
-  mimeType: string = 'application/octet-stream'
-): Blob {
-  // Decode the Base64 string into a Buffer
-  const buffer = Buffer.from(base64, 'base64');
-
-  // Convert Buffer to an ArrayBuffer
-  const arrayBuffer = buffer.buffer.slice(
-    buffer.byteOffset,
-    buffer.byteLength + buffer.byteOffset
-  );
-
-  // Create a Blob from the ArrayBuffer
-  const blob = new Blob([arrayBuffer], { type: mimeType });
-
-  return blob;
 }
 
 async function makeRequest(

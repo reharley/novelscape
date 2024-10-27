@@ -387,7 +387,6 @@ async function generateImageForProfileHelper(
         ...characterImageSize,
         // Pass the options to generateImage
         positive_loras: positiveLoras,
-        negative_loras: negativeLoras,
         embeddings: profileOptions?.embeddings,
         negative_embeddings: profileOptions?.negativeEmbeddings,
         model: modelFileName,
@@ -520,7 +519,6 @@ async function generateBackgroundImageForScene(
         ...backgroundSceneSize,
         // Pass the options to generateImage
         positive_loras: positiveLoras,
-        negative_loras: negativeLoras,
         embeddings: backgroundOptions?.embeddings,
         negative_embeddings: backgroundOptions?.negativeEmbeddings,
         model: modelFileName,
