@@ -391,9 +391,9 @@ async function processBook(bookId: number, jobId: number) {
       phase: 'Phase 1',
     },
   });
-  await extractPassageAndChapters(bookId, jobId); // Implement this function
+  await extractPassageAndChapters(bookId, jobId);
 
-  await extractCanonicalNames(bookId, jobId); // Implement this function
+  await extractCanonicalNames(bookId, jobId);
 
   await prisma.processingJob.update({
     where: { id: jobId },
@@ -589,9 +589,11 @@ export async function generateChapterImagesController(
 
   (async () => {
     if (!chapter.processed) {
-      await processPassagesWithContextForChapter(chapterId, job.id);
+      await Promise.all([
+        processPassagesWithContextForChapter(chapterId, job.id),
+        detectScenesForChapter(chapterId, job.id),
+      ]);
 
-      await detectScenesForChapter(chapterId, job.id);
       await prisma.chapter.update({
         where: { id: chapterId },
         data: { processed: true },

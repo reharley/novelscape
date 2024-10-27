@@ -99,7 +99,6 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
       const response = await axios.get(
         `${apiUrl}/api/books/${bookId}/chapters`
       );
-      setProcessing(false);
 
       setChapters(response.data);
       if (response.data?.length > 0) {
@@ -107,6 +106,8 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
       }
     } catch (error) {
       console.error('Error fetching chapters:', error);
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -225,7 +226,6 @@ const GenerateImagesModal: React.FC<GenerateImagesModalProps> = ({
         return 0;
     }
   };
-  console.log('processing', processing);
 
   return (
     <Modal

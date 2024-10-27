@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import pLimit from 'p-limit';
 
 import prisma from '../config/prisma.js';
 import { getCanonicalNames } from '../services/bookService.js';
@@ -44,7 +45,6 @@ export async function generateImageController(req: Request, res: Response) {
   }
 }
 
-// Helper function to ensure GenerationData exists for a profile
 async function ensureGenerationDataForProfile(
   profile: ProfileWithRelations,
   characterImageSize: { width: number; height: number }
@@ -159,190 +159,6 @@ export async function generateImageForProfile(req: Request, res: Response) {
   }
 }
 
-export async function generateImagesForChapter(req: Request, res: Response) {
-  const { chapterId } = req.params;
-  const { forceRegenerate, profileOptions, backgroundOptions } = req.body;
-
-  if (!chapterId) {
-    res.status(400).json({ error: 'Chapter ID is required.' });
-    return;
-  }
-
-  try {
-    // Fetch the chapter with its scenes, passages, and profiles
-    const chapter = await prisma.chapter.findUnique({
-      where: { id: Number(chapterId) },
-      include: {
-        book: true,
-        scenes: {
-          include: {
-            passages: {
-              include: {
-                profiles: {
-                  include: {
-                    descriptions: true,
-                    image: {
-                      include: {
-                        generationData: {
-                          include: {
-                            civitaiResources: {
-                              include: {
-                                model: true,
-                              },
-                            },
-                          },
-                        },
-                        model: true,
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    if (!chapter) {
-      res.status(404).json({ error: 'Chapter not found.' });
-      return;
-    }
-
-    // Collect all scene IDs in the chapter
-    const sceneIds = chapter.scenes.map((scene: any) => scene.id);
-
-    if (sceneIds.length === 0) {
-      res.status(400).json({ error: 'No scenes found in this chapter.' });
-      return;
-    }
-
-    // Collect all unique profiles in the chapter
-    const profileIdsSet = new Set<number>();
-    chapter.scenes.forEach((scene: any) => {
-      scene.passages.forEach((passage: any) => {
-        passage.profiles.forEach((profile: any) => {
-          profileIdsSet.add(profile.id);
-        });
-      });
-    });
-
-    const profileIds = Array.from(profileIdsSet);
-
-    // Fetch profiles with necessary includes
-    const profiles = await prisma.profile.findMany({
-      where: { id: { in: profileIds } },
-      include: {
-        descriptions: true,
-        image: {
-          include: {
-            generationData: {
-              include: {
-                civitaiResources: {
-                  include: {
-                    model: true,
-                  },
-                },
-              },
-            },
-            model: true,
-          },
-        },
-        book: true,
-      },
-    });
-
-    const totalTasks = sceneIds.length + profiles.length;
-
-    // Check if a job is already running for this chapter
-    const existingJob = await prisma.processingJob.findFirst({
-      where: {
-        chapterId: chapter.id,
-        status: {
-          in: ['in_progress', 'pending'],
-        },
-      },
-    });
-
-    if (existingJob && existingJob.status === 'in_progress') {
-      res.status(409).json({
-        error: 'A processing job is already running for this chapter.',
-      });
-      return;
-    }
-
-    // Create a new job
-    const job = await prisma.processingJob.create({
-      data: {
-        phase: 'init',
-        jobType: 'chapter',
-        bookId: chapter.bookId,
-        chapterId: chapter.id,
-        status: 'in_progress',
-        totalTasks: totalTasks,
-        progress: 0.0,
-        completedTasks: 0,
-        failedTasks: 0,
-        startTime: new Date(),
-      },
-    });
-
-    // Return the job ID to the client
-    res.json({ jobId: job.id, message: 'Image generation job started.' });
-
-    // Process images asynchronously
-    (async () => {
-      try {
-        // Generate background images
-        await generateBackgroundImagesForChapter(
-          chapter,
-          job,
-          forceRegenerate,
-          backgroundOptions
-        );
-
-        // Generate profile images
-        await generateProfileImagesForChapter(
-          chapter,
-          profiles,
-          job,
-          forceRegenerate,
-          profileOptions
-        );
-
-        // Finalize job status
-        await prisma.processingJob.update({
-          where: { id: job.id },
-          data: {
-            status: 'completed',
-            progress: 100.0,
-            endTime: new Date(),
-          },
-        });
-      } catch (error: any) {
-        console.error('Error generating images for chapter:', error);
-
-        // Update job with failed status
-        await prisma.processingJob.update({
-          where: { id: job.id },
-          data: {
-            status: 'failed',
-            endTime: new Date(),
-          },
-        });
-      }
-    })();
-  } catch (error: any) {
-    console.error('Error generating images for chapter:', error);
-    res.status(500).json({
-      error:
-        error.message ||
-        'An error occurred while generating images for the chapter.',
-    });
-  }
-}
-
-// Helper function to generate all background images sequentially
 export async function generateBackgroundImagesForChapter(
   chapter: ChapterWithRelations,
   job: any,
@@ -350,75 +166,55 @@ export async function generateBackgroundImagesForChapter(
   backgroundOptions: any
 ) {
   const canonicalNames = await getCanonicalNames(chapter.bookId);
-  for (const scene of chapter.scenes) {
-    try {
-      // Aggregate all passages' textContent in the scene
-      let passages = scene.passages || [];
-      const combinedSceneText = passages
-        .map((p: any) => p.textContent)
-        .join('\n');
+  const limit = pLimit(6);
 
-      // Generate background image for scene
-      await generateBackgroundImageForScene(
-        scene,
-        combinedSceneText,
-        chapter.book.title,
-        forceRegenerate,
-        backgroundSceneSize,
-        backgroundOptions,
-        canonicalNames,
-        chapter.book.userId
-      );
+  const tasks = chapter.scenes.map((scene) =>
+    limit(async () => {
+      try {
+        const passages = scene.passages || [];
+        const combinedSceneText = passages
+          .map((p: any) => p.textContent)
+          .join('\n');
 
-      // Update job progress
-      await prisma.processingJob.update({
-        where: { id: job.id },
-        data: {
-          completedTasks: { increment: 1 },
-          progress: {
-            increment: (1 / job.totalTasks) * 100,
+        await generateBackgroundImageForScene(
+          scene,
+          combinedSceneText,
+          chapter.book.title,
+          forceRegenerate,
+          backgroundSceneSize,
+          backgroundOptions,
+          canonicalNames,
+          chapter.book.userId
+        );
+
+        await prisma.processingJob.update({
+          where: { id: job.id },
+          data: {
+            completedTasks: { increment: 1 },
+            progress: {
+              increment: (1 / job.totalTasks) * 100,
+            },
           },
-        },
-      });
-    } catch (error: any) {
-      console.error(
-        `Error generating background image for scene ${scene.id}:`,
-        error
-      );
-      // Update job with failed task
-      const jobTmp = await prisma.processingJob.update({
-        where: { id: job.id },
-        data: {
-          failedTasks: { increment: 1 },
-        },
-      });
-    }
-  }
-}
-
-/**
- * Removes any substrings from a comma-separated string that contain any of the first or last names as whole words.
- * The matching is case-insensitive.
- * @param names - List of names (first and last)
- * @param str - Comma-separated string to filter
- * @returns Filtered string with substrings not containing the names
- */
-function removeNamesFromString(names: string[], str: string): string {
-  const nameParts = new Set(
-    names.flatMap((name) => name.toLowerCase().split(/\s+/))
+        });
+      } catch (error: any) {
+        console.error(
+          `Error generating background image for scene ${scene.id}:`,
+          error
+        );
+        // Update job with failed task
+        await prisma.processingJob.update({
+          where: { id: job.id },
+          data: {
+            failedTasks: { increment: 1 },
+          },
+        });
+      }
+    })
   );
 
-  const stringsArray = str.split(',');
-
-  const filteredArray = stringsArray.filter((s) => {
-    const words = s.toLowerCase().split(/\W+/);
-    return !words.some((word) => nameParts.has(word));
-  });
-
-  return filteredArray.join(',');
+  await Promise.all(tasks);
 }
 
-// Helper function to generate all profile images sequentially
 export async function generateProfileImagesForChapter(
   chapter: ChapterWithRelations,
   profiles: ProfileWithRelations[],
@@ -426,87 +222,55 @@ export async function generateProfileImagesForChapter(
   forceRegenerate: boolean,
   profileOptions: any
 ) {
-  // Aggregate all passages' textContent in the chapter
   const combinedChapterText = chapter.scenes
     .flatMap((scene: any) => scene.passages)
     .map((p: any) => p!.textContent)
     .join(' ');
 
-  for (const profile of profiles) {
-    try {
-      // Generate image for profile
-      await generateImageForProfileHelper(
-        profile,
-        combinedChapterText,
-        chapter.book.title,
-        forceRegenerate,
-        characterImageSize,
-        profileOptions,
-        chapter.book.userId
-      );
+  const limit = pLimit(6);
 
-      // Update job progress
-      const jobTmp = await prisma.processingJob.update({
-        where: { id: job.id },
-        data: {
-          completedTasks: { increment: 1 },
-          progress: {
-            increment: (1 / job.totalTasks) * 100,
+  const tasks = profiles.map((profile) =>
+    limit(async () => {
+      try {
+        await generateImageForProfileHelper(
+          profile,
+          combinedChapterText,
+          chapter.book.title,
+          forceRegenerate,
+          characterImageSize,
+          profileOptions,
+          chapter.book.userId
+        );
+
+        // Update job progress
+        await prisma.processingJob.update({
+          where: { id: job.id },
+          data: {
+            completedTasks: { increment: 1 },
+            progress: {
+              increment: (1 / job.totalTasks) * 100,
+            },
           },
-        },
-      });
-    } catch (error: any) {
-      console.error(`Error generating image for profile ${profile.id}:`, error);
-      // Update job with failed task
-      await prisma.processingJob.update({
-        where: { id: job.id },
-        data: {
-          failedTasks: { increment: 1 },
-        },
-      });
-    }
-  }
+        });
+      } catch (error: any) {
+        console.error(
+          `Error generating image for profile ${profile.id}:`,
+          error
+        );
+        // Update job with failed task
+        await prisma.processingJob.update({
+          where: { id: job.id },
+          data: {
+            failedTasks: { increment: 1 },
+          },
+        });
+      }
+    })
+  );
+
+  await Promise.all(tasks);
 }
 
-export async function getJobStatus(req: Request, res: Response) {
-  const { jobId } = req.params;
-
-  try {
-    const job = await prisma.processingJob.findUnique({
-      where: { id: Number(jobId) },
-    });
-
-    if (!job) {
-      res.status(404).json({ error: 'Job not found.' });
-      return;
-    }
-
-    res.json(job);
-  } catch (error: any) {
-    console.error('Error fetching job status:', error);
-    res.status(500).json({
-      error: error.message || 'Failed to fetch job status.',
-    });
-  }
-}
-
-export async function listJobs(req: Request, res: Response) {
-  try {
-    const jobs = await prisma.processingJob.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 20, // Fetch last 20 jobs
-    });
-
-    res.json(jobs);
-  } catch (error: any) {
-    console.error('Error fetching jobs:', error);
-    res.status(500).json({
-      error: error.message || 'Failed to fetch jobs.',
-    });
-  }
-}
-
-// Modify the function signature to accept profileOptions
 async function generateImageForProfileHelper(
   profile: ProfileWithRelations,
   passageText: string,
@@ -671,7 +435,6 @@ async function generateImageForProfileHelper(
   }
 }
 
-// Modify the function signature to accept backgroundOptions
 async function generateBackgroundImageForScene(
   scene: SceneWithRelations,
   combinedSceneText: string,
@@ -719,11 +482,8 @@ async function generateBackgroundImageForScene(
         userId
       );
 
-      const prompt = removeNamesFromString(personNames, prompts.positivePrompt);
-      const negativePrompt = removeNamesFromString(
-        personNames,
-        prompts.negativePrompt
-      );
+      const prompt = prompts.positivePrompt;
+      const negativePrompt = prompts.negativePrompt;
       // Update GenerationData
       await prisma.generationData.update({
         where: { id: generationData.id },
@@ -782,337 +542,4 @@ async function generateBackgroundImageForScene(
       error: error.message || 'Background image generation failed.',
     };
   }
-}
-
-export async function generateImagesForPassage(req: Request, res: Response) {
-  const { passageId } = req.params;
-  const { forceRegenerate } = req.body;
-
-  try {
-    // Fetch the current passage along with its scene and related profiles
-    const passage = await prisma.passage.findUnique({
-      where: { id: Number(passageId) },
-      include: {
-        book: true,
-        scene: {
-          include: {
-            book: true, // Ensure the book is included in the scene
-          },
-        },
-        profiles: {
-          include: {
-            descriptions: true,
-            image: {
-              include: {
-                generationData: {
-                  include: {
-                    civitaiResources: {
-                      include: {
-                        model: true,
-                      },
-                    },
-                  },
-                },
-                model: true,
-              },
-            },
-          },
-        },
-      },
-    });
-
-    if (!passage) {
-      res.status(404).json({ error: 'Passage not found.' });
-      return;
-    }
-
-    const sceneId = passage.scene?.id;
-    if (!sceneId) {
-      res
-        .status(400)
-        .json({ error: 'Passage is not associated with any scene.' });
-      return;
-    }
-
-    // Fetch all passages within the same scene as the current passage
-    const allPassagesInScene = await prisma.passage.findMany({
-      where: { sceneId: sceneId },
-      select: { textContent: true },
-    });
-
-    if (allPassagesInScene.length === 0) {
-      res
-        .status(400)
-        .json({ error: 'No passages found in the current scene.' });
-      return;
-    }
-
-    // Combine textContent from all passages in the scene to generate a comprehensive background prompt
-    const combinedSceneText = allPassagesInScene
-      .map((p) => p.textContent)
-      .join(' ');
-
-    const profiles = passage.profiles;
-
-    if (profiles.length === 0) {
-      res.status(400).json({ error: 'No profiles linked to this passage.' });
-      return;
-    }
-
-    const characterProfiles = profiles.filter(
-      (profile) => profile.type?.toLowerCase() === 'person'
-    );
-
-    // Generate images for character profiles
-    const characterImagePromises = characterProfiles.map((profile) =>
-      generateImageForProfileHelper(
-        profile,
-        passage.textContent,
-        passage.book.title,
-        forceRegenerate,
-        characterImageSize,
-        null,
-        passage.book.userId
-      )
-    );
-
-    const canonicalNames = await getCanonicalNames(passage.bookId);
-    // Generate background image
-    const backgroundImagePromise = generateBackgroundImageForScene(
-      passage.scene!,
-      combinedSceneText,
-      passage.book.title,
-      forceRegenerate,
-      backgroundSceneSize,
-      null,
-      canonicalNames,
-      passage.book.userId
-    ).then((result) => ({
-      profileId: 0,
-      profileName: 'Background Scene',
-      image: result.image,
-      error: result.error,
-    }));
-
-    // Execute all image generation promises in parallel
-    const characterImageResults = await Promise.all(characterImagePromises);
-    const backgroundImageResult = await backgroundImagePromise;
-
-    // Combine all image results, including the background
-    const allImageResults = [...characterImageResults, backgroundImageResult];
-    res.json({ passageId: passage.id, images: allImageResults });
-  } catch (error: any) {
-    console.error('Error generating images for passage:', error);
-    res.status(500).json({
-      error:
-        error.message ||
-        'An error occurred while generating images for the passage.',
-    });
-  }
-}
-
-export async function generateImagesForScene(req: Request, res: Response) {
-  const { sceneId } = req.params;
-  const { forceRegenerate } = req.body;
-
-  try {
-    // Fetch the scene with its passages and profiles
-    const scene = await prisma.scene.findUnique({
-      where: { id: Number(sceneId) },
-      include: {
-        book: true,
-        passages: {
-          include: {
-            profiles: {
-              include: {
-                descriptions: true,
-                image: {
-                  include: {
-                    generationData: {
-                      include: {
-                        civitaiResources: {
-                          include: {
-                            model: true,
-                          },
-                        },
-                      },
-                    },
-                    model: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    if (!scene) {
-      res.status(404).json({ error: 'Scene not found.' });
-      return;
-    }
-
-    // Aggregate all passages' textContent in the scene
-    const combinedSceneText = scene.passages
-      .map((p) => p.textContent)
-      .join(' ');
-
-    // Collect unique profiles across all passages
-    const uniqueProfilesMap: { [profileId: number]: ProfileWithRelations } = {};
-    scene.passages.forEach((passage) => {
-      passage.profiles.forEach((profile) => {
-        uniqueProfilesMap[profile.id] = profile;
-      });
-    });
-    const uniqueProfiles = Object.values(uniqueProfilesMap);
-
-    if (uniqueProfiles.length === 0) {
-      res.status(400).json({ error: 'No profiles linked to this scene.' });
-      return;
-    }
-
-    // Generate images for each unique profile
-    const profileImagePromises = uniqueProfiles.map((profile) =>
-      generateImageForProfileHelper(
-        profile,
-        combinedSceneText,
-        scene.book.title,
-        forceRegenerate,
-        characterImageSize,
-        null,
-        scene.book.userId
-      )
-    );
-
-    const canonicalNames = await getCanonicalNames(scene.bookId);
-    // Generate background image
-    const backgroundImageResult = await generateBackgroundImageForScene(
-      scene,
-      combinedSceneText,
-      scene.book.title,
-      forceRegenerate,
-      backgroundSceneSize,
-      null,
-      canonicalNames,
-      scene.book.userId
-    );
-
-    // Prepare response
-    const profileImageResults = await Promise.all(profileImagePromises);
-    const responseImages = [
-      {
-        profileId: 0, // Background image
-        profileName: 'Background Scene',
-        image: backgroundImageResult.image,
-        error: backgroundImageResult.error,
-      },
-      ...profileImageResults,
-    ];
-
-    res.json({ sceneId: scene.id, images: responseImages });
-  } catch (error: any) {
-    console.error('Error generating images for scene:', error);
-    res
-      .status(500)
-      .json({ error: error.message || 'Failed to generate images for scene.' });
-  }
-}
-
-// Helper function to generate images for a single scene without HTTP response
-async function generateImagesForSceneLogic(
-  sceneId: number,
-  forceRegenerate: boolean,
-  profileOptions: any,
-  backgroundOptions: any,
-  canonicalNames: string[]
-) {
-  // Fetch the scene with its passages and profiles
-  const scene = await prisma.scene.findUnique({
-    where: { id: Number(sceneId) },
-    include: {
-      book: true,
-      passages: {
-        include: {
-          profiles: {
-            include: {
-              descriptions: true,
-              image: {
-                include: {
-                  generationData: {
-                    include: {
-                      civitaiResources: {
-                        include: {
-                          model: true,
-                        },
-                      },
-                    },
-                  },
-                  model: true,
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-  });
-
-  if (!scene) {
-    throw new Error('Scene not found.');
-  }
-
-  // Aggregate all passages' textContent in the scene
-  const combinedSceneText = scene.passages.map((p) => p.textContent).join(' ');
-
-  // Collect unique profiles across all passages
-  const uniqueProfilesMap: { [profileId: number]: ProfileWithRelations } = {};
-  scene.passages.forEach((passage) => {
-    passage.profiles.forEach((profile) => {
-      uniqueProfilesMap[profile.id] = profile;
-    });
-  });
-  const uniqueProfiles = Object.values(uniqueProfilesMap);
-
-  if (uniqueProfiles.length === 0) {
-    console.log('No profiles linked to this scene.');
-  }
-
-  // Generate images for each unique profile
-  const profileImagePromises = uniqueProfiles.map((profile) =>
-    generateImageForProfileHelper(
-      profile,
-      combinedSceneText,
-      scene.book.title,
-      forceRegenerate,
-      characterImageSize,
-      profileOptions,
-      scene.book.userId
-    )
-  );
-
-  // Generate background image
-  const backgroundImageResult = await generateBackgroundImageForScene(
-    scene,
-    combinedSceneText,
-    scene.book.title,
-    forceRegenerate,
-    backgroundSceneSize,
-    backgroundOptions,
-    canonicalNames,
-    scene.book.userId
-  );
-
-  // Prepare response (optional, since this function doesn't return HTTP response)
-  const profileImageResults = await Promise.all(profileImagePromises);
-  const responseImages = [
-    {
-      profileId: 0, // Background image
-      profileName: 'Background Scene',
-      image: backgroundImageResult.image,
-      error: backgroundImageResult.error,
-    },
-    ...profileImageResults,
-  ];
-
-  return responseImages;
 }

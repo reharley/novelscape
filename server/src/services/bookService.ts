@@ -27,7 +27,7 @@ export async function extractCanonicalNames(
   bookId: number,
   jobId: number
 ): Promise<void> {
-  const concurrencyLimit = 5;
+  const concurrencyLimit = 20;
   const limit = pLimit(concurrencyLimit);
 
   const passages = await prisma.passage.findMany({
@@ -131,7 +131,7 @@ export async function processPassagesWithContextForChapter(
   chapterId: number,
   jobId: number
 ): Promise<void> {
-  const concurrencyLimit = 7; // Adjust based on your system's capabilities
+  const concurrencyLimit = 18;
   const limit = pLimit(concurrencyLimit);
 
   const chapter = await prisma.chapter.findUnique({
