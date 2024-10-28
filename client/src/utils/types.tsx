@@ -38,6 +38,14 @@ export interface Description {
   passageId: number;
 }
 
+export interface UserSettings {
+  id: number;
+  passageSpeaker: boolean;
+  autoPlay: boolean;
+  wpm: number;
+  userId: string;
+}
+
 export interface Book {
   id: number;
   profiles: Profile[];
@@ -65,6 +73,8 @@ export interface Passage {
   order: number;
   profiles: Profile[];
   bookId: string;
+  speakerId?: number;
+  speaker?: Profile;
   chapterId: number;
   createdAt: string;
   updatedAt: string;

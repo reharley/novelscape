@@ -131,8 +131,6 @@ export async function generateImage(
     if (generationData)
       await associateModelResources(generationData, resources, model);
 
-    console.log(`Image uploaded to Azure Blob Storage: ${imageUrl}`);
-
     return { imageUrl };
   } catch (error: any) {
     console.error(
@@ -165,7 +163,6 @@ async function removeImageBackground(
     }
 
     if (response.status === 200 && response.data.image) {
-      console.log('Background removed successfully!');
       return response.data.image; // base64-encoded string of the result image
     } else {
       console.error('Failed to remove background:', response.data);

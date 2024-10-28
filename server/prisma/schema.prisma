@@ -8,21 +8,22 @@ datasource db {
 }
 
 model Book {
-    id              Int               @id @default(autoincrement())
-    title           String
-    processed       Boolean           @default(false)
-    storageUrl      String
-    coverUrl        String?
-    userId          String
-    chapters        Chapter[]
-    profiles        Profile[]
-    passages        Passage[]
-    scenes          Scene[]
-    createdAt       DateTime          @default(now())
-    updatedAt       DateTime          @updatedAt
-    descriptions    Description[]
-    ReadingProgress ReadingProgress[]
-    ProcessingJob   ProcessingJob[]
+    id                     Int                      @id @default(autoincrement())
+    title                  String
+    processed              Boolean                  @default(false)
+    storageUrl             String
+    coverUrl               String?
+    userId                 String
+    chapters               Chapter[]
+    profiles               Profile[]
+    passages               Passage[]
+    scenes                 Scene[]
+    createdAt              DateTime                 @default(now())
+    updatedAt              DateTime                 @updatedAt
+    descriptions           Description[]
+    ReadingProgress        ReadingProgress[]
+    ProcessingJob          ProcessingJob[]
+    ImageGenerationPackage ImageGenerationPackage[]
 }
 
 model Chapter {
@@ -32,6 +33,7 @@ model Chapter {
     book            Book              @relation(fields: [bookId], references: [id])
     bookId          Int
     processed       Boolean           @default(false)
+    speechProcessed Boolean           @default(false)
     passages        Passage[]
     scenes          Scene[]
     ReadingProgress ReadingProgress[]
@@ -48,30 +50,38 @@ model Passage {
     chapterId    Int
     descriptions Description[]
     profiles     Profile[]     @relation("PassageProfiles")
+    speakerId    Int?
+    speaker      Profile?      @relation("PassageSpeaker", fields: [speakerId], references: [id])
     scene        Scene?        @relation(fields: [sceneId], references: [id])
     sceneId      Int?
-    createdAt    DateTime      @default(now())
-    updatedAt    DateTime      @updatedAt
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    Profile   Profile? @relation(fields: [profileId], references: [id])
+    profileId Int?
 
     @@index([chapterId, order])
 }
 
 model Profile {
-    id           Int              @id @default(autoincrement())
-    name         String
-    type         String?
-    imageUrl     String?
-    gender       String?
-    descriptions Description[]
-    book         Book             @relation(fields: [bookId], references: [id])
-    bookId       Int
-    passages     Passage[]        @relation("PassageProfiles")
-    aiModels     ProfileAiModel[]
-    imageId      Int?
-    image        ModelImage?      @relation(fields: [imageId], references: [id])
-    aliases      Alias[] // Relation to Alias
-    createdAt    DateTime         @default(now())
-    updatedAt    DateTime         @updatedAt
+    id              Int                   @id @default(autoincrement())
+    name            String
+    type            String?
+    imageUrl        String?
+    gender          String?
+    descriptions    Description[]
+    book            Book                  @relation(fields: [bookId], references: [id])
+    bookId          Int
+    passages        Passage[]             @relation("PassageProfiles")
+    aiModels        ProfileAiModel[]
+    imageId         Int?
+    image           ModelImage?           @relation(fields: [imageId], references: [id])
+    aliases         Alias[]
+    createdAt       DateTime              @default(now())
+    updatedAt       DateTime              @updatedAt
+    imagePackages   ProfileImagePackage[]
+    Passage         Passage[]
+    speakerPassages Passage[]             @relation("PassageSpeaker")
 
     @@unique([name, bookId])
 }
@@ -175,16 +185,17 @@ model ProfileAiModel {
 }
 
 model Scene {
-    id        Int       @id @default(autoincrement())
-    order     Int
-    book      Book      @relation(fields: [bookId], references: [id])
-    bookId    Int
-    chapter   Chapter?  @relation(fields: [chapterId], references: [id])
-    chapterId Int
-    passages  Passage[]
-    imageUrl  String?
-    createdAt DateTime  @default(now())
-    updatedAt DateTime  @updatedAt
+    id            Int                 @id @default(autoincrement())
+    order         Int
+    book          Book                @relation(fields: [bookId], references: [id])
+    bookId        Int
+    chapter       Chapter?            @relation(fields: [chapterId], references: [id])
+    chapterId     Int?
+    passages      Passage[]
+    imageUrl      String?
+    createdAt     DateTime            @default(now())
+    updatedAt     DateTime            @updatedAt
+    imagePackages SceneImagePackage[]
 }
 
 model ProcessingJob {
@@ -232,9 +243,72 @@ model User {
 }
 
 model UserSettings {
-    id       Int     @id @default(autoincrement())
-    autoPlay Boolean @default(true)
-    wpm      Int     @default(200)
-    userId   String  @unique
-    user     User    @relation(fields: [userId], references: [id])
+    id             Int     @id @default(autoincrement())
+    autoPlay       Boolean @default(true)
+    wpm            Int     @default(200)
+    passageSpeaker Boolean @default(true)
+
+    userId String @unique
+    user   User   @relation(fields: [userId], references: [id])
+}
+
+model ImageGenerationPackage {
+    id                  Int                   @id @default(autoincrement())
+    name                String
+    book                Book                  @relation(fields: [bookId], references: [id])
+    bookId              Int
+    prompt              String
+    negative_prompt     String?
+    steps               Int?
+    width               Int?
+    height              Int?
+    model               String
+    removeBackground    Boolean               @default(false)
+    positiveLoras       PositiveLora[]
+    embeddings          Embedding[]
+    negativeEmbeddings  NegativeEmbedding[]
+    profileAssociations ProfileImagePackage[]
+    sceneAssociations   SceneImagePackage[]
+    createdAt           DateTime              @default(now())
+    updatedAt           DateTime              @updatedAt
+}
+
+model PositiveLora {
+    id                     Int                    @id @default(autoincrement())
+    name                   String
+    weight                 Float
+    imageGenerationPackage ImageGenerationPackage @relation(fields: [packageId], references: [id])
+    packageId              Int
+}
+
+model Embedding {
+    id                     Int                    @id @default(autoincrement())
+    name                   String
+    imageGenerationPackage ImageGenerationPackage @relation(fields: [packageId], references: [id])
+    packageId              Int
+}
+
+model NegativeEmbedding {
+    id                     Int                    @id @default(autoincrement())
+    name                   String
+    imageGenerationPackage ImageGenerationPackage @relation(fields: [packageId], references: [id])
+    packageId              Int
+}
+
+model ProfileImagePackage {
+    profileId Int
+    packageId Int
+    profile   Profile                @relation(fields: [profileId], references: [id])
+    package   ImageGenerationPackage @relation(fields: [packageId], references: [id])
+
+    @@id([profileId, packageId])
+}
+
+model SceneImagePackage {
+    sceneId   Int
+    packageId Int
+    scene     Scene                  @relation(fields: [sceneId], references: [id])
+    package   ImageGenerationPackage @relation(fields: [packageId], references: [id])
+
+    @@id([sceneId, packageId])
 }

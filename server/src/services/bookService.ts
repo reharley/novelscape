@@ -1,7 +1,12 @@
 import pLimit from 'p-limit';
 
 import prisma from '../config/prisma.js';
-import { extractFullNames, performNERWithAliases } from '../utils/prompts.js';
+import {
+  extractFullNames,
+  identifySpeakersInPassage,
+  performNERWithAliases,
+} from '../utils/prompts.js';
+import { PassageWithProfileSpeaker } from '../utils/types.js';
 import { extractEpubPassagesAndChapters, getEpub } from './epubService.js';
 
 export async function extractPassageAndChapters(bookId: number, jobId: number) {
@@ -188,12 +193,36 @@ export async function processPassagesWithContextForChapter(
               if (!entity.fullName && !entity.alias) return;
 
               // Upsert Profile
+              const entityName = entity.fullName ?? entity.alias;
               let profile;
-              if (entity.fullName && canonicalNames.includes(entity.fullName)) {
+              if (entityName) {
+                const words = entityName.split(' ');
+                // Check for capitalization for first letter of each word
+                let valid = true;
+                for (const word of words) {
+                  if (word[0] !== word[0].toUpperCase()) {
+                    valid = false;
+                    break;
+                  }
+                }
+                if (!valid) {
+                  return;
+                } // Skip if not capitalized
+                const entityAliases = identifyAliases(
+                  entityName,
+                  canonicalNames
+                );
+                if (entityAliases.length === 0) {
+                  console.log(
+                    'Could skip entity without a valid canonical name:',
+                    entity.fullName,
+                    entity.alias
+                  );
+                }
                 profile = await prisma.profile.upsert({
                   where: {
                     name_bookId: {
-                      name: entity.fullName,
+                      name: entityName,
                       bookId: bookId,
                     },
                   },
@@ -205,7 +234,7 @@ export async function processPassagesWithContextForChapter(
                   },
                   create: {
                     type: entity.type ? entity.type.toUpperCase() : undefined,
-                    name: entity.fullName,
+                    name: entityName,
                     gender: entity.gender
                       ? entity.gender.toUpperCase()
                       : undefined,
@@ -221,7 +250,6 @@ export async function processPassagesWithContextForChapter(
                 return;
               }
 
-              // Handle Alias
               try {
                 if (entity.alias && entity.fullName && profile) {
                   await prisma.alias.upsert({
@@ -249,7 +277,6 @@ export async function processPassagesWithContextForChapter(
                 console.error('Error upserting alias:', e);
               }
 
-              // Create Description linked to Profile and Passage
               if (entity.description) {
                 await prisma.description.create({
                   data: {
@@ -281,6 +308,124 @@ export async function processPassagesWithContextForChapter(
   );
 
   await Promise.all(tasks);
+}
+
+export async function processSpeechPassagesForChapter(
+  chapterId: number,
+  jobId: number
+): Promise<void> {
+  // Fetch the chapter
+  const chapter = await prisma.chapter.findUnique({
+    where: { id: chapterId },
+    include: { book: true },
+  });
+  if (!chapter) {
+    throw new Error('Chapter not found in database.');
+  }
+
+  // Update chapter to indicate it's processed
+  // await prisma.chapter.update({
+  //   where: { id: chapterId },
+  //   data: { speechProcessed: true },
+  // });
+
+  // Fetch all passages for the specific chapter
+  const passages = await prisma.passage.findMany({
+    where: {
+      chapterId: chapterId,
+    },
+    include: { chapter: true, book: true, profiles: true, speaker: true },
+  });
+
+  // Build a map of passages by order for quick lookup
+  const passagesByOrder = new Map<number, PassageWithProfileSpeaker>();
+  for (const passage of passages) {
+    passagesByOrder.set(passage.order, passage);
+  }
+
+  // Process each passage sequentially
+  for (const passage of passages) {
+    const textContent = passage.textContent.trim();
+    if (!textContent) continue;
+
+    // Get the previous passages
+    const previousPassages = [
+      passagesByOrder.get(passage.order - 5),
+      passagesByOrder.get(passage.order - 4),
+      passagesByOrder.get(passage.order - 3),
+      passagesByOrder.get(passage.order - 2),
+      passagesByOrder.get(passage.order - 1),
+    ].filter((p) => p !== undefined);
+
+    const passagesProfiles = passage.profiles.concat(
+      previousPassages.flatMap((p) => p?.profiles)
+    );
+    const uniqueProfilesMap = new Map(
+      passagesProfiles.map((profile) => [profile.id, profile])
+    );
+
+    // Convert the Map values back to an array
+    const uniqueProfiles = Array.from(uniqueProfilesMap.values());
+
+    // Filter out any undefined values
+    const contextText = previousPassages
+      .filter((p) => p !== undefined)
+      .map(
+        (p: any, idx) =>
+          `Passage ${idx + 1}) ${
+            p.speaker ? `Speaker: ${p.speaker.name}` : ''
+          }\n${p.textContent}`
+      )
+      .join('\n');
+
+    try {
+      // Identify speakers in the passage
+      const speechEntry = await identifySpeakersInPassage(
+        `Passage ${
+          previousPassages.length ? previousPassages.length + 1 + ') ' : ''
+        }${textContent}`,
+        contextText,
+        previousPassages,
+        uniqueProfiles.map((p) => p.name),
+        chapter.book.userId
+      );
+
+      const { speaker, speech } = speechEntry;
+
+      let speakerProfileId: number | null = null;
+      let speakerProfile;
+      if (speaker === 'NONE' || !speaker) {
+        speakerProfileId = null;
+      } else if (speaker === 'UNKNOWN') {
+        speakerProfileId = 0;
+      } else {
+        let profile = uniqueProfiles.find(
+          (p) => p.name.toLowerCase() === speaker.toLowerCase()
+        );
+        if (profile) {
+          speakerProfileId = profile.id;
+          speakerProfile = profile;
+        }
+      }
+
+      // Update the passage with the speakerId
+      if (speakerProfileId) {
+        await prisma.passage.update({
+          where: { id: passage.id },
+          data: {
+            speakerId: speakerProfileId,
+          },
+        });
+        passage.speakerId = speakerProfileId;
+        if (speakerProfile) passage.speaker = speakerProfile;
+      }
+    } catch (error) {
+      console.error(
+        `Error identifying speaker for passage id ${passage.id}:`,
+        error
+      );
+    }
+  }
 }
 
 export async function getCanonicalNames(bookId: number): Promise<string[]> {

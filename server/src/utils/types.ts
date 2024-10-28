@@ -38,6 +38,13 @@ export type PassageWithRelations = {
   profiles: ProfileWithRelations[];
 };
 
+export type PassageWithProfileSpeaker = {
+  id: number;
+  textContent: string;
+  profiles: Profile[];
+  speaker: Profile | null;
+};
+
 export interface ChapterWithRelations extends Chapter {
   book: Book;
   scenes: SceneWithRelations[];

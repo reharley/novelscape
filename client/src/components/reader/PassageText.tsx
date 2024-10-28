@@ -1,22 +1,33 @@
 import { PauseCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
-import { Button, InputNumber, Space, Tooltip, Typography } from 'antd';
+import {
+  Button,
+  Image,
+  InputNumber,
+  Space,
+  Spin,
+  Tooltip,
+  Typography,
+} from 'antd';
 import React, { useEffect, useRef, useState } from 'react';
+import { Profile, UserSettings } from '../../utils/types';
 
 const { Paragraph, Text } = Typography;
 
 interface PassageTextProps {
   text: string;
-  autoPlay: boolean;
-  initialWpm: number;
   onComplete: () => void;
+  userSettings: UserSettings;
+
+  speaker?: Profile | null;
 }
 
 const PassageText: React.FC<PassageTextProps> = ({
   text,
-  autoPlay,
-  initialWpm,
   onComplete,
+  speaker,
+  userSettings,
 }) => {
+  const { autoPlay, wpm: initialWpm } = userSettings;
   const [wpm, setWpm] = useState(initialWpm);
   const words = text.split(/[ \n]+/).filter((word) => word.trim() !== '');
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
@@ -104,7 +115,6 @@ const PassageText: React.FC<PassageTextProps> = ({
     };
   }, [autoPlay, wpm, currentWordIndex, isPaused, words.length, onComplete]);
 
-  console.log(words);
   const handleWpmChange = (value: number | null) => {
     if (value) {
       setWpm(value);
@@ -138,12 +148,38 @@ const PassageText: React.FC<PassageTextProps> = ({
       </>
     );
   });
-
   return (
-    <>
-      <Paragraph style={{ fontSize: '1.2em', margin: 0 }}>
-        {renderedText}
-      </Paragraph>
+    <Space direction='vertical'>
+      <Space>
+        {/* Speaker Profile Image */}
+        {userSettings?.passageSpeaker && speaker && speaker.imageUrl && (
+          <Space
+            key={speaker.id}
+            direction='vertical'
+            style={{ textAlign: 'center' }}
+          >
+            <Text style={{ color: '#fff' }}>{speaker.name}</Text>
+            <Image
+              src={speaker.imageUrl}
+              alt={`${speaker.name} Image`}
+              width={120}
+              onClick={(e) => e.stopPropagation()}
+              preview={false}
+              //   style={{
+              //     width: '161px',
+              //     margin: '0 10px',
+              //     borderRadius: '10px',
+              //     boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
+              //   }}
+              style={{ borderRadius: '10px', marginRight: '15px' }}
+              placeholder={<Spin />}
+            />
+          </Space>
+        )}
+        <Paragraph style={{ fontSize: '1.2em', margin: 0 }}>
+          {renderedText}
+        </Paragraph>
+      </Space>
 
       {autoPlay && (
         <Space
@@ -167,7 +203,7 @@ const PassageText: React.FC<PassageTextProps> = ({
           </Button>
         </Space>
       )}
-    </>
+    </Space>
   );
 };
 

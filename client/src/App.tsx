@@ -19,7 +19,7 @@ import { useTokenRefresh } from './hooks/useTokenRefresh.ts';
 import BookProcessingPage from './pages/BookProcessingPage.tsx';
 import LandingPage from './pages/LandingPage.tsx';
 import LibraryPage from './pages/LibraryPage.tsx';
-import ProfileListPage from './pages/ProfilesListPage.tsx';
+import ProfilesPage from './pages/ProfilesPage.tsx';
 import UserPage from './pages/UserPage.tsx';
 import { setupAxios } from './utils/axiosSetup.ts';
 
@@ -56,7 +56,7 @@ const router = createBrowserRouter(
             <Route path='user' element={<UserPage />} />
             <Route path='profile-loras' element={<ProfileLoraPage />} />
             <Route path='processing/:bookId' element={<BookProcessingPage />} />
-            <Route path='profiles' element={<ProfileListPage />} />
+            <Route path='profiles' element={<ProfilesPage />} />
             <Route path='associate-loras' element={<LoraAssociationPage />} />
           </Route>
         </Route>

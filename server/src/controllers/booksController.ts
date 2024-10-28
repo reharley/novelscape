@@ -5,6 +5,7 @@ import {
   extractCanonicalNames,
   extractPassageAndChapters,
   processPassagesWithContextForChapter,
+  processSpeechPassagesForChapter,
 } from '../services/bookService.js';
 import {
   detectScenesForChapter,
@@ -138,6 +139,7 @@ export async function getPassagesForChapter(req: Request, res: Response) {
       select: {
         id: true,
         textContent: true,
+        speaker: true,
         order: true,
         scene: true,
         descriptions: {
@@ -241,6 +243,9 @@ export async function deleteBook(req: Request, res: Response) {
       prisma.chapter.deleteMany({
         where: { bookId },
       }),
+      prisma.processingJob.deleteMany({
+        where: { bookId },
+      }),
 
       prisma.book.delete({
         where: { id: bookId },
@@ -258,16 +263,13 @@ export async function deleteBook(req: Request, res: Response) {
   }
 }
 
-/**
- * Fetches profiles associated with a specific book, including their descriptions.
- */
 export async function getProfilesForBook(req: Request, res: Response) {
   try {
     const bookId = Number(req.params.bookId);
     const profiles = await prisma.profile.findMany({
       where: { bookId },
       include: {
-        descriptions: true, // Include descriptions
+        descriptions: true,
       },
     });
 
@@ -279,6 +281,65 @@ export async function getProfilesForBook(req: Request, res: Response) {
     res.json(profiles);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch profiles.' });
+  }
+}
+
+export async function getProfilesAndScenePackages(req: Request, res: Response) {
+  const { bookId } = req.params;
+
+  try {
+    const bookIdInt = parseInt(bookId, 10);
+    if (isNaN(bookIdInt)) {
+      return res.status(400).json({ error: 'Invalid bookId' });
+    }
+
+    // Fetch SceneImagePackages associated with the book
+    const scenePackages = await prisma.imageGenerationPackage.findMany({
+      where: {
+        bookId: bookIdInt,
+        sceneAssociations: {
+          some: {},
+        },
+      },
+      include: {
+        positiveLoras: true,
+        embeddings: true,
+        negativeEmbeddings: true,
+        sceneAssociations: true,
+      },
+    });
+
+    // Fetch profiles associated with the book, including the number of descriptions
+    const profiles = await prisma.profile.findMany({
+      where: {
+        bookId: bookIdInt,
+      },
+      include: {
+        descriptions: true,
+        imagePackages: {
+          include: {
+            package: {
+              include: {
+                positiveLoras: true,
+                embeddings: true,
+                negativeEmbeddings: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Sort profiles by the number of descriptions in descending order
+    profiles.sort((a, b) => b.descriptions.length - a.descriptions.length);
+
+    res.json({
+      scenePackages,
+      profiles,
+    });
+  } catch (error) {
+    console.error('Error fetching profiles and scene packages:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 }
 
@@ -599,7 +660,10 @@ export async function generateChapterImagesController(
         data: { processed: true },
       });
     }
-    await generateChapterImages(chapterId, job.id);
+    await Promise.all([
+      generateChapterImages(chapterId, job.id),
+      processSpeechPassagesForChapter(chapterId, job.id),
+    ]);
   })().catch(async (error) => {
     console.error('Error starting image generation:', error);
     await prisma.processingJob.update({

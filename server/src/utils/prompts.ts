@@ -1,6 +1,7 @@
 import { CompletionUsage } from 'openai/resources/index.mjs';
 import openai from '../config/openai.js';
 import prisma from '../config/prisma.js';
+import { PassageWithProfileSpeaker } from './types.js';
 
 const model = 'gpt-4o-mini';
 
@@ -344,11 +345,11 @@ export async function generateBackgroundPrompt(
 // Define interfaces for clarity
 interface Entity {
   fullName?: string;
-  alias?: string;
-  type?: 'PERSON' | 'NON_PERSON';
+  alias: string;
+  type: 'PERSON' | 'NON_PERSON';
   gender?: string | null;
   appearance?: string[] | null;
-  description?: string;
+  description: string;
 }
 export async function performNERWithAliases(
   contextText: string,
@@ -372,7 +373,7 @@ export async function performNERWithAliases(
                 fullName: {
                   type: 'string',
                   description:
-                    'The full (first and last) name of the character.',
+                    'The full (first and last) name of the character or null.',
                 },
                 type: {
                   type: 'string',
@@ -597,8 +598,103 @@ Focus on extracting full names and avoid partial names or titles.
     const fullNames: { name: string; type: 'PERSON' | 'NON_PERSON' }[] =
       args.fullNames;
 
-    console.log('Extracted full names:', fullNames);
+    // console.log('Extracted full names:', fullNames);
     return fullNames;
+  } else {
+    throw new Error('No function call was made by the assistant.');
+  }
+}
+interface SpeechEntry {
+  speaker?: string;
+  speech?: string;
+}
+export async function identifySpeakersInPassage(
+  textContent: string,
+  contextText: string,
+  contextPassages: PassageWithProfileSpeaker[],
+  knownProfiles: string[],
+  userId: string
+): Promise<SpeechEntry> {
+  const functions = [
+    {
+      name: 'extract_speech',
+      description: 'Extracts speeches and their speakers from text.',
+      parameters: {
+        type: 'object',
+        properties: {
+          speaker: {
+            type: 'string',
+            description:
+              "The name of the speaker from the list of known characters, 'UNKNOWN' if not identifiable, or 'NONE' if there is no speaker.",
+          },
+          speech: {
+            type: 'string',
+            description: 'The speech text extracted from the CURRENT passage.',
+          },
+        },
+        required: ['speaker', 'speech'],
+      },
+      required: ['speech'],
+    },
+  ];
+
+  const systemPrompt = `
+You are an assistant that helps identify speeches and their speakers in a passage from a novel.
+Given the current passage, the previous context and a list of known characters, extract the speech and identify who is CURRENTLY speaking in the CURRENT passage.
+- If the speaker is not in the list of known characters, return 'UNKNOWN' as the speaker.
+- If there is no speaker (e.g., the speech is part of the narrative or thoughts), return 'NONE' as the speaker. This includes passages without quotes (", “, ”).
+- Many times when there's a new line, it indicates a new speaker.
+- When Passage 6 the (current passage) is speaking and there is no identification in the CURRENT passage, it's likely the same speaker from Passage 4.
+Your response should be a JSON object containing the speech and it's speaker, returned via the extract_speech function.
+`;
+
+  const userMessage = `
+Previous Context:
+${contextText}
+Current Passage:
+${textContent}
+Known Characters:
+${knownProfiles.join(', ')}
+Extract the speech and identify the speaker.
+`;
+  // Call OpenAI API
+  const response = await openai.chat.completions.create({
+    model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userMessage },
+    ],
+    functions: functions,
+    function_call: { name: 'extract_speech' },
+    max_tokens: 1000,
+    temperature: 0.2,
+  });
+
+  // Update user credits based on usage
+  if (response.usage) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { credits: { decrement: calculateCost(response.usage) } },
+    });
+  }
+
+  const message = response.choices[0]?.message;
+  if (message?.function_call?.name === 'extract_speech') {
+    const args = JSON.parse(message.function_call.arguments);
+
+    const speech: SpeechEntry = args;
+    if (!speech.speaker || !speech.speech) {
+      console.log('Speech extraction failed:', speech);
+    }
+    if (
+      speech.speaker === 'UNKNOWN' &&
+      contextPassages[contextPassages.length - 1].speaker &&
+      contextPassages[contextPassages.length - 2].speaker
+    ) {
+      speech.speaker =
+        contextPassages[contextPassages.length - 2].speaker?.name;
+    }
+    return speech;
   } else {
     throw new Error('No function call was made by the assistant.');
   }
@@ -614,6 +710,11 @@ export function countTokens(passages: { textContent: string }[]): number {
 }
 
 export function calculateCost(usage: CompletionUsage): number {
+  // Implement cost calculation based on token usage
+  // For simplicity, let's assume 1 credit per 1000 tokens
+  // const totalTokens = usage.total_tokens;
+  // return Math.ceil(totalTokens / 1000);
+
   const inputCost = 0.000015 * usage.prompt_tokens;
   const outputCost = 0.00006 * usage.completion_tokens;
   return (inputCost + outputCost) * 10000;

@@ -78,7 +78,7 @@ export async function extractEpubPassagesAndChapters(
               contentItem.type === 'paragraph' || contentItem.type === 'title'
           )
           .map((contentItem, idx) => {
-            const textContent = contentItem.text.trim();
+            const textContent = contentItem.text.trim().replaceAll('\n', ' ');
             if (!textContent) return null;
 
             return {
@@ -279,7 +279,6 @@ export const processEpubCoverImage = async (book: Book) => {
       data: { coverUrl: coverImageUrl }, // Assuming the `storageUrl` field stores the cover URL
     });
 
-    console.log(`Cover image uploaded and URL saved for book ID: ${bookId}`);
     return coverImageUrl;
   } catch (error) {
     console.error(
@@ -299,7 +298,6 @@ export async function getEpub(storageUrl: string) {
     .access(tempFilePath)
     .then(() => true)
     .catch(() => false);
-  console.log(`File exists after writing: ${fileExists}`);
 
   if (!fileExists) {
     await fs.unlink(tempFilePath);

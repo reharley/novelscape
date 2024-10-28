@@ -64,10 +64,12 @@ const UserPage: React.FC = () => {
         </div>
       </Header>
       <Content style={{ padding: '24px', minHeight: '280px' }}>
-        <h1>Welcome to the Dashboard</h1>
-        <p>This is a protected page. You can log out using the button above.</p>
+        <h1>User Settings</h1>
 
         <Form form={form} layout='vertical' onFinish={onFinish}>
+          <Form.Item name='passageSpeaker' valuePropName='checked'>
+            <Checkbox>Speaker Detection</Checkbox>
+          </Form.Item>
           <Form.Item name='autoPlay' valuePropName='checked'>
             <Checkbox>Enable Auto-Play</Checkbox>
           </Form.Item>

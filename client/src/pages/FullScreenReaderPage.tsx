@@ -17,7 +17,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import GenerateImagesModal from '../components/reader/GenerateImagesModal';
 import PassageText from '../components/reader/PassageText';
 import { apiUrl, isNumber } from '../utils/general';
-import { Passage } from '../utils/types';
+import { Passage, UserSettings } from '../utils/types';
 
 const { Text } = Typography;
 const { Option } = Select;
@@ -44,8 +44,7 @@ const FullScreenReaderPage: React.FC = () => {
   const [loadingPassages, setLoadingPassages] = useState<boolean>(false);
   const [processingModalVisible, setProcessingModalVisible] = useState(false);
   const [chapters, setChapters] = useState<Chapter[]>([]);
-  const [autoPlay, setAutoPlay] = useState<boolean>(false);
-  const [wpm, setWpm] = useState<number>(200); // Default WPM
+  const [userSettings, setUserSettings] = useState<UserSettings>();
   const passageRef = useRef<HTMLDivElement>(null);
 
   const baseUrl = apiUrl + '/api';
@@ -55,8 +54,7 @@ const FullScreenReaderPage: React.FC = () => {
     const fetchUserSettings = async () => {
       try {
         const response = await axios.get(apiUrl + '/api/user/settings');
-        setAutoPlay(response.data.autoPlay);
-        setWpm(response.data.wpm);
+        setUserSettings(response.data);
       } catch (error) {
         console.error('Error fetching user settings:', error);
       }
@@ -80,20 +78,14 @@ const FullScreenReaderPage: React.FC = () => {
         fetchChapters(bookId),
         fetchLastReadPosition(bookId),
       ]);
-      console.log('lastReadingPosition:', lastReadingPosition);
       if (!passageIndex) {
         if (lastReadingPosition) {
-          console.log(
-            'Navigating to last reading position:',
-            lastReadingPosition
-          );
           navigate(
             `/reader/${bookId}/${lastReadingPosition.chapterId}/${
               lastReadingPosition.passageIndex || 0
             }`
           );
         } else if (fetchedChapters.length > 0) {
-          console.log('Navigating to first chapter:', fetchedChapters[0].id);
           const firstChapterId = chapterId ?? fetchedChapters[0].id;
           navigate(`/reader/${bookId}/${firstChapterId}/0`);
         } else {
@@ -169,7 +161,6 @@ const FullScreenReaderPage: React.FC = () => {
       const response = await axios.get(
         `${baseUrl}/books/${bookId}/reading-progress`
       );
-      console.log('Last read position:', response.data);
       if (
         isNumber(response.data.chapterId) &&
         isNumber(response.data.passageIndex)
@@ -515,12 +506,10 @@ const FullScreenReaderPage: React.FC = () => {
           {currentPassage && (
             <PassageText
               text={currentPassage.textContent}
-              autoPlay={autoPlay}
-              initialWpm={wpm}
+              userSettings={userSettings}
+              speaker={currentPassage.speaker}
               onComplete={() => {
-                if (autoPlay) {
-                  handleNextPassage();
-                }
+                handleNextPassage();
               }}
             />
           )}
