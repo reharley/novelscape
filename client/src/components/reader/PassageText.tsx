@@ -9,6 +9,7 @@ import {
   Typography,
 } from 'antd';
 import React, { useEffect, useRef, useState } from 'react';
+import { isNumber } from '../../utils/general';
 import { Profile, UserSettings } from '../../utils/types';
 
 const { Paragraph, Text } = Typography;
@@ -16,7 +17,7 @@ const { Paragraph, Text } = Typography;
 interface PassageTextProps {
   text: string;
   onComplete: () => void;
-  userSettings: UserSettings;
+  userSettings?: UserSettings;
 
   speaker?: Profile | null;
 }
@@ -27,7 +28,7 @@ const PassageText: React.FC<PassageTextProps> = ({
   speaker,
   userSettings,
 }) => {
-  const { autoPlay, wpm: initialWpm } = userSettings;
+  const { autoPlay, wpm: initialWpm } = userSettings ?? {};
   const [wpm, setWpm] = useState(initialWpm);
   const words = text.split(/[ \n]+/).filter((word) => word.trim() !== '');
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
@@ -93,7 +94,7 @@ const PassageText: React.FC<PassageTextProps> = ({
 
   useEffect(() => {
     if (autoPlay && !isPaused) {
-      if (currentWordIndex < words.length) {
+      if (currentWordIndex < words.length && isNumber(wpm)) {
         const interval = (60 * 1000) / wpm; // milliseconds per word
 
         timerRef.current = setTimeout(() => {
@@ -163,7 +164,6 @@ const PassageText: React.FC<PassageTextProps> = ({
               src={speaker.imageUrl}
               alt={`${speaker.name} Image`}
               width={120}
-              onClick={(e) => e.stopPropagation()}
               preview={false}
               //   style={{
               //     width: '161px',

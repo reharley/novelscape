@@ -455,7 +455,11 @@ const FullScreenReaderPage: React.FC = () => {
             }}
           >
             {currentPassage.profiles
-              .filter((p) => p.type.toLowerCase() === 'person')
+              .filter(
+                (p) =>
+                  p.type.toLowerCase() === 'person' &&
+                  currentPassage.speakerId !== p.id
+              )
               .map((profile) => (
                 <Space
                   key={profile.id}

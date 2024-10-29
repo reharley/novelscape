@@ -691,6 +691,14 @@ Extract the speech and identify the speaker.
     ) {
       speech.speaker =
         contextPassages[contextPassages.length - 2].speaker?.name;
+    } else if (
+      speech.speaker === 'UNKNOWN' &&
+      contextPassages[contextPassages.length - 1].speaker === null &&
+      contextPassages[contextPassages.length - 2].speaker &&
+      contextPassages[contextPassages.length - 3].speaker
+    ) {
+      speech.speaker =
+        contextPassages[contextPassages.length - 3].speaker?.name;
     }
     return speech;
   } else {
