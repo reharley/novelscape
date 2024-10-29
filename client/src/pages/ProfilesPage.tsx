@@ -322,6 +322,28 @@ const ProfilesPage: React.FC = () => {
           profileGenerationId: genData.id,
         }
       );
+
+      // Assume the API returns the new imageUrl
+      const { imageUrl } = response.data;
+
+      if (!imageUrl) {
+        message.error('Image URL not returned from the server.');
+        return;
+      }
+
+      // Find the profile that contains this genData and update its imageUrl
+      setProfiles((prevProfiles) =>
+        prevProfiles.map((profile) => {
+          const hasGenData = profile.profileGenerationData.some(
+            (g) => g.id === genData.id
+          );
+          if (hasGenData) {
+            return { ...profile, imageUrl };
+          }
+          return profile;
+        })
+      );
+
       message.success('Image generated successfully.');
     } catch (error) {
       console.error('Error generating image:', error);
