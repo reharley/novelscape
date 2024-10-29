@@ -1,27 +1,88 @@
 import { Request, Response } from 'express';
 import prisma from '../config/prisma.js';
+import {
+  generateImage,
+  GenerateImageParams,
+} from '../services/imageService.js';
 
 export async function generateImageForProfile(req: Request, res: Response) {
-  const { profileId } = req.params;
+  const { profileGenerationId } = req.body;
+
   try {
-    // Fetch the profile from the database
-    const profile = await prisma.profile.findUnique({
-      where: { id: Number(profileId) },
+    const generationData = await prisma.profileGenerationData.findUnique({
+      where: { id: Number(profileGenerationId) },
+      include: {
+        profile: true,
+        loras: { include: { aiModel: true } },
+        embeddings: { include: { aiModel: true } },
+        negativeEmbeddings: { include: { aiModel: true } },
+        checkpoint: true,
+        generationPackage: true,
+      },
     });
 
-    if (!profile) {
-      res.status(404).json({ error: 'Profile not found.' });
+    if (!generationData) {
+      res.status(404).json({ error: 'generationData not found.' });
+      return;
+    }
+    const profile = generationData.profile;
+
+    // 2. Prepare Image Generation Parameters
+    const finalPrompt = generationData.prompt;
+    const finalNegativePrompt = generationData.negative_prompt || '';
+    const characterImageSize = {
+      width: generationData.width || 512,
+      height: generationData.height || 512,
+    };
+    const positiveLoras = generationData.loras.map((lora) => ({
+      name: lora.aiModel.fileName,
+      weight: lora.weight,
+    }));
+    const embeddings = generationData.embeddings.map(
+      (embedding) => embedding.aiModel.fileName
+    );
+    const negativeEmbeddings = generationData.negativeEmbeddings.map(
+      (embedding) => embedding.aiModel.fileName
+    );
+    const modelFileName = generationData.checkpoint.fileName; // Assuming 'name' corresponds to the model file name
+
+    const generateImageParams: GenerateImageParams = {
+      prompt: finalPrompt,
+      negative_prompt: finalNegativePrompt,
+      steps: generationData.steps,
+      ...characterImageSize,
+      positive_loras: positiveLoras,
+      embeddings: embeddings,
+      negative_embeddings: negativeEmbeddings,
+      model: modelFileName,
+      removeBackground: generationData.removeBackground,
+    };
+
+    // 3. Generate Image
+    const imageResult = await generateImage(generateImageParams);
+
+    if (!imageResult || !imageResult.imageUrl) {
+      res.status(500).json({ error: 'Image generation failed.' });
       return;
     }
 
-    // Image generation logic can be implemented here or delegated to a service
-    // For now, returning an empty response as in the original code
-    res.json({});
-    // Uncomment and implement the image generation logic as needed
-    // res.json({ imageUrl: imagePath });
+    // 4. Update Profile with imageUrl
+    const updatedProfile = await prisma.profile.update({
+      where: { id: Number(profile.id) },
+      data: {
+        imageUrl: imageResult.imageUrl,
+      },
+    });
+
+    // 5. Respond to Client
+    res.status(200).json({
+      message: 'Image generated and profile updated successfully.',
+      imageUrl: imageResult.imageUrl,
+      profile: updatedProfile,
+    });
   } catch (error) {
-    console.error('Error generating image for profile:', error);
-    res.status(500).json({ error: 'Failed to generate image.' });
+    console.error('Error generating image:', error);
+    res.status(500).json({ error: 'Internal server error.' });
   }
 }
 

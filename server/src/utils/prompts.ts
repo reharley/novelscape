@@ -13,13 +13,11 @@ const model = 'gpt-4o-mini';
  * @returns An object containing both positivePrompt and negativePrompt.
  */
 export async function generateProfilePrompt(
-  textContent: string,
   profile: {
     name: string;
     gender?: string | null;
     descriptions: string[];
   },
-  bookName: string,
   userId: string
 ): Promise<{ positivePrompt: string; negativePrompt: string }> {
   const examples = [

@@ -4,10 +4,10 @@ import { EPub } from 'epub2';
 import fs from 'fs-extra';
 import { JSDOM } from 'jsdom';
 import os from 'os';
-import pLimit from 'p-limit'; // Import p-limit for concurrency control
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 
+import { isNumber } from 'util';
 import prisma from '../config/prisma.js';
 import {
   downloadFileFromAzure,
@@ -27,7 +27,7 @@ export async function extractEpubPassagesAndChapters(
 ): Promise<void> {
   const chapters = epub.flow;
 
-  if (chapters.length === 0) {
+  if (chapters.length < 2) {
     await prisma.processingJob.update({
       where: { id: jobId },
       data: { status: 'failed' },
@@ -40,81 +40,86 @@ export async function extractEpubPassagesAndChapters(
     data: { status: 'in_progress', phase: 'Phase 1' },
   });
 
-  const concurrencyLimit = 5; // Adjust based on your system's capabilities
-  const limit = pLimit(concurrencyLimit);
-
   const chaptersToProcess = chapters.slice(0, chapters.length);
-  const totalChapters = chaptersToProcess.length;
+  let totalChapters = chaptersToProcess.length;
   let processedChapters = 0;
 
-  const tasks = chaptersToProcess.map((chapter) =>
-    limit(async () => {
-      const chapterId = chapter.id;
-      if (!chapterId) return;
-      if (!chapter.order) return;
+  for (const chapter of chaptersToProcess) {
+    const chapterId = chapter.id;
+    if (!chapterId) {
+      totalChapters--;
+      continue;
+    }
+    if (!isNumber(chapter.order)) {
+      totalChapters--;
+      continue;
+    }
 
-      try {
-        const text = await getChapterText(epub, chapterId);
+    try {
+      const text = await getChapterText(epub, chapterId);
 
-        if (!text) {
-          console.error(`Error: Chapter ${chapterId} is empty.`);
-          return;
-        }
-
-        const contents = parseChapterContent(text); // Parses the chapter content
-
-        // Save chapter to the database
-        const chapterRecord = await prisma.chapter.create({
-          data: {
-            order: chapter.order,
-            title: chapter.title || `Chapter ${chapter.order}`,
-            bookId: bookId,
-          },
-        });
-
-        const passageData = contents
-          .filter(
-            (contentItem) =>
-              contentItem.type === 'paragraph' || contentItem.type === 'title'
-          )
-          .map((contentItem, idx) => {
-            const textContent = contentItem.text.trim().replaceAll('\n', ' ');
-            if (!textContent) return null;
-
-            return {
-              textContent,
-              order: idx, // Ensure you have an order field
-              chapterId: chapterRecord.id,
-              bookId: bookId,
-            };
-          })
-          .filter((data) => data !== null); // Filter out null values
-
-        if (passageData.length > 0) {
-          await prisma.passage.createMany({
-            data: passageData as any[],
-          });
-        }
-
-        // Update progress after processing each chapter
-        processedChapters += 1;
-        await prisma.processingJob.update({
-          where: { id: jobId },
-          data: {
-            completedTasks: processedChapters,
-            totalTasks: totalChapters,
-          },
-        });
-      } catch (chapterError: any) {
-        console.error(
-          `Error processing chapter ${chapterId} in Phase 1:`,
-          chapterError
-        );
+      if (!text) {
+        console.error(`Error: Chapter ${chapterId} is empty.`);
+        continue;
       }
-    })
-  );
 
-  await Promise.all(tasks);
+      const contents = parseChapterContent(text); // Parses the chapter content
+
+      // Save chapter to the database
+      const chapterRecord = await prisma.chapter.create({
+        data: {
+          order: chapter.order === 0 ? processedChapters : chapter.order,
+          title: chapter.title || `Chapter ${chapter.order}`,
+          bookId: bookId,
+        },
+      });
+
+      const passageData = contents
+        .filter(
+          (contentItem) =>
+            contentItem.type === 'paragraph' || contentItem.type === 'title'
+        )
+        .map((contentItem, idx) => {
+          const textContent = contentItem.text.trim().replaceAll('\n', ' ');
+          if (!textContent) return null;
+
+          return {
+            textContent,
+            order: idx, // Ensure you have an order field
+            chapterId: chapterRecord.id,
+            bookId: bookId,
+          };
+        })
+        .filter((data) => data !== null); // Filter out null values
+
+      if (passageData.length > 0) {
+        await prisma.passage.createMany({
+          data: passageData as any[],
+        });
+      }
+
+      // Update progress after processing each chapter
+      processedChapters++;
+      await prisma.processingJob.update({
+        where: { id: jobId },
+        data: {
+          completedTasks: processedChapters,
+          totalTasks: totalChapters,
+        },
+      });
+    } catch (chapterError: any) {
+      console.error(
+        `Error processing chapter ${chapterId} in Phase 1:`,
+        chapterError
+      );
+    }
+  }
+
+  // Optionally, update the job status to completed after all chapters are processed
+  await prisma.processingJob.update({
+    where: { id: jobId },
+    data: { progress: 100 },
+  });
 }
 function getChapterText(
   epub: EPub,

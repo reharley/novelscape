@@ -4,6 +4,7 @@ import adRouter from './adRoutes.js';
 import aiModelsRouter from './aiModelRoutes.js';
 import booksRouter from './bookRoutes.js';
 import civitaiRouter from './civitatRoutes.js';
+import genPackageRouter from './genPackageRoutes.js';
 import imageRouter from './imageRoutes.js';
 import jobRouter from './jobRoutes.js';
 import profilesRouter from './profileRoutes.js';
@@ -14,6 +15,7 @@ const router = express.Router();
 
 router.use('/ai-models', aiModelsRouter);
 router.use('/civitai', civitaiRouter);
+router.use('/generation-packages', genPackageRouter);
 router.use('/books', booksRouter);
 router.use('/user', userRouter);
 router.use('/profiles', profilesRouter);

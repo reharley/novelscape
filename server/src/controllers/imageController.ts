@@ -338,7 +338,6 @@ async function generateImageForProfileHelper(
     ) {
       try {
         const prompts = await generateProfilePrompt(
-          passageText,
           {
             name: profile.name,
             descriptions: profile.descriptions
@@ -351,7 +350,6 @@ async function generateImageForProfileHelper(
               .map((desc) => desc.appearance!),
             gender: profile.gender ?? undefined,
           },
-          bookTitle,
           userId
         );
 

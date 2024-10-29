@@ -17,6 +17,34 @@ import {
   generateProfileImagesForChapter,
 } from './imageController.js';
 
+export const getGenerationPackagesByBook = async (
+  req: Request,
+  res: Response
+) => {
+  const { bookId } = req.params;
+
+  try {
+    const bookIdInt = parseInt(bookId, 10);
+    if (isNaN(bookIdInt)) {
+      res.status(400).json({ error: 'Invalid bookId' });
+      return;
+    }
+
+    const generationPackages = await prisma.generationPackage.findMany({
+      where: { bookId: bookIdInt },
+      select: {
+        id: true,
+        name: true,
+      },
+    });
+
+    res.json(generationPackages);
+  } catch (error) {
+    console.error('Error fetching generation packages:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+};
+
 export async function listBooks(req: Request, res: Response) {
   try {
     const userId = req.user.oid;
@@ -290,11 +318,12 @@ export async function getProfilesAndScenePackages(req: Request, res: Response) {
   try {
     const bookIdInt = parseInt(bookId, 10);
     if (isNaN(bookIdInt)) {
-      return res.status(400).json({ error: 'Invalid bookId' });
+      res.status(400).json({ error: 'Invalid bookId' });
+      return;
     }
 
     // Fetch SceneImagePackages associated with the book
-    const scenePackages = await prisma.imageGenerationPackage.findMany({
+    const scenePackages = await prisma.profileGenerationData.findMany({
       where: {
         bookId: bookIdInt,
         sceneAssociations: {
@@ -302,7 +331,7 @@ export async function getProfilesAndScenePackages(req: Request, res: Response) {
         },
       },
       include: {
-        positiveLoras: true,
+        loras: true,
         embeddings: true,
         negativeEmbeddings: true,
         sceneAssociations: true,
@@ -320,7 +349,7 @@ export async function getProfilesAndScenePackages(req: Request, res: Response) {
           include: {
             package: {
               include: {
-                positiveLoras: true,
+                loras: true,
                 embeddings: true,
                 negativeEmbeddings: true,
               },

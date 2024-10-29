@@ -8,7 +8,7 @@ import {
 import { loadModel } from '../services/modelService.js';
 
 const router = Router();
-router.post('/:profileId/generate-image', generateImageForProfile);
+router.post('/generate-image', generateImageForProfile);
 
 // Endpoint to get profiles for a book
 router.get('/books/:bookId/profiles', getProfilesForBook);

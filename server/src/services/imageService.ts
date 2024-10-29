@@ -4,10 +4,10 @@ import path from 'path';
 import prisma from '../config/prisma.js';
 import { getContainerClient } from '../utils/azureStorage.js';
 
-interface GenerateImageParams {
+export interface GenerateImageParams {
   prompt: string;
   negative_prompt?: string | null;
-  steps?: number;
+  steps?: number | null;
   width?: number;
   height?: number;
   positive_loras?: { name: string; weight: number }[];

@@ -5,8 +5,10 @@ import {
   detectSceneController,
   generateChapterImagesController,
   getChaptersForBook,
+  getGenerationPackagesByBook,
   getPassagesForBook,
   getPassagesForChapter,
+  getProfilesAndScenePackages,
   getProfilesForBook,
   getReadingProgress,
   listBooks,
@@ -73,6 +75,8 @@ router.delete('/:bookId', deleteBook);
  * @access Public
  */
 router.get('/:bookId/profiles', getProfilesForBook);
+router.get('/:bookId/profiles-packages', getProfilesAndScenePackages);
+router.get('/:bookId/generation-packages', getGenerationPackagesByBook);
 
 router.post('/:bookId/detect-scenes', detectSceneController);
 

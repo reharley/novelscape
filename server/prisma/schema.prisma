@@ -8,22 +8,23 @@ datasource db {
 }
 
 model Book {
-    id                     Int                      @id @default(autoincrement())
-    title                  String
-    processed              Boolean                  @default(false)
-    storageUrl             String
-    coverUrl               String?
-    userId                 String
-    chapters               Chapter[]
-    profiles               Profile[]
-    passages               Passage[]
-    scenes                 Scene[]
-    createdAt              DateTime                 @default(now())
-    updatedAt              DateTime                 @updatedAt
-    descriptions           Description[]
-    ReadingProgress        ReadingProgress[]
-    ProcessingJob          ProcessingJob[]
-    ImageGenerationPackage ImageGenerationPackage[]
+    id                    Int                     @id @default(autoincrement())
+    title                 String
+    processed             Boolean                 @default(false)
+    storageUrl            String
+    coverUrl              String?
+    userId                String
+    chapters              Chapter[]
+    profiles              Profile[]
+    passages              Passage[]
+    scenes                Scene[]
+    createdAt             DateTime                @default(now())
+    updatedAt             DateTime                @updatedAt
+    descriptions          Description[]
+    ReadingProgress       ReadingProgress[]
+    ProcessingJob         ProcessingJob[]
+    ProfileGenerationData ProfileGenerationData[]
+    GenerationPackage     GenerationPackage[]
 }
 
 model Chapter {
@@ -64,24 +65,25 @@ model Passage {
 }
 
 model Profile {
-    id              Int                   @id @default(autoincrement())
-    name            String
-    type            String?
-    imageUrl        String?
-    gender          String?
-    descriptions    Description[]
-    book            Book                  @relation(fields: [bookId], references: [id])
-    bookId          Int
-    passages        Passage[]             @relation("PassageProfiles")
-    aiModels        ProfileAiModel[]
-    imageId         Int?
-    image           ModelImage?           @relation(fields: [imageId], references: [id])
-    aliases         Alias[]
-    createdAt       DateTime              @default(now())
-    updatedAt       DateTime              @updatedAt
-    imagePackages   ProfileImagePackage[]
-    Passage         Passage[]
-    speakerPassages Passage[]             @relation("PassageSpeaker")
+    id                    Int                     @id @default(autoincrement())
+    name                  String
+    type                  String?
+    imageUrl              String?
+    gender                String?
+    descriptions          Description[]
+    book                  Book                    @relation(fields: [bookId], references: [id])
+    bookId                Int
+    passages              Passage[]               @relation("PassageProfiles")
+    aiModels              ProfileAiModel[]
+    imageId               Int?
+    image                 ModelImage?             @relation(fields: [imageId], references: [id])
+    aliases               Alias[]
+    createdAt             DateTime                @default(now())
+    updatedAt             DateTime                @updatedAt
+    imagePackages         ProfileImagePackage[]
+    passage               Passage[]
+    speakerPassages       Passage[]               @relation("PassageSpeaker")
+    profileGenerationData ProfileGenerationData[]
 
     @@unique([name, bookId])
 }
@@ -109,19 +111,23 @@ model Description {
 }
 
 model AiModel {
-    id              Int               @id @default(autoincrement())
-    modelId         Int               @unique
-    name            String
-    fileName        String
-    type            String
-    baseModel       String
-    baseModelType   String?
-    description     String?
-    images          ModelImage[]
-    profiles        ProfileAiModel[]
-    createdAt       DateTime          @default(now())
-    updatedAt       DateTime          @updatedAt
-    CivitaiResource CivitaiResource[]
+    id                    Int                     @id @default(autoincrement())
+    modelId               Int                     @unique
+    name                  String
+    fileName              String
+    type                  String
+    baseModel             String
+    baseModelType         String?
+    description           String?
+    images                ModelImage[]
+    profiles              ProfileAiModel[]
+    createdAt             DateTime                @default(now())
+    updatedAt             DateTime                @updatedAt
+    CivitaiResource       CivitaiResource[]
+    ProfileGenerationData ProfileGenerationData[]
+    Lora                  Lora[]
+    Embedding             Embedding[]
+    NegativeEmbedding     NegativeEmbedding[]
 }
 
 model ModelImage {
@@ -252,63 +258,81 @@ model UserSettings {
     user   User   @relation(fields: [userId], references: [id])
 }
 
-model ImageGenerationPackage {
+model GenerationPackage {
+    id                    Int                     @id @default(autoincrement())
+    name                  String
+    book                  Book                    @relation(fields: [bookId], references: [id])
+    bookId                Int
+    profileGenerationData ProfileGenerationData[]
+    createdAt             DateTime                @default(now())
+    updatedAt             DateTime                @updatedAt
+}
+
+model ProfileGenerationData {
     id                  Int                   @id @default(autoincrement())
     name                String
     book                Book                  @relation(fields: [bookId], references: [id])
     bookId              Int
+    profileId           Int
+    profile             Profile               @relation(fields: [profileId], references: [id])
     prompt              String
     negative_prompt     String?
     steps               Int?
     width               Int?
     height              Int?
-    model               String
+    checkpointId        Int
+    checkpoint          AiModel               @relation(fields: [checkpointId], references: [id])
     removeBackground    Boolean               @default(false)
-    positiveLoras       PositiveLora[]
+    loras               Lora[]
     embeddings          Embedding[]
     negativeEmbeddings  NegativeEmbedding[]
     profileAssociations ProfileImagePackage[]
     sceneAssociations   SceneImagePackage[]
     createdAt           DateTime              @default(now())
     updatedAt           DateTime              @updatedAt
+    generationPackage   GenerationPackage?    @relation(fields: [generationPackageId], references: [id])
+    generationPackageId Int?
 }
 
-model PositiveLora {
-    id                     Int                    @id @default(autoincrement())
-    name                   String
-    weight                 Float
-    imageGenerationPackage ImageGenerationPackage @relation(fields: [packageId], references: [id])
-    packageId              Int
+model Lora {
+    id                    Int                   @id @default(autoincrement())
+    aiModelId             Int
+    aiModel               AiModel               @relation(fields: [aiModelId], references: [id])
+    weight                Float
+    profileGenerationData ProfileGenerationData @relation(fields: [profileGenerationId], references: [id])
+    profileGenerationId   Int
 }
 
 model Embedding {
-    id                     Int                    @id @default(autoincrement())
-    name                   String
-    imageGenerationPackage ImageGenerationPackage @relation(fields: [packageId], references: [id])
-    packageId              Int
+    id                    Int                   @id @default(autoincrement())
+    aiModelId             Int
+    aiModel               AiModel               @relation(fields: [aiModelId], references: [id])
+    profileGenerationData ProfileGenerationData @relation(fields: [profileGenerationId], references: [id])
+    profileGenerationId   Int
 }
 
 model NegativeEmbedding {
-    id                     Int                    @id @default(autoincrement())
-    name                   String
-    imageGenerationPackage ImageGenerationPackage @relation(fields: [packageId], references: [id])
-    packageId              Int
+    id                    Int                   @id @default(autoincrement())
+    aiModelId             Int
+    aiModel               AiModel               @relation(fields: [aiModelId], references: [id])
+    profileGenerationData ProfileGenerationData @relation(fields: [profileGenerationId], references: [id])
+    profileGenerationId   Int
 }
 
 model ProfileImagePackage {
-    profileId Int
-    packageId Int
-    profile   Profile                @relation(fields: [profileId], references: [id])
-    package   ImageGenerationPackage @relation(fields: [packageId], references: [id])
+    profileId           Int
+    profileGenerationId Int
+    profile             Profile               @relation(fields: [profileId], references: [id])
+    profileGeneration   ProfileGenerationData @relation(fields: [profileGenerationId], references: [id])
 
-    @@id([profileId, packageId])
+    @@id([profileId, profileGenerationId])
 }
 
 model SceneImagePackage {
-    sceneId   Int
-    packageId Int
-    scene     Scene                  @relation(fields: [sceneId], references: [id])
-    package   ImageGenerationPackage @relation(fields: [packageId], references: [id])
+    sceneId             Int
+    profileGenerationId Int
+    scene               Scene                 @relation(fields: [sceneId], references: [id])
+    profileGeneration   ProfileGenerationData @relation(fields: [profileGenerationId], references: [id])
 
-    @@id([sceneId, packageId])
+    @@id([sceneId, profileGenerationId])
 }
