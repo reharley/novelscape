@@ -82,7 +82,7 @@ export async function generateImage(
     // Handle LoRAs
     if (positive_loras && positive_loras.length > 0) {
       const loraPrompts = positive_loras.map(
-        (lora) => `<lora:${lora.name}:${lora.weight}>`
+        (lora) => `(lora:${lora.name}:${lora.weight})`
       );
       finalPrompt = `${loraPrompts.join(' ')} ${finalPrompt}`;
     }

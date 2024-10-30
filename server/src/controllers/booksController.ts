@@ -347,7 +347,7 @@ export async function getProfilesAndScenePackages(req: Request, res: Response) {
         descriptions: true,
         imagePackages: {
           include: {
-            package: {
+            profileGeneration: {
               include: {
                 loras: true,
                 embeddings: true,
