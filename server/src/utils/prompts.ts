@@ -418,7 +418,7 @@ export async function performNERWithAliases(
       {
         role: 'system',
         content: `
-You are an assistant that performs named entity recognition (NER) on a given text. Identify and extract all characters in the passage below. For entities that are aliases of known characters, provide both the full name and the alias. **IGNORE** Family entities if they are clearly identified as such (Potters, The Potters, Dursleys, The Dursleys), not individuals (Mr. Potter, Mr. Dursley). Do your best to identify Characters that are referred to with their last name only (Potter, Mr. Potter) as their full name (one of Harry Potter or James Potter).
+You are an assistant that performs named entity recognition (NER) on a given text. Identify and extract all characters in the passage below. For entities that are aliases of known characters, provide both the full name and the alias. **IGNORE** Family entities if they are clearly identified as such, not individuals. Do your best to identify Characters that are referred to with their last name only as their full name.
 
 Include the following known possible aliases in your analysis:
 ${aliasList}.
