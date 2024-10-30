@@ -86,18 +86,63 @@ export async function generateImage(
       );
       finalPrompt = `${loraPrompts.join(' ')} ${finalPrompt}`;
     }
-    // Send request to Stable Diffusion WebUI API
-    const response = await makeRequest('/sdapi/v1/txt2img', 'POST', {
+    // Send initial txt2img request
+    const txt2imgResponse = await makeRequest('/sdapi/v1/txt2img', 'POST', {
       prompt: finalPrompt,
-      negative_prompt: negative_prompt || '',
+      negative_prompt: finalNegativePrompt || '',
       steps: steps || 20,
       width: width || 512,
       height: height || 512,
     });
 
-    if (!response?.data?.images || response.data.images.length === 0)
+    if (
+      !txt2imgResponse?.data?.images ||
+      txt2imgResponse.data.images.length === 0
+    )
       throw new Error('No images returned from Stable Diffusion.');
-    let imageBase64: string = response.data.images[0];
+
+    let imageBase64: string = txt2imgResponse.data.images[0];
+
+    // Perform img2img processing
+    const img2imgPayload = {
+      init_images: [imageBase64],
+      prompt: finalPrompt,
+      negative_prompt: finalNegativePrompt || '',
+      sampler_name: 'DPM++ SDE',
+      steps: 35,
+      width: width || 512,
+      height: height || 512,
+    };
+    const img2imgResponse = await makeRequest(
+      '/sdapi/v1/img2img',
+      'POST',
+      img2imgPayload
+    );
+
+    if (
+      !img2imgResponse?.data?.images ||
+      img2imgResponse.data.images.length === 0
+    )
+      throw new Error('No images returned from img2img.');
+
+    imageBase64 = img2imgResponse.data.images[0];
+
+    // Upscale the image by 2x
+    const upscalerPayload = {
+      image: imageBase64,
+      upscaling_resize: 2,
+      upscaler_1: '4xNMKDSuperscale_4xNMKDSuperscale',
+    };
+    const upscaleResponse = await makeRequest(
+      '/sdapi/v1/extra-single-image',
+      'POST',
+      upscalerPayload
+    );
+
+    if (!upscaleResponse?.data?.image)
+      throw new Error('No image returned from upscaling.');
+
+    imageBase64 = upscaleResponse.data.image;
 
     if (doRemoveBackground) {
       const image = await removeImageBackground(imageBase64);
