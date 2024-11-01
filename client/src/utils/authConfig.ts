@@ -23,7 +23,7 @@ export const b2cPolicies = {
 export const msalConfig = {
   auth: {
     clientId: import.meta.env.VITE_AZURE_AD_CLIENT_ID, // This is the ONLY mandatory field that you need to supply.
-    // clientId: process.env.AZURE_AD_CLIENT_ID, // This is the ONLY mandatory field that you need to supply.
+    // clientId: import.meta.env.AZURE_AD_CLIENT_ID, // This is the ONLY mandatory field that you need to supply.
 
     authority: b2cPolicies.authorities.signUpSignIn.authority, // Choose SUSI as your default authority.
     knownAuthorities: [b2cPolicies.authorityDomain], // Mark your B2C tenant's domain as trusted.

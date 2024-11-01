@@ -15,11 +15,15 @@ const clickPluginConfig = {
 
 const initializeAppInsights = () => {
   const customHistory = createBrowserHistory();
+  console.log(
+    'Connection string: ',
+    import.meta.env.VITE_APP_INSIGHTS_CONNECTION_STRING
+  );
   appInsights = new ApplicationInsights({
     config: {
-      connectionString: process.env.VITE_APP_INSIGHTS_CONNECTION_STRING,
+      connectionString: import.meta.env.VITE_APP_INSIGHTS_CONNECTION_STRING,
       extensions: [reactPlugin, clickPluginInstance],
-      namePrefix: process.env.VITE_APP_INSIGHTS_NAME,
+      namePrefix: import.meta.env.VITE_APP_INSIGHTS_NAME,
       extensionConfig: {
         [reactPlugin.identifier]: {
           history: customHistory,
@@ -39,6 +43,6 @@ const initializeAppInsights = () => {
   appInsights.loadAppInsights();
 };
 
-if (process.env.NODE_ENV === 'production') initializeAppInsights();
+if (import.meta.env.NODE_ENV === 'production') initializeAppInsights();
 
 export { appInsights, reactPlugin };
