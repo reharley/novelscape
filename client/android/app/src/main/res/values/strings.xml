@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">libscape</string>
+    <string name="title_activity_main">libscape</string>
+    <string name="package_name">com.libscape.app</string>
+    <string name="custom_url_scheme">com.libscape.app</string>
+</resources>
