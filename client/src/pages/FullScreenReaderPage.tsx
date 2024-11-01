@@ -1,5 +1,3 @@
-// pages/FullScreenReaderPage.tsx
-
 import {
   Button,
   Image,

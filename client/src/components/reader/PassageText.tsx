@@ -122,6 +122,14 @@ const PassageText: React.FC<PassageTextProps> = ({
     }
   };
 
+  const handleIncreaseWpm = () => {
+    setWpm((prev) => (prev ? Math.min(prev + 5, 400) : 55));
+  };
+
+  const handleDecreaseWpm = () => {
+    setWpm((prev) => (prev ? Math.max(prev - 5, 50) : 50));
+  };
+
   const togglePause = () => {
     setIsPaused((prev) => !prev);
   };
@@ -187,6 +195,9 @@ const PassageText: React.FC<PassageTextProps> = ({
           onClick={(e) => e.stopPropagation()}
         >
           <Tooltip title='Adjust speed of autoplay in words per minute (wpm)'>
+            <Button size='small' onClick={handleDecreaseWpm}>
+              -
+            </Button>
             <InputNumber
               min={50}
               max={400}
@@ -195,6 +206,9 @@ const PassageText: React.FC<PassageTextProps> = ({
               onChange={handleWpmChange}
               style={{ width: '60px' }}
             />
+            <Button size='small' onClick={handleIncreaseWpm}>
+              +
+            </Button>
             <Text>WPM</Text>
           </Tooltip>
           <Button onClick={togglePause}>
