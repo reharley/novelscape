@@ -16,6 +16,8 @@
     "@azure/msal-browser": "^3.26.1",
     "@azure/msal-react": "^2.1.1",
     "@capacitor/android": "^6.1.2",
+    "@capacitor/app": "^6.0.1",
+    "@capacitor/browser": "^6.0.3",
     "@capacitor/core": "^6.1.2",
     "@capacitor/ios": "^6.1.2",
     "@microsoft/applicationinsights-clickanalytics-js": "^3.3.3",

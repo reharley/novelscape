@@ -15,10 +15,6 @@ const clickPluginConfig = {
 
 const initializeAppInsights = () => {
   const customHistory = createBrowserHistory();
-  console.log(
-    'Connection string: ',
-    import.meta.env.VITE_APP_INSIGHTS_CONNECTION_STRING
-  );
   appInsights = new ApplicationInsights({
     config: {
       connectionString: import.meta.env.VITE_APP_INSIGHTS_CONNECTION_STRING,

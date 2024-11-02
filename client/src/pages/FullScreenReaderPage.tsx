@@ -120,8 +120,12 @@ const FullScreenReaderPage: React.FC = () => {
       return [passage];
     }
 
-    const sentences = text.match(/[^.!?]+[.!?]+|\s*[^.!?]+$/g) || [text];
-
+    // Primary match for sentence-ending punctuation
+    let sentences = text.match(/[^.!?]+[.!?]+|\s*[^.!?]+$/g) ||
+      text.match(/[^,]+[,]+|\s*[^,]+$/g) || [text];
+    if (sentences[0].length < 20) {
+      sentences = text.match(/[^—-]+[—-]+|\s*[^—-]+$/g) || [text];
+    }
     const newPassages: Passage[] = [];
     let currentText = '';
     let splitIndex = 0;

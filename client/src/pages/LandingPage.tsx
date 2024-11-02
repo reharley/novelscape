@@ -14,6 +14,7 @@ import {
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { Capacitor } from '@capacitor/core';
 import { b2cPolicies, loginRequest } from '../utils/authConfig';
 
 const { Title, Paragraph } = Typography;
@@ -55,17 +56,31 @@ const LandingPage: React.FC = () => {
   }, [isAuthenticated, navigate]);
 
   const handleLogin = () => {
-    instance
-      .loginPopup({
-        ...loginRequest,
-        authority: b2cPolicies.authorities.signUpSignIn.authority,
-      })
-      .then((res: any) => {
-        localStorage.setItem('accessToken', res.accessToken);
-      })
-      .catch((e) => {
-        console.error('Authentication error:', e);
-      });
+    if (Capacitor.getPlatform() !== 'web') {
+      instance
+        .loginRedirect({
+          ...loginRequest,
+          authority: b2cPolicies.authorities.signUpSignIn.authority,
+        })
+        .then((res: any) => {
+          localStorage.setItem('accessToken', res.accessToken);
+        })
+        .catch((e) => {
+          console.log('error', e);
+        });
+    } else {
+      instance
+        .loginPopup({
+          ...loginRequest,
+          authority: b2cPolicies.authorities.signUpSignIn.authority,
+        })
+        .then((res: any) => {
+          localStorage.setItem('accessToken', res.accessToken);
+        })
+        .catch((e) => {
+          console.error('Authentication error:', e);
+        });
+    }
   };
   const carouselHeight = 600; // Height for carousel and images
 
