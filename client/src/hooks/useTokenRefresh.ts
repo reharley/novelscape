@@ -34,8 +34,15 @@ export const useTokenRefresh = () => {
         const currentTime = Math.floor(Date.now() / 1000); // Current time in seconds
         if (decodeToken.exp) {
           const timeUntilExpiry = decodeToken.exp - currentTime;
-          if (timeUntilExpiry <= REFRESH_THRESHOLD) {
-            // Token is about to expire or has expired, refresh it
+          if (timeUntilExpiry <= 0) {
+            // Token has expired
+            console.log('Token has expired');
+            acquireTokenWithRefreshToken().then(() => {
+              console.log('Token refreshed');
+              window.location.reload();
+            });
+          } else if (timeUntilExpiry <= REFRESH_THRESHOLD) {
+            // Token is about to expire, refresh it
             acquireTokenWithRefreshToken();
           }
         }
