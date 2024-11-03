@@ -55,6 +55,11 @@ export async function listBooks(req: Request, res: Response) {
     });
 
     const books = await prisma.book.findMany({
+      where: {
+        userId: {
+          in: [userId, 'ffc92e45-27d7-49ee-9021-8ce8a0874479'],
+        },
+      },
       orderBy: {
         title: 'asc',
       },

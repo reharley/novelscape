@@ -3,7 +3,18 @@ import {
   DiscordOutlined,
   UploadOutlined,
 } from '@ant-design/icons';
-import { Button, Card, Col, message, Popconfirm, Row, Upload } from 'antd';
+import { useMsal } from '@azure/msal-react';
+import {
+  Button,
+  Card,
+  Col,
+  message,
+  Popconfirm,
+  Row,
+  Space,
+  Switch,
+  Upload,
+} from 'antd';
 import { RcFile } from 'antd/es/upload/interface';
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
@@ -14,9 +25,14 @@ import { Book } from '../utils/types';
 
 const LibraryPage: React.FC = () => {
   const navigate = useNavigate();
+  const { accounts } = useMsal();
+
   const [books, setBooks] = useState<Book[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [showUserBooks, setShowUserBooks] = useState(false);
 
+  const userId = accounts[0]?.localAccountId;
+  console.log('userId', userId);
   const fetchBooks = () => {
     axios
       .get(`${apiUrl}/api/books/`)
@@ -86,46 +102,63 @@ const LibraryPage: React.FC = () => {
         <DiscordOutlined /> Join the Discord!
       </Button>
       <h1>Your Library</h1>
-      <Upload beforeUpload={handleUpload} accept='.epub' showUploadList={false}>
-        <Button icon={<UploadOutlined />} loading={uploading}>
-          {uploading ? 'Uploading' : 'Upload EPUB'}
-        </Button>
-      </Upload>
+      <Space direction='vertical'>
+        <Upload
+          beforeUpload={handleUpload}
+          accept='.epub'
+          showUploadList={false}
+        >
+          <Button icon={<UploadOutlined />} loading={uploading}>
+            {uploading ? 'Uploading' : 'Upload EPUB'}
+          </Button>
+        </Upload>
 
-      <h2 style={{ marginTop: '20px' }}>Uploaded Books</h2>
+        <Space>
+          <h2 style={{ marginTop: '20px' }}>Uploaded Books</h2>
+          <div>
+            <span style={{ marginLeft: '8px' }}>Show My Books</span>
+          </div>
+          <Switch
+            checked={showUserBooks}
+            onChange={(checked) => setShowUserBooks(checked)}
+          />
+        </Space>
+      </Space>
       {books.length === 0 ? (
         <p>No books uploaded yet.</p>
       ) : (
         <Row gutter={[16, 16]}>
-          {books.map((book) => (
-            <Col key={book.id} xs={24} sm={12} md={8} lg={6}>
-              <Card
-                hoverable
-                cover={
-                  <img
-                    onClick={() => navigate(`/reader/${book.id}`)}
-                    alt='placeholder'
-                    src={book.coverUrl || 'https://via.placeholder.com/150'}
+          {books
+            .filter((book) => !showUserBooks || book.userId === userId)
+            .map((book) => (
+              <Col key={book.id} xs={24} sm={12} md={8} lg={6}>
+                <Card
+                  hoverable
+                  cover={
+                    <img
+                      onClick={() => navigate(`/reader/${book.id}`)}
+                      alt='placeholder'
+                      src={book.coverUrl || 'https://via.placeholder.com/150'}
+                    />
+                  }
+                  actions={[
+                    <Popconfirm
+                      title='Are you sure you want to delete this book?'
+                      onConfirm={() => handleDelete(book.id)}
+                      okText='Yes'
+                      cancelText='No'
+                    >
+                      <DeleteOutlined key='delete' />
+                    </Popconfirm>,
+                  ]}
+                >
+                  <Card.Meta
+                    title={book.title}
+                    description={book.title || 'No description'}
                   />
-                }
-                actions={[
-                  <Popconfirm
-                    title='Are you sure you want to delete this book?'
-                    onConfirm={() => handleDelete(book.id)}
-                    okText='Yes'
-                    cancelText='No'
-                  >
-                    <DeleteOutlined key='delete' />
-                  </Popconfirm>,
-                ]}
-              >
-                <Card.Meta
-                  title={book.title}
-                  description={book.title || 'No description'}
-                />
-              </Card>
-            </Col>
-          ))}
+                </Card>
+              </Col>
+            ))}
         </Row>
       )}
     </div>
