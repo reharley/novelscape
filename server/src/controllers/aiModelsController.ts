@@ -118,3 +118,20 @@ export async function setActiveModelController(req: Request, res: Response) {
       .json({ error: error.message || 'Failed to set active model.' });
   }
 }
+
+export const getAllAiModels = async (req: Request, res: Response) => {
+  try {
+    const [models, loras, embeddings] = await Promise.all([
+      listModels('Checkpoint'),
+      listModels('LORA'),
+      listModels('TextualInversion'),
+    ]);
+    res.json({
+      models,
+      loras,
+      embeddings,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to fetch AI Models.' });
+  }
+};

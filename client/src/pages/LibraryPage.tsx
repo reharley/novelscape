@@ -1,6 +1,7 @@
 import {
   DeleteOutlined,
   DiscordOutlined,
+  SettingOutlined,
   UploadOutlined,
 } from '@ant-design/icons';
 import { useMsal } from '@azure/msal-react';
@@ -9,8 +10,10 @@ import {
   Card,
   Col,
   message,
+  Modal,
   Popconfirm,
   Row,
+  Select,
   Space,
   Switch,
   Upload,
@@ -20,8 +23,9 @@ import axios from 'axios';
 import React, { useEffect, useState } from 'react';
 
 import { useNavigate } from 'react-router-dom';
+import { getStylePackages } from '../api/stylePackageApi'; // Import the API function to fetch StylePackages
 import { apiUrl } from '../utils/general';
-import { Book } from '../utils/types';
+import { Book, StylePackage } from '../utils/types';
 
 const LibraryPage: React.FC = () => {
   const navigate = useNavigate();
@@ -30,9 +34,12 @@ const LibraryPage: React.FC = () => {
   const [books, setBooks] = useState<Book[]>([]);
   const [uploading, setUploading] = useState(false);
   const [showUserBooks, setShowUserBooks] = useState(false);
+  const [isModalVisible, setIsModalVisible] = useState(false); // Combined modal visibility
+  const [selectedBookId, setSelectedBookId] = useState<number | null>(null);
+  const [availableStyles, setAvailableStyles] = useState<StylePackage[]>([]);
+  const [selectedStyle, setSelectedStyle] = useState<number | null>(null); // Use number type for IDs
 
   const userId = accounts[0]?.localAccountId;
-  console.log('userId', userId);
   const fetchBooks = () => {
     axios
       .get(`${apiUrl}/api/books/`)
@@ -46,7 +53,17 @@ const LibraryPage: React.FC = () => {
 
   useEffect(() => {
     fetchBooks();
+    fetchStylePackages(); // Fetch StylePackages when component mounts
   }, []);
+
+  const fetchStylePackages = async () => {
+    try {
+      const data = await getStylePackages(); // Fetch StylePackages from the server
+      setAvailableStyles(data);
+    } catch (error) {
+      // message.error('Failed to fetch Style Packages.');
+    }
+  };
 
   const handleUpload = (file: RcFile): boolean => {
     const formData = new FormData();
@@ -80,6 +97,52 @@ const LibraryPage: React.FC = () => {
       .catch((error) => {
         message.error(`Error deleting book: ${error}`);
       });
+  };
+
+  const showStylePackageModal = (bookId: number) => {
+    setSelectedBookId(bookId);
+    const book = books.find((b) => b.id === bookId);
+    setSelectedStyle(book?.stylePackageId || null); // Set current StylePackage or null
+
+    setIsModalVisible(true);
+  };
+
+  const handleSaveStyle = () => {
+    if (selectedBookId != null) {
+      if (selectedStyle != null) {
+        // Add or update the StylePackage
+        axios
+          .post(`${apiUrl}/api/books/${selectedBookId}/style-packages`, {
+            stylePackageId: selectedStyle,
+          })
+          .then(() => {
+            message.success('StylePackage updated successfully.');
+            fetchBooks();
+            setIsModalVisible(false);
+            setSelectedStyle(null);
+          })
+          .catch((error) => {
+            message.error(`Error updating StylePackage: ${error}`);
+          });
+      } else {
+        // Remove the StylePackage
+        const selectedBook = books.find((b) => b.id === selectedBookId);
+        const stylePackageId = selectedBook?.stylePackageId;
+        axios
+          .delete(
+            `${apiUrl}/api/books/${selectedBookId}/style-packages/${stylePackageId}`
+          )
+          .then(() => {
+            message.success('StylePackage removed successfully.');
+            fetchBooks();
+            setIsModalVisible(false);
+            setSelectedStyle(null);
+          })
+          .catch((error) => {
+            message.error(`Error removing StylePackage: ${error}`);
+          });
+      }
+    }
   };
 
   return (
@@ -150,6 +213,10 @@ const LibraryPage: React.FC = () => {
                     >
                       <DeleteOutlined key='delete' />
                     </Popconfirm>,
+                    <SettingOutlined
+                      key='manage-styles'
+                      onClick={() => showStylePackageModal(book.id)}
+                    />,
                   ]}
                 >
                   <Card.Meta
@@ -161,6 +228,29 @@ const LibraryPage: React.FC = () => {
             ))}
         </Row>
       )}
+      <Modal
+        title='Manage StylePackage'
+        visible={isModalVisible}
+        onOk={handleSaveStyle}
+        onCancel={() => {
+          setIsModalVisible(false);
+          setSelectedStyle(null);
+        }}
+      >
+        <Select
+          style={{ width: '100%' }}
+          placeholder='Select a style'
+          value={selectedStyle}
+          onChange={(value) => setSelectedStyle(value)}
+        >
+          <Select.Option value={null}>None</Select.Option>
+          {availableStyles.map((stylePackage) => (
+            <Select.Option key={stylePackage.id} value={stylePackage.id}>
+              {stylePackage.name}
+            </Select.Option>
+          ))}
+        </Select>
+      </Modal>
     </div>
   );
 };

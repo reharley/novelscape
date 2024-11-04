@@ -1,7 +1,10 @@
 import { CompletionUsage } from 'openai/resources/index.mjs';
 import openai from '../config/openai.js';
 import prisma from '../config/prisma.js';
-import { PassageWithProfileSpeaker } from './types.js';
+import {
+  PassageWithProfileSpeaker,
+  StylePackageWithRelations,
+} from './types.js';
 
 const model = 'gpt-4o-mini';
 
@@ -18,6 +21,7 @@ export async function generateProfilePrompt(
     gender?: string | null;
     descriptions: string[];
   },
+  stylePackage: StylePackageWithRelations | null,
   userId: string
 ): Promise<{ positivePrompt: string; negativePrompt: string }> {
   const examples = [
@@ -73,8 +77,24 @@ You are an expert prompt engineer specializing in generating full body portrait 
 5. **Format**: Provide the output as a JSON object with two fields: "positivePrompt" and "negativePrompt". Do **not** include any Markdown formatting or code block delimiters.
 6. **Format Clues**: Focus on comma separated list of features describing a scene and avoid full sentences
 7. **Examples**: Below are examples of desired outputs to guide your response.
+${
+  stylePackage
+    ? '8. Style guide: Use the style package to guide the style of the image.'
+    : ''
+}
 **Example Outputs:**
-${examplesString}
+${
+  stylePackage
+    ? `
+${stylePackage.characterProfile.prompt}
+${
+  stylePackage.characterProfile.negativePrompt
+    ? stylePackage.characterProfile.negativePrompt
+    : ''
+}
+`
+    : examplesString
+}
 **Data Provided:**
 - **Profile**:
 **Character Name: ${profile.name}**
@@ -82,14 +102,6 @@ ${profile.gender ? 'Gender:' + profile.gender : undefined}
 Descriptions:
 ${profile.descriptions.map((desc) => `- ${desc}`).join('\n')}
 `;
-  /*
-- **Book Name**: "${bookName}"
-    
-    - **Passage Content**:
-    \`\`\`
-    ${textContent}
-    \`\`\`
-    */
   let message;
   try {
     const functions = [
@@ -177,6 +189,7 @@ ${profile.descriptions.map((desc) => `- ${desc}`).join('\n')}
  */
 export async function generateBackgroundPrompt(
   textContent: string,
+  stylePackage: StylePackageWithRelations | null,
   profiles: {
     name: string;
     descriptions: string[];
@@ -252,24 +265,35 @@ export async function generateBackgroundPrompt(
     .join('\n\n');
 
   const systemPrompt = `
-    You are an expert prompt engineer specializing in generating prompts for standard diffusion image generation. Your task is to create both positive and negative prompts based on the provided passage content, for background scene images.
-  
-    **Guidelines:**
-  
-    1. **Positive Prompt**: Should vividly describe the background scene as a list of attributes incorporating elements solely from the passage content to describe the scene. **NEVER** write character descriptions. **DO NOT INCLUDE CHARACTERS**. No characters should be mentioned in the positive prompt. Focus on the setting, environment, and objects in the scene.
-    2. **Negative Prompt**: Should include elements to avoid in the image generation to ensure higher quality and relevance. Should avoid drawing characters/people unless they are in the background. Focus on common issues like poor anatomy, incorrect proportions, unwanted artifacts, etc.
-    3. **DO NOT INCLUDE CHARACTERS**: Do not include characters, or character descriptions; focus solely on the background and non-character elements.
-    4. **Examples**: Below are examples of desired outputs to guide your response.
-  
-    **Example Outputs:**
-    ${examplesString}
-  
-    - **Passage Content**:
-    \`\`\`
-    ${textContent}
-    \`\`\`
-  
-    **Please generate the positive and negative prompts for the background scene accordingly.**
+You are an expert prompt engineer specializing in generating prompts for standard diffusion image generation. Your task is to create both positive and negative prompts based on the provided passage content, for background scene images.
+
+**Guidelines:**
+
+1. **Positive Prompt**: Should vividly describe the background scene as a list of attributes incorporating elements solely from the passage content to describe the scene. **NEVER** write character descriptions. **DO NOT INCLUDE CHARACTERS**. No characters should be mentioned in the positive prompt. Focus on the setting, environment, and objects in the scene.
+2. **Negative Prompt**: Should include elements to avoid in the image generation to ensure higher quality and relevance. Should avoid drawing characters/people unless they are in the background. Focus on common issues like poor anatomy, incorrect proportions, unwanted artifacts, etc.
+3. **DO NOT INCLUDE CHARACTERS**: Do not include characters, or character descriptions; focus solely on the background and non-character elements.
+4. **Examples**: Below are examples of desired outputs to guide your response.
+
+**Example Output:**
+${
+  stylePackage
+    ? `
+${stylePackage.backgroundProfile.prompt}
+${
+  stylePackage.backgroundProfile.negativePrompt
+    ? 'negativePrompt-\n' + stylePackage.backgroundProfile.negativePrompt
+    : ''
+}
+`
+    : examplesString
+}
+
+**Passage Content**:
+\`\`\`
+${textContent}
+\`\`\`
+
+**Please generate the positive and negative prompts for the background scene accordingly.**
     `;
   const functions = [
     {

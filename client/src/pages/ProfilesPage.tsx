@@ -1,12 +1,10 @@
 import {
   Button,
   Card,
-  Checkbox,
   Divider,
   Form,
   Image,
   Input,
-  InputNumber,
   List,
   Modal,
   Select,
@@ -16,8 +14,9 @@ import {
 } from 'antd';
 import axios from 'axios';
 import React, { useEffect, useState } from 'react';
+import ProfileGenerationDataModal from '../components/ProfileGenerationDataModal'; // Added import
 import { apiUrl } from '../utils/general';
-import { AiModel } from '../utils/types';
+import { AiModel, ProfileGenerationData } from '../utils/types';
 
 const { Option } = Select;
 const { Title, Text } = Typography;
@@ -30,38 +29,6 @@ interface Book {
 interface GenerationPackage {
   id: number;
   name: string;
-}
-
-interface Lora {
-  id: number;
-  aiModelId: number;
-  name: string;
-  weight: number;
-}
-
-interface Embedding {
-  id: number;
-  aiModelId: number;
-  name: string;
-}
-
-interface ProfileGenerationData {
-  id: number;
-  name: string;
-  prompt: string;
-  negative_prompt?: string;
-  steps?: number;
-  width?: number;
-  height?: number;
-  checkpointId: number;
-  removeBackground: boolean;
-  loras: Lora[];
-  embeddings: Embedding[];
-  negativeEmbeddings: Embedding[];
-  createdAt: string;
-  updatedAt: string;
-  generationPackageId?: number;
-  // Add other fields if necessary
 }
 
 interface AiModels {
@@ -228,7 +195,7 @@ const ProfilesPage: React.FC = () => {
     form.setFieldsValue({
       name: genData.name, // Set the name field
       prompt: genData.prompt,
-      negative_prompt: genData.negative_prompt,
+      negativePrompt: genData.negativePrompt,
       steps: genData.steps,
       width: genData.width,
       height: genData.height,
@@ -257,7 +224,7 @@ const ProfilesPage: React.FC = () => {
         const payload: Partial<ProfileGenerationData> = {
           name: values.name, // Include the name field
           prompt: values.prompt,
-          negative_prompt: values.negative_prompt,
+          negativePrompt: values.negativePrompt,
           steps: values.steps,
           width: values.width,
           height: values.height,
@@ -481,7 +448,7 @@ const ProfilesPage: React.FC = () => {
                           </p>
                           <p>
                             <Text strong>Negative Prompt:</Text>{' '}
-                            {genData.negative_prompt || 'N/A'}
+                            {genData.negativePrompt || 'N/A'}
                           </p>
                           <p>
                             <Text strong>Steps:</Text>{' '}
@@ -616,180 +583,15 @@ const ProfilesPage: React.FC = () => {
         renderItem={(embedding) => <List.Item>{embedding.name}</List.Item>}
       />
 
-      {/* Edit ProfileGenerationData Modal */}
-      <Modal
-        title='Edit Profile Generation Data'
+      {/* Use the new ProfileGenerationDataModal component */}
+      <ProfileGenerationDataModal
         visible={isEditModalVisible}
         onOk={handleEditSubmit}
         onCancel={handleCancelEditModal}
-        width={800}
-        destroyOnClose
-      >
-        <Form
-          form={form}
-          layout='vertical'
-          initialValues={{
-            removeBackground: false,
-            loras: [],
-            embeddings: [],
-            negativeEmbeddings: [],
-            name: '',
-          }}
-        >
-          {/* Name Field */}
-          <Form.Item
-            label='Name'
-            name='name'
-            rules={[{ required: true, message: 'Please enter the name.' }]}
-          >
-            <Input />
-          </Form.Item>
-
-          <Form.Item
-            label='Prompt'
-            name='prompt'
-            rules={[{ required: true, message: 'Please enter the prompt.' }]}
-          >
-            <Input.TextArea rows={3} />
-          </Form.Item>
-
-          <Form.Item label='Negative Prompt' name='negative_prompt'>
-            <Input.TextArea rows={2} />
-          </Form.Item>
-
-          <Form.Item label='Steps' name='steps'>
-            <InputNumber min={1} style={{ width: '100%' }} />
-          </Form.Item>
-
-          <Form.Item label='Width' name='width'>
-            <InputNumber min={1} style={{ width: '100%' }} />
-          </Form.Item>
-
-          <Form.Item label='Height' name='height'>
-            <InputNumber min={1} style={{ width: '100%' }} />
-          </Form.Item>
-
-          <Form.Item
-            label='Checkpoint'
-            name='checkpointId'
-            rules={[{ required: true, message: 'Please select a checkpoint.' }]}
-          >
-            <Select
-              placeholder='Select a checkpoint'
-              loading={aiModels.models.length === 0}
-            >
-              {aiModels.models.map((model) => (
-                <Option key={model.id} value={model.id}>
-                  {model.name}
-                </Option>
-              ))}
-            </Select>
-          </Form.Item>
-
-          <Form.Item
-            name='removeBackground'
-            valuePropName='checked'
-            style={{ marginBottom: '0' }}
-          >
-            <Checkbox>Remove Background</Checkbox>
-          </Form.Item>
-
-          {/* LORAs with Weights */}
-          <Form.List name='loras'>
-            {(fields, { add, remove }) => (
-              <>
-                <Text strong>Positive LORAs:</Text>
-                {fields.map(({ key, name, ...restField }) => (
-                  <div key={key} style={{ display: 'flex', marginBottom: 8 }}>
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'id']}
-                      rules={[{ required: true, message: 'Missing LORA' }]}
-                      style={{ flex: 2, marginRight: 8 }}
-                    >
-                      <Select placeholder='Select a LORA' allowClear>
-                        {aiModels.loras.map((lora) => (
-                          <Option key={lora.id} value={lora.id}>
-                            {lora.name}
-                          </Option>
-                        ))}
-                      </Select>
-                    </Form.Item>
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'weight']}
-                      rules={[{ required: true, message: 'Missing weight' }]}
-                      style={{ flex: 1, marginRight: 8 }}
-                      initialValue={1.0}
-                    >
-                      <InputNumber
-                        min={0}
-                        step={0.1}
-                        placeholder='Weight'
-                        style={{ width: '100%' }}
-                      />
-                    </Form.Item>
-                    <Button type='link' onClick={() => remove(name)}>
-                      Remove
-                    </Button>
-                  </div>
-                ))}
-                <Form.Item>
-                  <Button type='dashed' onClick={() => add()} block>
-                    Add LORA
-                  </Button>
-                </Form.Item>
-              </>
-            )}
-          </Form.List>
-
-          <Form.Item label='Embeddings' name='embeddings'>
-            <Select
-              mode='multiple'
-              placeholder='Select Embeddings'
-              loading={aiModels.embeddings.length === 0}
-              allowClear
-            >
-              {aiModels.embeddings.map((embedding) => (
-                <Option key={embedding.id} value={embedding.id}>
-                  {embedding.name}
-                </Option>
-              ))}
-            </Select>
-          </Form.Item>
-
-          <Form.Item label='Negative Embeddings' name='negativeEmbeddings'>
-            <Select
-              mode='multiple'
-              placeholder='Select Negative Embeddings'
-              loading={aiModels.embeddings.length === 0}
-              allowClear
-            >
-              {aiModels.embeddings.map((embedding) => (
-                <Option key={embedding.id} value={embedding.id}>
-                  {embedding.name}
-                </Option>
-              ))}
-            </Select>
-          </Form.Item>
-
-          {/* If you want to allow editing the Generation Package */}
-          {/* 
-          <Form.Item label='Generation Package' name='generationPackageId'>
-            <Select
-              placeholder='Select a Generation Package'
-              allowClear
-            >
-              {generationPackages.map((pkg) => (
-                <Option key={pkg.id} value={pkg.id}>
-                  {pkg.name}
-                </Option>
-              ))}
-            </Select>
-          </Form.Item>
-          */}
-        </Form>
-      </Modal>
+        editingGenData={editingGenData}
+        form={form}
+        aiModels={aiModels}
+      />
     </div>
   );
 };

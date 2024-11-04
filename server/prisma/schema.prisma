@@ -25,6 +25,9 @@ model Book {
     ProcessingJob         ProcessingJob[]
     ProfileGenerationData ProfileGenerationData[]
     GenerationPackage     GenerationPackage[]
+
+    stylePackageId Int?
+    stylePackage   StylePackage? @relation(fields: [stylePackageId], references: [id]) // Added relation
 }
 
 model Chapter {
@@ -125,9 +128,7 @@ model AiModel {
     updatedAt             DateTime                @updatedAt
     CivitaiResource       CivitaiResource[]
     ProfileGenerationData ProfileGenerationData[]
-    Lora                  Lora[]
-    Embedding             Embedding[]
-    NegativeEmbedding     NegativeEmbedding[]
+    Lora                  WeightedModel[]
 }
 
 model ModelImage {
@@ -271,52 +272,45 @@ model GenerationPackage {
 model ProfileGenerationData {
     id                  Int                   @id @default(autoincrement())
     name                String
-    book                Book                  @relation(fields: [bookId], references: [id])
-    bookId              Int
-    profileId           Int
-    profile             Profile               @relation(fields: [profileId], references: [id])
+    book                Book?                 @relation(fields: [bookId], references: [id])
+    bookId              Int?
+    profileId           Int?
+    profile             Profile?              @relation(fields: [profileId], references: [id])
     prompt              String
-    negative_prompt     String?
+    negativePrompt      String?
     steps               Int?
     width               Int?
     height              Int?
     checkpointId        Int
     checkpoint          AiModel               @relation(fields: [checkpointId], references: [id])
     removeBackground    Boolean               @default(false)
-    loras               Lora[]
-    embeddings          Embedding[]
-    negativeEmbeddings  NegativeEmbedding[]
+    loras               WeightedModel[]       @relation("Lora")
+    embeddings          WeightedModel[]       @relation("Embedding")
+    negativeEmbeddings  WeightedModel[]       @relation("NegativeEmbedding")
+    weightedModels      WeightedModel[]       @relation("WeightedModel")
     profileAssociations ProfileImagePackage[]
     sceneAssociations   SceneImagePackage[]
     createdAt           DateTime              @default(now())
     updatedAt           DateTime              @updatedAt
     generationPackage   GenerationPackage?    @relation(fields: [generationPackageId], references: [id])
     generationPackageId Int?
+    charStylePackages   StylePackage[]        @relation("CharacterProfile")
+    backStylePackages   StylePackage[]        @relation("BackgroundProfile")
 }
 
-model Lora {
-    id                    Int                   @id @default(autoincrement())
-    aiModelId             Int
-    aiModel               AiModel               @relation(fields: [aiModelId], references: [id])
-    weight                Float
-    profileGenerationData ProfileGenerationData @relation(fields: [profileGenerationId], references: [id])
-    profileGenerationId   Int
-}
-
-model Embedding {
-    id                    Int                   @id @default(autoincrement())
-    aiModelId             Int
-    aiModel               AiModel               @relation(fields: [aiModelId], references: [id])
-    profileGenerationData ProfileGenerationData @relation(fields: [profileGenerationId], references: [id])
-    profileGenerationId   Int
-}
-
-model NegativeEmbedding {
-    id                    Int                   @id @default(autoincrement())
-    aiModelId             Int
-    aiModel               AiModel               @relation(fields: [aiModelId], references: [id])
-    profileGenerationData ProfileGenerationData @relation(fields: [profileGenerationId], references: [id])
-    profileGenerationId   Int
+model WeightedModel {
+    id                                       Int                    @id @default(autoincrement())
+    aiModelId                                Int
+    aiModel                                  AiModel                @relation(fields: [aiModelId], references: [id])
+    weight                                   Float
+    profileGenerationDataId                  Int
+    profileGenerationData                    ProfileGenerationData  @relation("WeightedModel", fields: [profileGenerationDataId], references: [id])
+    profileGenerationDataLoraId              Int?
+    loraProfileGeneration                    ProfileGenerationData? @relation("Lora", fields: [profileGenerationDataLoraId], references: [id])
+    profileGenerationDataEmbeddingId         Int?
+    embeddingProfileGeneration               ProfileGenerationData? @relation("Embedding", fields: [profileGenerationDataEmbeddingId], references: [id])
+    profileGenerationDataNegativeEmbeddingId Int?
+    negativeEmbeddingProfileGeneration       ProfileGenerationData? @relation("NegativeEmbedding", fields: [profileGenerationDataNegativeEmbeddingId], references: [id])
 }
 
 model ProfileImagePackage {
@@ -335,4 +329,18 @@ model SceneImagePackage {
     profileGeneration   ProfileGenerationData @relation(fields: [profileGenerationId], references: [id])
 
     @@id([sceneId, profileGenerationId])
+}
+
+model StylePackage {
+    id                  Int                   @id @default(autoincrement())
+    name                String
+    characterProfileId  Int
+    backgroundProfileId Int
+    characterProfile    ProfileGenerationData @relation("CharacterProfile", fields: [characterProfileId], references: [id])
+    backgroundProfile   ProfileGenerationData @relation("BackgroundProfile", fields: [backgroundProfileId], references: [id])
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    books Book[]
 }

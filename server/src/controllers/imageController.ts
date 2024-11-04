@@ -12,6 +12,7 @@ import {
   ChapterWithRelations,
   ProfileWithRelations,
   SceneWithRelations,
+  StylePackageWithRelations,
 } from '../utils/types.js';
 
 const characterImageSize = {
@@ -24,16 +25,16 @@ const backgroundSceneSize = {
 };
 
 export async function generateImageController(req: Request, res: Response) {
-  const { prompt, negative_prompt, steps, width, height, loras, model } =
+  const { prompt, negativePrompt, steps, width, height, loras, model } =
     req.body;
   try {
     const imageResult = await generateImage({
       prompt,
-      negative_prompt,
+      negativePrompt,
       steps,
       width,
       height,
-      positive_loras: loras,
+      loras: loras,
       model,
     });
     res.json(imageResult);
@@ -142,6 +143,7 @@ export async function generateImageForProfile(req: Request, res: Response) {
     // Generate image for the profile using the helper function
     const result = await generateImageForProfileHelper(
       profile,
+      null,
       passageText,
       bookTitle,
       forceRegenerate,
@@ -161,6 +163,7 @@ export async function generateImageForProfile(req: Request, res: Response) {
 
 export async function generateBackgroundImagesForChapter(
   chapter: ChapterWithRelations,
+  stylePackage: StylePackageWithRelations | null,
   job: any,
   forceRegenerate: boolean,
   backgroundOptions: any
@@ -178,6 +181,7 @@ export async function generateBackgroundImagesForChapter(
 
         await generateBackgroundImageForScene(
           scene,
+          stylePackage,
           combinedSceneText,
           chapter.book.title,
           forceRegenerate,
@@ -217,6 +221,7 @@ export async function generateBackgroundImagesForChapter(
 
 export async function generateProfileImagesForChapter(
   chapter: ChapterWithRelations,
+  stylePackage: StylePackageWithRelations | null,
   profiles: ProfileWithRelations[],
   job: any,
   forceRegenerate: boolean,
@@ -234,6 +239,7 @@ export async function generateProfileImagesForChapter(
       try {
         await generateImageForProfileHelper(
           profile,
+          stylePackage,
           combinedChapterText,
           chapter.book.title,
           forceRegenerate,
@@ -273,6 +279,7 @@ export async function generateProfileImagesForChapter(
 
 async function generateImageForProfileHelper(
   profile: ProfileWithRelations,
+  stylePackage: StylePackageWithRelations | null,
   passageText: string,
   bookTitle: string,
   forceRegenerate: boolean,
@@ -288,48 +295,17 @@ async function generateImageForProfileHelper(
   try {
     await ensureGenerationDataForProfile(profile, characterImageSize);
     const generationData = profile.image!.generationData!;
-    const civitaiResources = generationData.civitaiResources;
-
-    // Determine model file name
-    let modelFileName: string | null = null;
-
-    // Use the checkpoint from profileOptions if provided
-    if (profileOptions?.checkpoint) {
-      modelFileName = profileOptions.checkpoint;
-    } else {
-      // Existing logic to determine the model
-      const checkpointResource = civitaiResources?.find(
-        (resource) => resource?.modelType.toLowerCase() === 'checkpoint'
-      );
-
-      if (checkpointResource) {
-        const aiModel = await prisma.aiModel.findUnique({
-          where: { id: checkpointResource.modelId },
-        });
-        if (aiModel) {
-          modelFileName = aiModel.fileName;
-        }
-      } else {
-        // Use default model if no checkpointResource
-        modelFileName = 'dreamshaper_8.safetensors'; // Replace with your default model
-      }
-    }
-
-    if (!modelFileName) {
-      console.warn(
-        `No suitable AiModel fileName found for profile ID ${profile.id}. Skipping image generation.`
-      );
-      return {
-        profileId: profile.id,
-        profileName: profile.name,
-        image: null,
-        error: 'No suitable AiModel found for image generation.',
-      };
-    }
 
     // Determine prompts
     let finalPrompt = generationData.prompt;
     let finalNegativePrompt = generationData.negativePrompt;
+
+    if (stylePackage) {
+      finalPrompt = `${stylePackage.backgroundProfile.prompt}, ${finalPrompt}`;
+      if (stylePackage.backgroundProfile.negativePrompt) {
+        finalNegativePrompt = `${stylePackage.backgroundProfile.negativePrompt}, ${finalNegativePrompt}`;
+      }
+    }
 
     if (
       forceRegenerate ||
@@ -350,6 +326,7 @@ async function generateImageForProfileHelper(
               .map((desc) => desc.appearance!),
             gender: profile.gender ?? undefined,
           },
+          stylePackage,
           userId
         );
 
@@ -372,21 +349,57 @@ async function generateImageForProfileHelper(
       }
     }
 
-    // Handle LoRAs
-    const positiveLoras = profileOptions?.positiveLoras || [];
-    const negativeLoras = profileOptions?.negativeLoras || [];
+    if (stylePackage) {
+      finalPrompt = `${stylePackage.characterProfile.prompt}, ${finalPrompt}`;
+      if (stylePackage.characterProfile.negativePrompt) {
+        finalNegativePrompt = `${stylePackage.characterProfile.negativePrompt}, ${finalNegativePrompt}`;
+      }
+    }
 
+    let modelFileName = 'dreamshaper_8.safetensors';
+    if (stylePackage?.characterProfile.checkpoint.fileName) {
+      modelFileName = stylePackage.characterProfile.checkpoint.fileName;
+    } else if (profileOptions?.checkpoint) {
+      modelFileName = profileOptions.checkpoint;
+    }
+
+    const loras = profileOptions?.positiveLoras || [];
+    if (stylePackage?.characterProfile.loras) {
+      loras.push(
+        ...stylePackage.characterProfile.loras.map((lora) => ({
+          name: lora.aiModel.fileName,
+          weight: lora.weight,
+        }))
+      );
+    }
+    const embeddings = profileOptions?.embeddings || [];
+    if (stylePackage?.characterProfile.embeddings) {
+      embeddings.push(
+        ...stylePackage.characterProfile.embeddings.map(
+          (embedding) => embedding.aiModel.fileName
+        )
+      );
+    }
+    const negativeEmbeddings = profileOptions?.negativeEmbeddings || [];
+    if (stylePackage?.characterProfile.negativeEmbeddings) {
+      negativeEmbeddings.push(
+        ...stylePackage.characterProfile.negativeEmbeddings.map(
+          (embedding) => embedding.aiModel.fileName
+        )
+      );
+    }
+
+    const steps = stylePackage?.characterProfile.steps || 30;
     // Generate image
     const imageResult = await generateImage(
       {
         prompt: finalPrompt,
-        negative_prompt: finalNegativePrompt,
-        steps: generationData.steps,
+        negativePrompt: finalNegativePrompt,
+        steps,
         ...characterImageSize,
-        // Pass the options to generateImage
-        positive_loras: positiveLoras,
-        embeddings: profileOptions?.embeddings,
-        negative_embeddings: profileOptions?.negativeEmbeddings,
+        loras,
+        embeddings,
+        negative_embeddings: negativeEmbeddings,
         model: modelFileName,
         removeBackground: true,
         // cfg_scale: generationData.cfgScale,
@@ -434,6 +447,7 @@ async function generateImageForProfileHelper(
 
 async function generateBackgroundImageForScene(
   scene: SceneWithRelations,
+  stylePackage: StylePackageWithRelations | null,
   combinedSceneText: string,
   bookTitle: string,
   forceRegenerate: boolean,
@@ -474,6 +488,7 @@ async function generateBackgroundImageForScene(
       // Generate prompts
       const prompts = await generateBackgroundPrompt(
         combinedSceneText,
+        stylePackage,
         [], // No profiles in this context
         bookTitle,
         userId
@@ -496,31 +511,61 @@ async function generateBackgroundImageForScene(
     let finalPrompt = generationData.prompt;
     let finalNegativePrompt = generationData.negativePrompt;
 
+    if (stylePackage) {
+      finalPrompt = `${stylePackage.backgroundProfile.prompt}, ${finalPrompt}`;
+      if (stylePackage.backgroundProfile.negativePrompt) {
+        finalNegativePrompt = `${stylePackage.backgroundProfile.negativePrompt}, ${finalNegativePrompt}`;
+      }
+    }
+
     // Handle LoRAs
-    const positiveLoras = backgroundOptions?.positiveLoras || [];
-    const negativeLoras = backgroundOptions?.negativeLoras || [];
+    const loras = backgroundOptions?.positiveLoras || [];
 
-    // Determine model file name
-    let modelFileName = 'dreamshaper_8.safetensors'; // Replace with your default model
-
-    // Use the checkpoint from backgroundOptions if provided
-    if (backgroundOptions?.checkpoint) {
+    let modelFileName = 'dreamshaper_8.safetensors';
+    if (stylePackage?.backgroundProfile.checkpoint.fileName) {
+      modelFileName = stylePackage.backgroundProfile.checkpoint.fileName;
+    } else if (backgroundOptions?.checkpoint) {
       modelFileName = backgroundOptions.checkpoint;
     }
 
+    if (stylePackage?.backgroundProfile.loras) {
+      loras.push(
+        ...stylePackage.backgroundProfile.loras.map((lora) => ({
+          name: lora.aiModel.fileName,
+          weight: lora.weight,
+        }))
+      );
+    }
+
+    const embeddings = backgroundOptions?.embeddings || [];
+    if (stylePackage?.backgroundProfile.embeddings) {
+      embeddings.push(
+        ...stylePackage.backgroundProfile.embeddings.map(
+          (embedding) => embedding.aiModel.fileName
+        )
+      );
+    }
+    const negativeEmbeddings = backgroundOptions?.negativeEmbeddings || [];
+    if (stylePackage?.backgroundProfile.negativeEmbeddings) {
+      negativeEmbeddings.push(
+        ...stylePackage.backgroundProfile.negativeEmbeddings.map((embedding) =>
+          embedding.aiModel.fileName.replace('.safetensors', '')
+        )
+      );
+    }
+
+    const steps = stylePackage?.backgroundProfile.steps || 30;
     // Generate image
     const imageResult = await generateImage(
       {
         prompt: finalPrompt,
-        negative_prompt: finalNegativePrompt,
-        steps: generationData.steps,
+        negativePrompt: finalNegativePrompt,
+        steps,
         ...backgroundSceneSize,
-        // Pass the options to generateImage
-        positive_loras: positiveLoras,
-        embeddings: backgroundOptions?.embeddings,
-        negative_embeddings: backgroundOptions?.negativeEmbeddings,
+        loras,
+        embeddings,
+        negative_embeddings: negativeEmbeddings,
         model: modelFileName,
-        // Additional params if needed
       },
       generationData
     );

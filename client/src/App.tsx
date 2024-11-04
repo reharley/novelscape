@@ -9,17 +9,17 @@ import {
 import ModelManagerPage from './components/models/ModelManagerPage';
 import AppLayout from './components/nav/AppLayout';
 import AppTheme from './components/nav/AppTheme.tsx';
-import AIEnhancedReaderPage from './components/reader/AIEnhancedReaderPage.tsx';
 import ProtectedRoute from './components/routing/ProtectedRoute.tsx';
 import FullScreenReaderPage from './pages/FullScreenReaderPage.tsx';
 import LoraAssociationPage from './pages/LoraAssociationPage.tsx';
-import ProfileLoraPage from './pages/ProfileLoraPage.tsx';
 
 import { useTokenRefresh } from './hooks/useTokenRefresh.ts';
 import BookProcessingPage from './pages/BookProcessingPage.tsx';
 import LandingPage from './pages/LandingPage.tsx';
 import LibraryPage from './pages/LibraryPage.tsx';
+import ProfileGenerationDataPage from './pages/ProfileGenerationDataPage';
 import ProfilesPage from './pages/ProfilesPage.tsx';
+import StylePackagePage from './pages/StylePackagePage.tsx';
 import UserPage from './pages/UserPage.tsx';
 import { setupAxios } from './utils/axiosSetup.ts';
 
@@ -52,12 +52,15 @@ const router = createBrowserRouter(
             <Route index element={<LibraryPage />} />
             <Route path='models' element={<ModelManagerPage />} />
             <Route path='library' element={<LibraryPage />} />
-            <Route path='ai-reader' element={<AIEnhancedReaderPage />} />
             <Route path='user' element={<UserPage />} />
-            <Route path='profile-loras' element={<ProfileLoraPage />} />
+            <Route path='style-packages' element={<StylePackagePage />} />
             <Route path='processing/:bookId' element={<BookProcessingPage />} />
             <Route path='profiles' element={<ProfilesPage />} />
             <Route path='associate-loras' element={<LoraAssociationPage />} />
+            <Route
+              path='profile-generation-data'
+              element={<ProfileGenerationDataPage />}
+            />
           </Route>
         </Route>
       </Route>

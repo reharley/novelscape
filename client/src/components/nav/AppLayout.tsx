@@ -48,11 +48,11 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
               <Menu.Item key='/models'>
                 <Link to='/models'>Model Manager</Link>
               </Menu.Item>
-              <Menu.Item key='/ai-reader'>
-                <Link to='/ai-reader'>AI Enhanced Reader</Link>
+              <Menu.Item key='/profile-generation-data'>
+                <Link to='/profile-generation-data'>Gen Data</Link>
               </Menu.Item>
-              <Menu.Item key='/profile-loras'>
-                <Link to='/profile-loras'>Profile Loras</Link>
+              <Menu.Item key='/style-packages'>
+                <Link to='/style-packages'>Style Packs</Link>
               </Menu.Item>
               <Menu.Item key='/profiles'>
                 <Link to='/profiles'>Profiles</Link>

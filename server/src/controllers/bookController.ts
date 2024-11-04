@@ -12,6 +12,7 @@ import {
   processEpubCoverImage,
 } from '../services/epubService.js';
 import { uploadFileToAzure } from '../utils/azureStorage.js';
+import { StylePackageWithRelations } from '../utils/types.js';
 import {
   generateBackgroundImagesForChapter,
   generateProfileImagesForChapter,
@@ -619,9 +620,39 @@ export async function generateChapterImages(
   });
 
   try {
+    const includeModel = {
+      include: {
+        aiModel: true,
+      },
+    };
+    let stylePackage: StylePackageWithRelations | null = null;
+    if (chapter.book.stylePackageId) {
+      stylePackage = await prisma.stylePackage.findUnique({
+        where: { id: chapter.book.stylePackageId },
+        include: {
+          backgroundProfile: {
+            include: {
+              loras: includeModel,
+              embeddings: includeModel,
+              negativeEmbeddings: includeModel,
+              checkpoint: true,
+            },
+          },
+          characterProfile: {
+            include: {
+              loras: includeModel,
+              embeddings: includeModel,
+              negativeEmbeddings: includeModel,
+              checkpoint: true,
+            },
+          },
+        },
+      });
+    }
     // Generate background images
     await generateBackgroundImagesForChapter(
       chapter,
+      stylePackage,
       job,
       forceRegenerate,
       backgroundOptions
@@ -630,6 +661,7 @@ export async function generateChapterImages(
     // Generate profile images
     await generateProfileImagesForChapter(
       chapter,
+      stylePackage,
       profiles,
       job,
       forceRegenerate,
@@ -708,4 +740,85 @@ export async function generateChapterImagesController(
     });
   });
   res.status(200).json(job);
+}
+
+/**
+ * Add a StylePackage to a specific Book
+ */
+export async function addStylePackageToBook(req: Request, res: Response) {
+  const { bookId } = req.params;
+  const { stylePackageId } = req.body;
+
+  if (!stylePackageId || isNaN(Number(stylePackageId))) {
+    res.status(400).json({ error: 'Valid stylePackageId is required.' });
+    return;
+  }
+
+  try {
+    // Check if the StylePackage exists
+    const stylePackage = await prisma.stylePackage.findUnique({
+      where: { id: Number(stylePackageId) },
+    });
+
+    if (!stylePackage) {
+      res.status(404).json({ error: 'StylePackage not found.' });
+      return;
+    }
+
+    // Update the Book with the new StylePackage
+    const updatedBook = await prisma.book.update({
+      where: { id: Number(bookId) },
+      data: { stylePackageId: Number(stylePackageId) },
+    });
+
+    res.json(updatedBook);
+  } catch (error: any) {
+    console.error('Error adding StylePackage to Book:', error.message || error);
+    res.status(500).json({
+      error: 'An error occurred while adding the StylePackage to the Book.',
+    });
+  }
+}
+
+/**
+ * Remove a StylePackage from a specific Book
+ */
+export async function removeStylePackageFromBook(req: Request, res: Response) {
+  const { bookId, packageId } = req.params;
+
+  try {
+    // Check if the Book exists
+    const book = await prisma.book.findUnique({
+      where: { id: Number(bookId) },
+    });
+
+    if (!book) {
+      res.status(404).json({ error: 'Book not found.' });
+      return;
+    }
+
+    // Check if the StylePackage is associated with the Book
+    if (book.stylePackageId !== Number(packageId)) {
+      res
+        .status(400)
+        .json({ error: 'StylePackage is not associated with this Book.' });
+      return;
+    }
+
+    // Remove the StylePackage from the Book
+    const updatedBook = await prisma.book.update({
+      where: { id: Number(bookId) },
+      data: { stylePackageId: null },
+    });
+
+    res.json(updatedBook);
+  } catch (error: any) {
+    console.error(
+      'Error removing StylePackage from Book:',
+      error.message || error
+    );
+    res.status(500).json({
+      error: 'An error occurred while removing the StylePackage from the Book.',
+    });
+  }
 }

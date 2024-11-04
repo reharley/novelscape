@@ -15,7 +15,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import GenerateImagesModal from '../components/reader/GenerateImagesModal';
 import PassageText from '../components/reader/PassageText';
 import { apiUrl, isNumber } from '../utils/general';
-import { Passage, UserSettings } from '../utils/types';
+import { Passage, Profile, UserSettings } from '../utils/types';
 
 const { Text } = Typography;
 const { Option } = Select;
@@ -120,11 +120,13 @@ const FullScreenReaderPage: React.FC = () => {
       return [passage];
     }
 
-    // Primary match for sentence-ending punctuation
-    let sentences = text.match(/[^.!?]+[.!?]+|\s*[^.!?]+$/g) ||
-      text.match(/[^,]+[,]+|\s*[^,]+$/g) || [text];
+    // Primary match for sentence-ending punctuation, including ellipsis
+    let sentences = text.match(/[^.!?…]+(?:\.\.\.|…|[.!?])+|\s*[^.!?…]+$/g) || [
+      text,
+    ];
+
     if (sentences[0].length < 20) {
-      sentences = text.match(/[^—-]+[—-]+|\s*[^—-]+$/g) || [text];
+      sentences = text.match(/[^,]+[,]+|\s*[^,]+$/g) || [text];
     }
     const newPassages: Passage[] = [];
     let currentText = '';
@@ -458,8 +460,8 @@ const FullScreenReaderPage: React.FC = () => {
           >
             {currentPassage.profiles
               .filter(
-                (p) =>
-                  p.type.toLowerCase() === 'person' &&
+                (p: Profile) =>
+                  p.type?.toLowerCase() === 'person' &&
                   currentPassage.speaker?.id !== p.id
               )
               .map((profile) => (

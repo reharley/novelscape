@@ -30,11 +30,23 @@ const PassageText: React.FC<PassageTextProps> = ({
 }) => {
   const { autoPlay, wpm: initialWpm } = userSettings ?? {};
   const [wpm, setWpm] = useState(initialWpm);
-  const words = text.split(/[ \n]+/).filter((word) => word.trim() !== '');
+  const tokens = text.match(/\s+|[\w’']+|[—–-]|[^\w\s]/g) || [];
+
+  const tokenObjects = tokens.map((token) => {
+    const isWord = /[\w’']+/.test(token);
+    return { text: token, isWord };
+  });
+
+  const wordIndices = tokenObjects.reduce((arr, token, index) => {
+    if (token.isWord) arr.push(index);
+    return arr;
+  }, [] as number[]);
+
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const [isPaused, setIsPaused] = useState(true);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
+  console.log('wpm', wpm);
   // Function to request a wake lock
   const requestWakeLock = async () => {
     try {
@@ -94,7 +106,7 @@ const PassageText: React.FC<PassageTextProps> = ({
 
   useEffect(() => {
     if (autoPlay && !isPaused) {
-      if (currentWordIndex < words.length && isNumber(wpm)) {
+      if (currentWordIndex < wordIndices.length && isNumber(wpm)) {
         const interval = (60 * 1000) / wpm; // milliseconds per word
 
         timerRef.current = setTimeout(() => {
@@ -114,10 +126,18 @@ const PassageText: React.FC<PassageTextProps> = ({
         timerRef.current = null;
       }
     };
-  }, [autoPlay, wpm, currentWordIndex, isPaused, words.length, onComplete]);
+  }, [
+    autoPlay,
+    wpm,
+    currentWordIndex,
+    isPaused,
+    wordIndices.length,
+    onComplete,
+  ]);
 
   const handleWpmChange = (value: number | null) => {
-    if (value) {
+    console.log('value', value);
+    if (value !== null) {
       setWpm(value);
     }
   };
@@ -134,29 +154,21 @@ const PassageText: React.FC<PassageTextProps> = ({
     setIsPaused((prev) => !prev);
   };
 
-  const renderedText = words.map((word, index) => {
-    const isFirstWord = index === 0;
-    const isLastWord = index === words.length - 1;
-
+  const renderedText = tokenObjects.map((token, index) => {
+    const isHighlighted = index === wordIndices[currentWordIndex] && autoPlay;
     return (
-      <>
-        <span
-          key={index}
-          style={{
-            textDecoration:
-              index === currentWordIndex && autoPlay ? 'underline' : 'none',
-            // backgroundColor:
-            //   index === currentWordIndex && autoPlay ? 'grey' : 'transparent',
-            borderRadius: '5px',
-            //   marginLeft: isFirstWord ? undefined : '0.17em',
-            //   marginRight: isLastWord ? undefined : '0.17rem',
-          }}
-        >
-          {word + ' '}
-        </span>
-      </>
+      <span
+        key={index}
+        style={{
+          textDecoration: isHighlighted ? 'underline' : 'none',
+          borderRadius: '5px',
+        }}
+      >
+        {token.text}
+      </span>
     );
   });
+
   return (
     <Space direction='vertical'>
       <Space>

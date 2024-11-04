@@ -7,8 +7,10 @@ import civitaiRouter from './civitatRoutes.js';
 import genPackageRouter from './genPackageRoutes.js';
 import imageRouter from './imageRoutes.js';
 import jobRouter from './jobRoutes.js';
+import profileGenerationDataRouter from './profileGenerationDataRoutes.js';
 import profilesRouter from './profileRoutes.js';
 import searchRouter from './searchRoutes.js';
+import stylePackageRouter from './stylePackageRoutes.js';
 import userRouter from './userRoutes.js';
 
 const router = express.Router();
@@ -23,5 +25,7 @@ router.use('/search', searchRouter);
 router.use('/ad', adRouter);
 router.use('/jobs', jobRouter);
 router.use('/generate-image', imageRouter);
+router.use('/style-packages', stylePackageRouter);
+router.use('/profile-generation-data', profileGenerationDataRouter);
 
 export default router;

@@ -7,7 +7,10 @@ import {
   GenerationData,
   ModelImage,
   Profile,
+  ProfileGenerationData,
   Scene,
+  StylePackage,
+  WeightedModel,
 } from '@prisma/client';
 
 export type CivitaiResourceWithModel = CivitaiResource & {
@@ -48,4 +51,21 @@ export type PassageWithProfileSpeaker = {
 export interface ChapterWithRelations extends Chapter {
   book: Book;
   scenes: SceneWithRelations[];
+}
+
+export interface StylePackageWithRelations extends StylePackage {
+  backgroundProfile: ProfileGenerationDataWithRelations;
+  characterProfile: ProfileGenerationDataWithRelations;
+}
+
+export interface ProfileGenerationDataWithRelations
+  extends ProfileGenerationData {
+  loras: WeightedModelWithRelations[];
+  embeddings: WeightedModelWithRelations[];
+  negativeEmbeddings: WeightedModelWithRelations[];
+  checkpoint: AiModel;
+}
+
+export interface WeightedModelWithRelations extends WeightedModel {
+  aiModel: AiModel;
 }

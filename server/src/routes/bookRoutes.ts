@@ -1,6 +1,6 @@
-// src/routes/books.ts
 import express from 'express';
 import {
+  addStylePackageToBook,
   deleteBook,
   detectSceneController,
   generateChapterImagesController,
@@ -13,9 +13,10 @@ import {
   getReadingProgress,
   listBooks,
   processBookController,
+  removeStylePackageFromBook,
   updateReadingProgress,
   uploadBookController,
-} from '../controllers/booksController.js';
+} from '../controllers/bookController.js';
 import { upload } from '../utils/multer.js';
 
 const router = express.Router();
@@ -95,5 +96,19 @@ router.get('/:bookId/reading-progress', getReadingProgress);
  * @access Public
  */
 router.post('/:bookId/reading-progress', updateReadingProgress);
+
+/**
+ * @route POST /api/books/:bookId/style-packages
+ * @desc Add a StylePackage to a specific book
+ * @access Public
+ */
+router.post('/:bookId/style-packages', addStylePackageToBook);
+
+/**
+ * @route DELETE /api/books/:bookId/style-packages/:packageId
+ * @desc Remove a StylePackage from a specific book
+ * @access Public
+ */
+router.delete('/:bookId/style-packages/:packageId', removeStylePackageFromBook);
 
 export default router;

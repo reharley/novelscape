@@ -29,7 +29,7 @@ export async function generateImageForProfile(req: Request, res: Response) {
 
     // 2. Prepare Image Generation Parameters
     const finalPrompt = generationData.prompt;
-    const finalNegativePrompt = generationData.negative_prompt || '';
+    const finalNegativePrompt = generationData.negativePrompt || '';
     const characterImageSize = {
       width: generationData.width || 512,
       height: generationData.height || 512,
@@ -48,10 +48,10 @@ export async function generateImageForProfile(req: Request, res: Response) {
 
     const generateImageParams: GenerateImageParams = {
       prompt: finalPrompt,
-      negative_prompt: finalNegativePrompt,
+      negativePrompt: finalNegativePrompt,
       steps: generationData.steps,
       ...characterImageSize,
-      positive_loras: positiveLoras,
+      loras: positiveLoras,
       embeddings: embeddings,
       negative_embeddings: negativeEmbeddings,
       model: modelFileName,
@@ -67,12 +67,15 @@ export async function generateImageForProfile(req: Request, res: Response) {
     }
 
     // 4. Update Profile with imageUrl
-    const updatedProfile = await prisma.profile.update({
-      where: { id: Number(profile.id) },
-      data: {
-        imageUrl: imageResult.imageUrl,
-      },
-    });
+    let updatedProfile;
+    if (profile) {
+      updatedProfile = await prisma.profile.update({
+        where: { id: Number(profile.id) },
+        data: {
+          imageUrl: imageResult.imageUrl,
+        },
+      });
+    }
 
     // 5. Respond to Client
     res.status(200).json({

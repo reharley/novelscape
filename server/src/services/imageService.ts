@@ -6,11 +6,11 @@ import { getContainerClient } from '../utils/azureStorage.js';
 
 export interface GenerateImageParams {
   prompt: string;
-  negative_prompt?: string | null;
+  negativePrompt?: string | null;
   steps?: number | null;
   width?: number;
   height?: number;
-  positive_loras?: { name: string; weight: number }[];
+  loras?: { name: string; weight: number }[];
   embeddings?: string[];
   negative_embeddings?: string[];
   model: string;
@@ -29,11 +29,11 @@ export async function generateImage(
 ): Promise<{ imageUrl: string }> {
   const {
     prompt,
-    negative_prompt,
+    negativePrompt,
     steps,
     width,
     height,
-    positive_loras,
+    loras: positive_loras,
     embeddings,
     negative_embeddings,
     model,
@@ -67,7 +67,7 @@ export async function generateImage(
 
     // Construct prompt with correct LORA references
     let finalPrompt = prompt;
-    let finalNegativePrompt = negative_prompt || '';
+    let finalNegativePrompt = negativePrompt || '';
 
     // Handle embeddings
     if (embeddings && embeddings.length > 0) {
@@ -75,8 +75,8 @@ export async function generateImage(
     }
     if (negative_embeddings && negative_embeddings.length > 0) {
       finalNegativePrompt = `${negative_embeddings.join(
-        ' '
-      )} ${finalNegativePrompt}`;
+        ', '
+      )}, ${finalNegativePrompt}`;
     }
 
     // Handle LoRAs
