@@ -15,7 +15,7 @@ const blobServiceClient = BlobServiceClient.fromConnectionString(
   AZURE_STORAGE_CONNECTION_STRING
 );
 
-export type ContainerName = 'images' | 'books';
+export type ContainerName = 'images' | 'books' | 'audio';
 
 // Ensure the container exists
 export async function getContainerClient(containerName: ContainerName) {
@@ -79,3 +79,16 @@ async function streamToBuffer(
     readableStream.on('error', reject);
   });
 }
+
+export const uploadAudio = async (
+  fileName: string,
+  buffer: Buffer,
+  mimeType: string
+): Promise<string> => {
+  const audioContainerClient = await getContainerClient('audio');
+  const blockBlobClient = audioContainerClient.getBlockBlobClient(fileName);
+  await blockBlobClient.uploadData(buffer, {
+    blobHTTPHeaders: { blobContentType: mimeType },
+  });
+  return blockBlobClient.url;
+};

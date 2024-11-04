@@ -99,6 +99,7 @@ export interface Passage {
   id: number;
   textContent: string;
   order: number;
+  audioUrl?: string;
   profiles: Profile[];
   bookId: string;
   speakerId?: number;
@@ -112,6 +113,7 @@ export interface Passage {
   splitId?: string;
   profileId?: number;
   Profile?: Profile;
+  wordTimestamps: WordTimestamp[];
 }
 
 export interface Scene {
@@ -332,4 +334,10 @@ export interface StylePackage {
   backgroundProfile: ProfileGenerationData;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface WordTimestamp {
+  word: string;
+  startTime: number;
+  endTime: number;
 }

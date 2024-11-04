@@ -170,12 +170,10 @@ export async function getPassagesForChapter(req: Request, res: Response) {
         bookId: Number(bookId),
         chapterId: Number(chapterId),
       },
-      select: {
-        id: true,
-        textContent: true,
+      include: {
         speaker: true,
-        order: true,
         scene: true,
+        wordTimestamps: true,
         descriptions: {
           select: {
             profile: {

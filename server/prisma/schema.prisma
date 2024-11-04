@@ -64,6 +64,9 @@ model Passage {
     Profile   Profile? @relation(fields: [profileId], references: [id])
     profileId Int?
 
+    audioUrl       String?
+    wordTimestamps WordTimestamp[]
+
     @@index([chapterId, order])
 }
 
@@ -343,4 +346,13 @@ model StylePackage {
     updatedAt DateTime @updatedAt
 
     books Book[]
+}
+
+model WordTimestamp {
+    id        Int     @id @default(autoincrement())
+    word      String
+    startTime Float
+    endTime   Float
+    passage   Passage @relation(fields: [passageId], references: [id])
+    passageId Int
 }

@@ -12,10 +12,11 @@ import axios from 'axios';
 import html2canvas from 'html2canvas';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+
 import GenerateImagesModal from '../components/reader/GenerateImagesModal';
 import PassageText from '../components/reader/PassageText';
 import { apiUrl, isNumber } from '../utils/general';
-import { Passage, Profile, UserSettings } from '../utils/types';
+import { Passage, Profile, UserSettings, WordTimestamp } from '../utils/types';
 
 const { Text } = Typography;
 const { Option } = Select;
@@ -24,6 +25,11 @@ interface Chapter {
   id: number;
   title: string;
   order: number;
+}
+
+interface AudioData {
+  audioUrl: string;
+  wordTimestamps: WordTimestamp[];
 }
 
 const FullScreenReaderPage: React.FC = () => {
@@ -46,6 +52,12 @@ const FullScreenReaderPage: React.FC = () => {
   const passageRef = useRef<HTMLDivElement>(null);
 
   const baseUrl = apiUrl + '/api';
+
+  // New state to store passageId to audioUrl and wordTimestamps mapping
+  const [audioMap, setAudioMap] = useState<{ [key: number]: AudioData }>({});
+
+  // Add useRef to track if prefetch is in progress
+  const isPrefetchingRef = useRef(false);
 
   // Fetch user settings when component mounts
   useEffect(() => {
@@ -95,8 +107,76 @@ const FullScreenReaderPage: React.FC = () => {
 
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookId, chapterId]);
+  }, [bookId, chapterId, passageIndex]);
 
+  // New useEffect for prefetching audio
+  useEffect(() => {
+    const prefetchAudio = async () => {
+      if (passages.length === 0 || isPrefetchingRef.current) return;
+
+      const prefetchCount = 4;
+      const startIndex = currentPassageIndex + 1;
+      const endIndex = Math.min(startIndex + prefetchCount, passages.length);
+
+      const passagesToPrefetch = passages
+        .slice(startIndex, endIndex)
+        .filter((passage) => passage && !audioMap[passage.id]);
+
+      const passageIds = passagesToPrefetch.map((passage) => passage.id);
+
+      if (passageIds.length > 0) {
+        // Set the flag to indicate prefetch is in progress
+        isPrefetchingRef.current = true;
+        try {
+          const response = await axios.post(
+            `${baseUrl}/tts/generate-multiple`,
+            { passageIds }
+          );
+          const { audioUrls, wordTimestamps } = response.data;
+
+          // Use functional update to set `audioMap` without needing it in dependencies
+          setAudioMap((prev) => {
+            const updatedAudioMap = { ...prev };
+            passageIds.forEach((id: number) => {
+              if (audioUrls[id] && wordTimestamps[id]) {
+                updatedAudioMap[id] = {
+                  audioUrl: audioUrls[id],
+                  wordTimestamps: wordTimestamps[id],
+                };
+              }
+            });
+            return updatedAudioMap;
+          });
+        } catch (error) {
+          console.error('Error prefetching audio:', error);
+        } finally {
+          // Reset the flag after prefetch completes
+          isPrefetchingRef.current = false;
+        }
+      }
+    };
+
+    prefetchAudio();
+  }, [passages, currentPassageIndex, baseUrl]); // Removed `audioMap` from dependencies
+
+  // Update passages with audioUrls and wordTimestamps from audioMap
+  useEffect(() => {
+    if (Object.keys(audioMap).length === 0) return;
+
+    setPassages((prevPassages) =>
+      prevPassages.map((passage) =>
+        audioMap[passage.id]
+          ? {
+              ...passage,
+              audioUrl: audioMap[passage.id].audioUrl,
+              wordTimestamps: audioMap[passage.id].wordTimestamps,
+            }
+          : passage
+      )
+    );
+  }, [audioMap]);
+  console.log(audioMap);
+  console.log('currentPassage', passages[currentPassageIndex]);
   useEffect(() => {
     // Update currentPassageIndex when passageIndex param changes
     if (passageIndex) {
@@ -199,27 +279,25 @@ const FullScreenReaderPage: React.FC = () => {
     }
   };
 
-  const fetchPassages = (bookId: string, chapterId: number) => {
+  const fetchPassages = async (bookId: string, chapterId: number) => {
     setLoadingPassages(true);
-    axios
-      .get<Passage[]>(
+    try {
+      const response = await axios.get<Passage[]>(
         `${baseUrl}/books/${bookId}/chapters/${chapterId}/passages`
-      )
-      .then((response) => {
-        const fetchedPassages = response.data;
-        const processedPassages: Passage[] = [];
+      );
+      const fetchedPassages = response.data;
 
-        fetchedPassages.forEach((passage) => {
-          const splitPassages = splitPassage(passage);
-          processedPassages.push(...splitPassages);
-        });
+      const processedPassages: Passage[] = fetchedPassages.map((passage) => ({
+        ...passage,
+        wordTimestamps: passage.wordTimestamps || [], // Ensure wordTimestamps are present
+      }));
 
-        setPassages(processedPassages);
-      })
-      .catch((error) => {
-        console.error('Error fetching passages:', error);
-      })
-      .finally(() => setLoadingPassages(false));
+      setPassages(processedPassages);
+    } catch (error) {
+      console.error('Error fetching passages:', error);
+    } finally {
+      setLoadingPassages(false);
+    }
   };
 
   const updateLastReadPosition = async (
@@ -514,6 +592,8 @@ const FullScreenReaderPage: React.FC = () => {
           {currentPassage && (
             <PassageText
               text={currentPassage.textContent}
+              audioUrl={currentPassage.audioUrl} // Pass audioUrl here
+              wordTimestamps={currentPassage.wordTimestamps} // Pass wordTimestamps here
               userSettings={userSettings}
               speaker={currentPassage.speaker}
               onComplete={() => {

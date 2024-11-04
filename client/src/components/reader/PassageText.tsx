@@ -9,13 +9,14 @@ import {
   Typography,
 } from 'antd';
 import React, { useEffect, useRef, useState } from 'react';
-import { isNumber } from '../../utils/general';
-import { Profile, UserSettings } from '../../utils/types';
+import { Profile, UserSettings, WordTimestamp } from '../../utils/types';
 
 const { Paragraph, Text } = Typography;
 
 interface PassageTextProps {
   text: string;
+  audioUrl?: string;
+  wordTimestamps: WordTimestamp[];
   onComplete: () => void;
   userSettings?: UserSettings;
 
@@ -24,12 +25,14 @@ interface PassageTextProps {
 
 const PassageText: React.FC<PassageTextProps> = ({
   text,
+  audioUrl,
+  wordTimestamps,
   onComplete,
   speaker,
   userSettings,
 }) => {
   const { autoPlay, wpm: initialWpm } = userSettings ?? {};
-  const [wpm, setWpm] = useState(initialWpm);
+  const [wpm, setWpm] = useState(initialWpm || 150);
   const tokens = text.match(/\s+|[\w’']+|[—–-]|[^\w\s]/g) || [];
 
   const tokenObjects = tokens.map((token) => {
@@ -43,119 +46,75 @@ const PassageText: React.FC<PassageTextProps> = ({
   }, [] as number[]);
 
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const [isPaused, setIsPaused] = useState(true);
-  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
-  console.log('wpm', wpm);
-  // Function to request a wake lock
-  const requestWakeLock = async () => {
-    try {
-      if ('wakeLock' in navigator) {
-        wakeLockRef.current = await navigator.wakeLock.request('screen');
-        wakeLockRef.current.addEventListener('release', () => {
-          console.log('Wake Lock was released');
-        });
-        console.log('Wake Lock is active');
-      } else {
-        console.warn('Wake Lock API is not supported in this browser.');
-      }
-    } catch (err: any) {
-      console.error(`${err.name}, ${err.message}`);
+  const [isPaused, setIsPaused] = useState(!autoPlay);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlaying, setIsPlaying] = useState(autoPlay ?? true);
+
+  // Function to play or pause the audio
+  const togglePlayPause = (e: any) => {
+    e.stopPropagation();
+    if (!audioUrl) return;
+    if (isPlaying) {
+      audioRef.current?.pause();
+      setIsPaused(true);
+    } else {
+      audioRef.current?.play();
+      setIsPaused(false);
     }
+    setIsPlaying(!isPlaying);
   };
 
-  // Function to release the wake lock
-  const releaseWakeLock = async () => {
-    if (wakeLockRef.current !== null) {
-      await wakeLockRef.current.release();
-      wakeLockRef.current = null;
-      console.log('Wake Lock released');
-    }
-  };
-
-  // Reset currentWordIndex when text changes
+  // Reset currentWordIndex when audioUrl changes
   useEffect(() => {
     setCurrentWordIndex(0);
-  }, [text]);
-
-  // Handle autoPlay and wake lock
-  useEffect(() => {
-    let isComponentMounted = true;
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && autoPlay && !isPaused) {
-        requestWakeLock();
-      } else {
-        releaseWakeLock();
-      }
-    };
-
-    if (autoPlay && !isPaused) {
-      handleVisibilityChange();
-      document.addEventListener('visibilitychange', handleVisibilityChange);
+    if (autoPlay && audioRef.current) {
+      audioRef.current.play().catch((error) => {
+        console.error('Error playing audio:', error);
+      });
+      setIsPlaying(true);
+      setIsPaused(false);
     } else {
-      releaseWakeLock();
+      setIsPlaying(false);
+      setIsPaused(true);
     }
+  }, [audioUrl, autoPlay]);
 
-    return () => {
-      isComponentMounted = false;
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      releaseWakeLock();
-    };
-  }, [autoPlay, isPaused]);
-
+  // Update currentWordIndex based on audio playback time
   useEffect(() => {
-    if (autoPlay && !isPaused) {
-      if (currentWordIndex < wordIndices.length && isNumber(wpm)) {
-        const interval = (60 * 1000) / wpm; // milliseconds per word
+    const audio = audioRef.current;
+    if (!audio || wordTimestamps.length === 0) return;
 
-        timerRef.current = setTimeout(() => {
-          setCurrentWordIndex((prev) => prev + 1);
-        }, interval);
-      } else {
-        // Full passage presented, wait 0.2 sec then call onComplete
-        timerRef.current = setTimeout(() => {
-          onComplete();
-        }, 200);
+    const handleTimeUpdate = () => {
+      const currentTime = audio.currentTime;
+      const currentWord = wordTimestamps.find(
+        (wt) => currentTime >= wt.startTime && currentTime < wt.endTime
+      );
+      if (currentWord) {
+        const index = wordTimestamps.indexOf(currentWord);
+        if (index !== currentWordIndex) {
+          setCurrentWordIndex(index);
+        }
+      } else if (
+        currentTime >= wordTimestamps[wordTimestamps.length - 1].endTime
+      ) {
+        setCurrentWordIndex(wordTimestamps.length); // All words completed
+        onComplete();
       }
+    };
+
+    if (isPlaying) {
+      audio.addEventListener('timeupdate', handleTimeUpdate);
     }
 
     return () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
+      audio.removeEventListener('timeupdate', handleTimeUpdate);
     };
-  }, [
-    autoPlay,
-    wpm,
-    currentWordIndex,
-    isPaused,
-    wordIndices.length,
-    onComplete,
-  ]);
-
-  const handleWpmChange = (value: number | null) => {
-    console.log('value', value);
-    if (value !== null) {
-      setWpm(value);
-    }
-  };
-
-  const handleIncreaseWpm = () => {
-    setWpm((prev) => (prev ? Math.min(prev + 5, 400) : 55));
-  };
-
-  const handleDecreaseWpm = () => {
-    setWpm((prev) => (prev ? Math.max(prev - 5, 50) : 50));
-  };
-
-  const togglePause = () => {
-    setIsPaused((prev) => !prev);
-  };
+  }, [audioUrl, wordTimestamps, isPlaying, currentWordIndex, onComplete]);
 
   const renderedText = tokenObjects.map((token, index) => {
-    const isHighlighted = index === wordIndices[currentWordIndex] && autoPlay;
+    const wordIndex = wordIndices.indexOf(index);
+    const isHighlighted =
+      wordIndex === currentWordIndex && token.isWord && isPlaying;
     return (
       <span
         key={index}
@@ -168,6 +127,7 @@ const PassageText: React.FC<PassageTextProps> = ({
       </span>
     );
   });
+  console.log('current speaker', speaker);
 
   return (
     <Space direction='vertical'>
@@ -185,12 +145,6 @@ const PassageText: React.FC<PassageTextProps> = ({
               alt={`${speaker.name} Image`}
               width={120}
               preview={false}
-              //   style={{
-              //     width: '161px',
-              //     margin: '0 10px',
-              //     borderRadius: '10px',
-              //     boxShadow: '0 4px 8px rgba(0,0,0,0.3)',
-              //   }}
               style={{ borderRadius: '10px', marginRight: '15px' }}
               placeholder={<Spin />}
             />
@@ -201,13 +155,13 @@ const PassageText: React.FC<PassageTextProps> = ({
         </Paragraph>
       </Space>
 
-      {autoPlay && (
-        <Space
-          style={{ marginBottom: '10px' }}
-          onClick={(e) => e.stopPropagation()}
-        >
+      {audioUrl && (
+        <Space style={{ marginBottom: '10px' }}>
           <Tooltip title='Adjust speed of autoplay in words per minute (wpm)'>
-            <Button size='small' onClick={handleDecreaseWpm}>
+            <Button
+              size='small'
+              onClick={() => setWpm((prev) => Math.max(prev - 5, 50))}
+            >
               -
             </Button>
             <InputNumber
@@ -215,20 +169,30 @@ const PassageText: React.FC<PassageTextProps> = ({
               max={400}
               size='small'
               value={wpm}
-              onChange={handleWpmChange}
+              onChange={(value) => setWpm(value || 150)}
               style={{ width: '60px' }}
             />
-            <Button size='small' onClick={handleIncreaseWpm}>
+            <Button
+              size='small'
+              onClick={() => setWpm((prev) => Math.min(prev + 5, 400))}
+            >
               +
             </Button>
             <Text>WPM</Text>
           </Tooltip>
-          <Button onClick={togglePause}>
-            {isPaused ? <PlayCircleOutlined /> : <PauseCircleOutlined />}{' '}
-            Auto-Play
+          <Button onClick={togglePlayPause}>
+            {isPlaying ? <PauseCircleOutlined /> : <PlayCircleOutlined />}{' '}
+            {isPlaying ? 'Pause' : 'Play'}
           </Button>
         </Space>
       )}
+
+      <audio
+        ref={audioRef}
+        src={audioUrl}
+        onEnded={onComplete}
+        key={audioUrl}
+      />
     </Space>
   );
 };
