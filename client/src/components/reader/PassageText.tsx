@@ -46,9 +46,9 @@ const PassageText: React.FC<PassageTextProps> = ({
   }, [] as number[]);
 
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
-  const [isPaused, setIsPaused] = useState(!autoPlay);
+  const [isPlaying, setIsPlaying] = useState(autoPlay ?? false);
+  const [wasPlaying, setWasPlaying] = useState(autoPlay ?? false);
   const audioRef = useRef<HTMLAudioElement>(null);
-  const [isPlaying, setIsPlaying] = useState(autoPlay ?? true);
 
   // Function to play or pause the audio
   const togglePlayPause = (e: any) => {
@@ -56,28 +56,25 @@ const PassageText: React.FC<PassageTextProps> = ({
     if (!audioUrl) return;
     if (isPlaying) {
       audioRef.current?.pause();
-      setIsPaused(true);
     } else {
       audioRef.current?.play();
-      setIsPaused(false);
     }
+    setWasPlaying(!isPlaying);
     setIsPlaying(!isPlaying);
   };
 
-  // Reset currentWordIndex when audioUrl changes
+  // Reset currentWordIndex and manage playback based on wasPlaying state
   useEffect(() => {
     setCurrentWordIndex(0);
-    if (autoPlay && audioRef.current) {
+    if (wasPlaying && audioRef.current) {
       audioRef.current.play().catch((error) => {
         console.error('Error playing audio:', error);
       });
       setIsPlaying(true);
-      setIsPaused(false);
     } else {
       setIsPlaying(false);
-      setIsPaused(true);
     }
-  }, [audioUrl, autoPlay]);
+  }, [audioUrl, wasPlaying]);
 
   // Update currentWordIndex based on audio playback time
   useEffect(() => {
