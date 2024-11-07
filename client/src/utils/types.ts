@@ -59,6 +59,7 @@ export interface UserSettings {
   autoPlay: boolean;
   wpm: number;
   userId: string;
+  ttsAi: boolean;
 }
 
 export interface Book {

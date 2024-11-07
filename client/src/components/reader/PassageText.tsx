@@ -1,13 +1,5 @@
 import { PauseCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
-import {
-  Button,
-  Image,
-  InputNumber,
-  Space,
-  Spin,
-  Tooltip,
-  Typography,
-} from 'antd';
+import { Button, InputNumber, Space, Tooltip, Typography } from 'antd';
 import React, { useEffect, useRef, useState } from 'react';
 import { Profile, UserSettings, WordTimestamp } from '../../utils/types';
 
@@ -19,7 +11,6 @@ interface PassageTextProps {
   wordTimestamps: WordTimestamp[];
   onComplete: () => void;
   userSettings?: UserSettings;
-
   speaker?: Profile | null;
 }
 
@@ -31,23 +22,10 @@ const PassageText: React.FC<PassageTextProps> = ({
   speaker,
   userSettings,
 }) => {
-  const { autoPlay, wpm: initialWpm } = userSettings ?? {};
+  const { autoPlay, wpm: initialWpm, ttsAi } = userSettings ?? {};
   const [wpm, setWpm] = useState(initialWpm || 150);
-  const tokens = text.match(/\s+|[\w’']+|[—–-]|[^\w\s]/g) || [];
-
-  const tokenObjects = tokens.map((token) => {
-    const isWord = /[\w’']+/.test(token);
-    return { text: token, isWord };
-  });
-
-  const wordIndices = tokenObjects.reduce((arr, token, index) => {
-    if (token.isWord) arr.push(index);
-    return arr;
-  }, [] as number[]);
-
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(autoPlay ?? false);
-  const [wasPlaying, setWasPlaying] = useState(autoPlay ?? false);
   const audioRef = useRef<HTMLAudioElement>(null);
 
   // Function to play or pause the audio
@@ -59,14 +37,14 @@ const PassageText: React.FC<PassageTextProps> = ({
     } else {
       audioRef.current?.play();
     }
-    setWasPlaying(!isPlaying);
     setIsPlaying(!isPlaying);
   };
 
-  // Reset currentWordIndex and manage playback based on wasPlaying state
+  // Reset currentWordIndex and manage playback
   useEffect(() => {
+    if (!ttsAi) return; // Check ttsAi flag
     setCurrentWordIndex(0);
-    if (wasPlaying && audioRef.current) {
+    if (autoPlay && audioRef.current) {
       audioRef.current.play().catch((error) => {
         console.error('Error playing audio:', error);
       });
@@ -74,10 +52,11 @@ const PassageText: React.FC<PassageTextProps> = ({
     } else {
       setIsPlaying(false);
     }
-  }, [audioUrl, wasPlaying]);
+  }, [audioUrl, autoPlay, ttsAi]);
 
   // Update currentWordIndex based on audio playback time
   useEffect(() => {
+    if (!ttsAi) return; // Check ttsAi flag
     const audio = audioRef.current;
     if (!audio || wordTimestamps.length === 0) return;
 
@@ -106,51 +85,18 @@ const PassageText: React.FC<PassageTextProps> = ({
     return () => {
       audio.removeEventListener('timeupdate', handleTimeUpdate);
     };
-  }, [audioUrl, wordTimestamps, isPlaying, currentWordIndex, onComplete]);
-
-  const renderedText = tokenObjects.map((token, index) => {
-    const wordIndex = wordIndices.indexOf(index);
-    const isHighlighted =
-      wordIndex === currentWordIndex && token.isWord && isPlaying;
-    return (
-      <span
-        key={index}
-        style={{
-          textDecoration: isHighlighted ? 'underline' : 'none',
-          borderRadius: '5px',
-        }}
-      >
-        {token.text}
-      </span>
-    );
-  });
-  console.log('current speaker', speaker);
+  }, [
+    audioUrl,
+    wordTimestamps,
+    isPlaying,
+    currentWordIndex,
+    onComplete,
+    ttsAi,
+  ]);
 
   return (
     <Space direction='vertical'>
-      <Space>
-        {/* Speaker Profile Image */}
-        {userSettings?.passageSpeaker && speaker && speaker.imageUrl && (
-          <Space
-            key={speaker.id}
-            direction='vertical'
-            style={{ textAlign: 'center' }}
-          >
-            <Text style={{ color: '#fff' }}>{speaker.name}</Text>
-            <Image
-              src={speaker.imageUrl}
-              alt={`${speaker.name} Image`}
-              width={120}
-              preview={false}
-              style={{ borderRadius: '10px', marginRight: '15px' }}
-              placeholder={<Spin />}
-            />
-          </Space>
-        )}
-        <Paragraph style={{ fontSize: '1.2em', margin: 0 }}>
-          {renderedText}
-        </Paragraph>
-      </Space>
+      <Paragraph>{text}</Paragraph>
 
       {audioUrl && (
         <Space style={{ marginBottom: '10px' }}>
@@ -177,10 +123,12 @@ const PassageText: React.FC<PassageTextProps> = ({
             </Button>
             <Text>WPM</Text>
           </Tooltip>
-          <Button onClick={togglePlayPause}>
-            {isPlaying ? <PauseCircleOutlined /> : <PlayCircleOutlined />}{' '}
-            {isPlaying ? 'Pause' : 'Play'}
-          </Button>
+          {ttsAi && (
+            <Button onClick={togglePlayPause}>
+              {isPlaying ? <PauseCircleOutlined /> : <PlayCircleOutlined />}{' '}
+              {isPlaying ? 'Pause' : 'Play'}
+            </Button>
+          )}
         </Space>
       )}
 

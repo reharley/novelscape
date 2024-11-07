@@ -257,6 +257,7 @@ model UserSettings {
     autoPlay       Boolean @default(true)
     wpm            Int     @default(200)
     passageSpeaker Boolean @default(true)
+    ttsAi          Boolean @default(false)
 
     userId String @unique
     user   User   @relation(fields: [userId], references: [id])

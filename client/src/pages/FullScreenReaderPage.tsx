@@ -112,7 +112,12 @@ const FullScreenReaderPage: React.FC = () => {
   // New useEffect for prefetching audio
   useEffect(() => {
     const prefetchAudio = async () => {
-      if (passages.length === 0 || isPrefetchingRef.current) return;
+      if (
+        !userSettings?.ttsAi ||
+        passages.length === 0 ||
+        isPrefetchingRef.current
+      )
+        return;
 
       const prefetchCount = 4;
       const startIndex = currentPassageIndex + 1;
@@ -155,9 +160,10 @@ const FullScreenReaderPage: React.FC = () => {
         }
       }
     };
-
-    prefetchAudio();
-  }, [passages, currentPassageIndex, baseUrl]); // Removed `audioMap` from dependencies
+    if (userSettings?.ttsAi) {
+      prefetchAudio();
+    }
+  }, [passages, currentPassageIndex, baseUrl, userSettings?.ttsAi]); // Removed `audioMap` from dependencies
 
   // Update passages with audioUrls and wordTimestamps from audioMap
   useEffect(() => {
@@ -195,49 +201,97 @@ const FullScreenReaderPage: React.FC = () => {
   }, [currentPassageIndex]);
 
   const splitPassage = (passage: Passage): Passage[] => {
-    const text = passage.textContent;
-    if (text.length <= 280) {
+    const maxTextLength = 280;
+    const tokens =
+      passage.textContent.match(/\s+|[\w’']+|[—–-]|[^\w\s]/g) || [];
+
+    const tokenObjects = tokens.map((token) => {
+      const isWord = /[\w’']+/.test(token);
+      return { text: token, isWord };
+    });
+
+    const totalTextLength = tokenObjects.reduce(
+      (sum, token) => sum + token.text.length,
+      0
+    );
+
+    if (totalTextLength <= maxTextLength) {
       return [passage];
     }
 
-    // Primary match for sentence-ending punctuation, including ellipsis
-    let sentences = text.match(/[^.!?…]+(?:\.\.\.|…|[.!?])+|\s*[^.!?…]+$/g) || [
-      text,
-    ];
+    const wordTimestamps = passage.wordTimestamps || [];
 
-    if (sentences[0].length < 20) {
-      sentences = text.match(/[^,]+[,]+|\s*[^,]+$/g) || [text];
-    }
-    const newPassages: Passage[] = [];
-    let currentText = '';
+    let passages: Passage[] = [];
+    let currentTokens: { text: string; isWord: boolean }[] = [];
+    let currentWordTimestamps: WordTimestamp[] = [];
+    let currentLength = 0;
     let splitIndex = 0;
+    let tokenIndex = 0;
+    let wordTimestampIndex = 0;
 
-    sentences.forEach((sentence) => {
-      const trimmedSentence = sentence.trim();
-      if ((currentText + ' ' + trimmedSentence).trim().length <= 280) {
-        currentText = (currentText + ' ' + trimmedSentence).trim();
-      } else {
-        if (currentText.length > 0) {
-          newPassages.push({
-            ...passage,
-            textContent: currentText,
-            splitId: `${passage.id}-${splitIndex}`,
-          });
-          splitIndex++;
+    while (tokenIndex < tokenObjects.length) {
+      const token = tokenObjects[tokenIndex];
+      const tokenTextLength = token.text.length;
+
+      if (
+        currentLength + tokenTextLength > maxTextLength &&
+        currentTokens.length > 0
+      ) {
+        // Create a new passage
+        let textContent = currentTokens.map((t) => t.text).join('');
+        if (splitIndex > 0) {
+          textContent = '... ' + textContent;
         }
-        currentText = trimmedSentence;
-      }
-    });
+        if (tokenIndex < tokenObjects.length) {
+          textContent = textContent + ' ...';
+        }
+        const newPassage: Passage = {
+          ...passage,
+          textContent: textContent,
+          wordTimestamps: [...currentWordTimestamps],
+          splitId: `${passage.id}-${splitIndex}`,
+        };
+        passages.push(newPassage);
 
-    if (currentText.length > 0) {
-      newPassages.push({
-        ...passage,
-        textContent: currentText,
-        splitId: `${passage.id}-${splitIndex}`,
-      });
+        // Reset for next passage
+        currentTokens = [];
+        currentWordTimestamps = [];
+        currentLength = 0;
+        splitIndex++;
+      }
+
+      currentTokens.push(token);
+      currentLength += tokenTextLength;
+
+      if (token.isWord) {
+        // Push corresponding wordTimestamp
+        if (wordTimestampIndex < wordTimestamps.length) {
+          currentWordTimestamps.push(wordTimestamps[wordTimestampIndex]);
+          wordTimestampIndex++;
+        } else {
+          console.warn('Word timestamps exhausted before tokens');
+        }
+      }
+
+      tokenIndex++;
     }
 
-    return newPassages;
+    // Handle the last passage
+    if (currentTokens.length > 0) {
+      let textContent = currentTokens.map((t) => t.text).join('');
+      if (splitIndex > 0) {
+        textContent = '... ' + textContent;
+      }
+      const newPassage: Passage = {
+        ...passage,
+        textContent: textContent,
+        wordTimestamps: [...currentWordTimestamps],
+        splitId: `${passage.id}-${splitIndex}`,
+      };
+      passages.push(newPassage);
+    }
+
+    return passages;
   };
 
   const fetchLastReadPosition = async (bookId: string) => {
@@ -287,10 +341,12 @@ const FullScreenReaderPage: React.FC = () => {
       );
       const fetchedPassages = response.data;
 
-      const processedPassages: Passage[] = fetchedPassages.map((passage) => ({
-        ...passage,
-        wordTimestamps: passage.wordTimestamps || [], // Ensure wordTimestamps are present
-      }));
+      const processedPassages: Passage[] = [];
+
+      fetchedPassages.forEach((passage) => {
+        const splitPassages = splitPassage(passage);
+        processedPassages.push(...splitPassages);
+      });
 
       setPassages(processedPassages);
     } catch (error) {
