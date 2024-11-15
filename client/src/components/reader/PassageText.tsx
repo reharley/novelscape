@@ -47,11 +47,11 @@ const PassageText: React.FC<PassageTextProps> = ({
 
   // State for autoPlay functionality
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const [isPaused, setIsPaused] = useState(!autoPlay);
+  const [isPaused, setIsPaused] = useState(true); // Initially paused
 
   // State for ttsAi functionality
   const audioRef = useRef<HTMLAudioElement>(null);
-  const [isPlaying, setIsPlaying] = useState(autoPlay && ttsAi);
+  const [isPlaying, setIsPlaying] = useState(false); // Initially not playing
 
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
@@ -86,17 +86,20 @@ const PassageText: React.FC<PassageTextProps> = ({
     setCurrentWordIndex(0);
   }, [text]);
 
-  // Handle wake lock for autoPlay
+  // Handle wake lock for autoPlay and TTS
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && autoPlay && !isPaused) {
+      if (
+        document.visibilityState === 'visible' &&
+        ((ttsAi && isPlaying) || (!ttsAi && !isPaused))
+      ) {
         requestWakeLock();
       } else {
         releaseWakeLock();
       }
     };
 
-    if (autoPlay && !isPaused && !ttsAi) {
+    if ((ttsAi && isPlaying) || (!ttsAi && !isPaused)) {
       handleVisibilityChange();
       document.addEventListener('visibilitychange', handleVisibilityChange);
     } else {
@@ -107,13 +110,13 @@ const PassageText: React.FC<PassageTextProps> = ({
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       releaseWakeLock();
     };
-  }, [autoPlay, isPaused, ttsAi]);
+  }, [isPlaying, isPaused, ttsAi]);
 
   // AutoPlay functionality when ttsAi is false
   useEffect(() => {
     if (ttsAi) return; // Skip this effect if ttsAi is true
 
-    if (autoPlay && !isPaused) {
+    if (!isPaused) {
       if (currentWordIndex < wordIndices.length && isNumber(wpm)) {
         const interval = (60 * 1000) / wpm; // milliseconds per word
 
@@ -134,20 +137,28 @@ const PassageText: React.FC<PassageTextProps> = ({
         timerRef.current = null;
       }
     };
-  }, [
-    autoPlay,
-    wpm,
-    currentWordIndex,
-    isPaused,
-    wordIndices.length,
-    onComplete,
-    ttsAi,
-  ]);
+  }, [wpm, currentWordIndex, isPaused, wordIndices.length, onComplete, ttsAi]);
 
   // TTS functionality
   useEffect(() => {
     if (!ttsAi) return; // Skip if ttsAi is false
 
+    setCurrentWordIndex(0);
+    const audio = audioRef.current;
+    if (!audio || wordTimestamps.length === 0) return;
+
+    if (isPlaying) {
+      audio.play().catch((error) => {
+        console.error('Error playing audio:', error);
+      });
+    } else {
+      audio.pause();
+    }
+  }, [audioUrl, isPlaying, ttsAi]);
+
+  // Update currentWordIndex based on audio playback time
+  useEffect(() => {
+    if (!ttsAi) return; // Check ttsAi flag
     const audio = audioRef.current;
     if (!audio || wordTimestamps.length === 0) return;
 
@@ -176,7 +187,14 @@ const PassageText: React.FC<PassageTextProps> = ({
     return () => {
       audio.removeEventListener('timeupdate', handleTimeUpdate);
     };
-  }, [ttsAi, wordTimestamps, isPlaying, currentWordIndex, onComplete]);
+  }, [
+    audioUrl,
+    wordTimestamps,
+    isPlaying,
+    currentWordIndex,
+    onComplete,
+    ttsAi,
+  ]);
 
   // Adjust audio playback rate based on wpm
   useEffect(() => {
@@ -184,20 +202,6 @@ const PassageText: React.FC<PassageTextProps> = ({
       audioRef.current.playbackRate = wpm / 150; // Assuming 150 wpm is normal speed
     }
   }, [ttsAi, wpm]);
-
-  // Manage playback when ttsAi changes
-  useEffect(() => {
-    if (!ttsAi) return;
-    setCurrentWordIndex(0);
-    if (autoPlay && audioRef.current) {
-      audioRef.current.play().catch((error) => {
-        console.error('Error playing audio:', error);
-      });
-      setIsPlaying(true);
-    } else {
-      setIsPlaying(false);
-    }
-  }, [audioUrl, autoPlay, ttsAi]);
 
   const handleWpmChange = (value: number | null) => {
     if (value !== null) {
@@ -220,10 +224,11 @@ const PassageText: React.FC<PassageTextProps> = ({
       const audio = audioRef.current;
       if (isPlaying) {
         audio?.pause();
+        setIsPlaying(false);
       } else {
         audio?.play();
+        setIsPlaying(true);
       }
-      setIsPlaying(!isPlaying);
     } else {
       setIsPaused((prev) => !prev);
     }
@@ -241,7 +246,7 @@ const PassageText: React.FC<PassageTextProps> = ({
           isHighlighted = true;
         }
       }
-    } else if (autoPlay) {
+    } else if (!ttsAi && !isPaused) {
       isHighlighted = index === wordIndices[currentWordIndex];
     }
     return (
@@ -311,7 +316,7 @@ const PassageText: React.FC<PassageTextProps> = ({
             ) : (
               <PlayCircleOutlined />
             )}{' '}
-            {ttsAi ? 'TTS Play' : 'Auto-Play'}
+            {ttsAi ? 'Play TTS' : 'Auto-Play'}
           </Button>
         </Space>
       )}
