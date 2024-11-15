@@ -1,8 +1,6 @@
-import { PrismaClient } from '@prisma/client';
 import axios from 'axios';
+import prisma from '../config/prisma.js';
 import { uploadAudio } from '../utils/azureStorage.js';
-
-const prisma = new PrismaClient();
 
 export const generateAudioForPassages = async (passageIds: number[]) => {
   if (passageIds.length > 4) {

@@ -13,6 +13,7 @@ import html2canvas from 'html2canvas';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import AudiobookUploadModal from '../components/audio/AudiobookUploadModal';
 import GenerateImagesModal from '../components/reader/GenerateImagesModal';
 import PassageText from '../components/reader/PassageText';
 import { apiUrl, isNumber } from '../utils/general';
@@ -50,6 +51,17 @@ const FullScreenReaderPage: React.FC = () => {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [userSettings, setUserSettings] = useState<UserSettings>();
   const passageRef = useRef<HTMLDivElement>(null);
+  const [modalVisible, setModalVisible] = useState<boolean>(false);
+
+  const showModal = (e: any) => {
+    console.log('showModal');
+    e.stopPropagation();
+    setModalVisible(true);
+  };
+
+  const closeModal = () => {
+    setModalVisible(false);
+  };
 
   const baseUrl = apiUrl + '/api';
 
@@ -711,6 +723,9 @@ const FullScreenReaderPage: React.FC = () => {
               <Button onClick={handleDownload} size='small'>
                 Download
               </Button>
+              <Button size='small' onClick={showModal}>
+                Upload Audiobook
+              </Button>
             </Space>
           </div>
           <Progress
@@ -743,6 +758,11 @@ const FullScreenReaderPage: React.FC = () => {
         bookId={bookId || ''}
         chapterId={chapterId || ''}
         onProcessingComplete={() => window.location.reload()}
+      />
+      <AudiobookUploadModal
+        bookId={bookId}
+        visible={modalVisible}
+        onClose={closeModal}
       />
     </div>
   );

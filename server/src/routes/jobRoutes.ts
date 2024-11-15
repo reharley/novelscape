@@ -1,5 +1,3 @@
-// processingJobRouter.ts
-
 import { Router } from 'express';
 import {
   cancelProcessingJob,
