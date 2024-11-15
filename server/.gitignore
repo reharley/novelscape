@@ -1,3 +1,4 @@
 .env
 extracted_books/
 dist/
+temp/
