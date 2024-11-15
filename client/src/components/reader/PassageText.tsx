@@ -1,6 +1,15 @@
 import { PauseCircleOutlined, PlayCircleOutlined } from '@ant-design/icons';
-import { Button, InputNumber, Space, Tooltip, Typography } from 'antd';
+import {
+  Button,
+  Image,
+  InputNumber,
+  Space,
+  Spin,
+  Tooltip,
+  Typography,
+} from 'antd';
 import React, { useEffect, useRef, useState } from 'react';
+import { isNumber } from '../../utils/general';
 import { Profile, UserSettings, WordTimestamp } from '../../utils/types';
 
 const { Paragraph, Text } = Typography;
@@ -8,7 +17,7 @@ const { Paragraph, Text } = Typography;
 interface PassageTextProps {
   text: string;
   audioUrl?: string;
-  wordTimestamps: WordTimestamp[];
+  wordTimestamps?: WordTimestamp[];
   onComplete: () => void;
   userSettings?: UserSettings;
   speaker?: Profile | null;
@@ -17,7 +26,7 @@ interface PassageTextProps {
 const PassageText: React.FC<PassageTextProps> = ({
   text,
   audioUrl,
-  wordTimestamps,
+  wordTimestamps = [],
   onComplete,
   speaker,
   userSettings,
@@ -25,38 +34,120 @@ const PassageText: React.FC<PassageTextProps> = ({
   const { autoPlay, wpm: initialWpm, ttsAi } = userSettings ?? {};
   const [wpm, setWpm] = useState(initialWpm || 150);
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(autoPlay ?? false);
-  const audioRef = useRef<HTMLAudioElement>(null);
 
-  // Function to play or pause the audio
-  const togglePlayPause = (e: any) => {
-    e.stopPropagation();
-    if (!audioUrl) return;
-    if (isPlaying) {
-      audioRef.current?.pause();
-    } else {
-      audioRef.current?.play();
+  const tokens = text.match(/\s+|[\w’']+|[—–-]|[^\w\s]/g) || [];
+  const tokenObjects = tokens.map((token) => {
+    const isWord = /[\w’']+/.test(token);
+    return { text: token, isWord };
+  });
+  const wordIndices = tokenObjects.reduce((arr, token, index) => {
+    if (token.isWord) arr.push(index);
+    return arr;
+  }, [] as number[]);
+
+  // State for autoPlay functionality
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const [isPaused, setIsPaused] = useState(!autoPlay);
+
+  // State for ttsAi functionality
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlaying, setIsPlaying] = useState(autoPlay && ttsAi);
+
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
+
+  // Function to request a wake lock
+  const requestWakeLock = async () => {
+    try {
+      if ('wakeLock' in navigator) {
+        wakeLockRef.current = await navigator.wakeLock.request('screen');
+        wakeLockRef.current.addEventListener('release', () => {
+          console.log('Wake Lock was released');
+        });
+        console.log('Wake Lock is active');
+      } else {
+        console.warn('Wake Lock API is not supported in this browser.');
+      }
+    } catch (err: any) {
+      console.error(`${err.name}, ${err.message}`);
     }
-    setIsPlaying(!isPlaying);
   };
 
-  // Reset currentWordIndex and manage playback
-  useEffect(() => {
-    if (!ttsAi) return; // Check ttsAi flag
-    setCurrentWordIndex(0);
-    if (autoPlay && audioRef.current) {
-      audioRef.current.play().catch((error) => {
-        console.error('Error playing audio:', error);
-      });
-      setIsPlaying(true);
-    } else {
-      setIsPlaying(false);
+  // Function to release the wake lock
+  const releaseWakeLock = async () => {
+    if (wakeLockRef.current !== null) {
+      await wakeLockRef.current.release();
+      wakeLockRef.current = null;
+      console.log('Wake Lock released');
     }
-  }, [audioUrl, autoPlay, ttsAi]);
+  };
 
-  // Update currentWordIndex based on audio playback time
+  // Reset currentWordIndex when text changes
   useEffect(() => {
-    if (!ttsAi) return; // Check ttsAi flag
+    setCurrentWordIndex(0);
+  }, [text]);
+
+  // Handle wake lock for autoPlay
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && autoPlay && !isPaused) {
+        requestWakeLock();
+      } else {
+        releaseWakeLock();
+      }
+    };
+
+    if (autoPlay && !isPaused && !ttsAi) {
+      handleVisibilityChange();
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    } else {
+      releaseWakeLock();
+    }
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      releaseWakeLock();
+    };
+  }, [autoPlay, isPaused, ttsAi]);
+
+  // AutoPlay functionality when ttsAi is false
+  useEffect(() => {
+    if (ttsAi) return; // Skip this effect if ttsAi is true
+
+    if (autoPlay && !isPaused) {
+      if (currentWordIndex < wordIndices.length && isNumber(wpm)) {
+        const interval = (60 * 1000) / wpm; // milliseconds per word
+
+        timerRef.current = setTimeout(() => {
+          setCurrentWordIndex((prev) => prev + 1);
+        }, interval);
+      } else {
+        // Full passage presented, wait 0.2 sec then call onComplete
+        timerRef.current = setTimeout(() => {
+          onComplete();
+        }, 200);
+      }
+    }
+
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [
+    autoPlay,
+    wpm,
+    currentWordIndex,
+    isPaused,
+    wordIndices.length,
+    onComplete,
+    ttsAi,
+  ]);
+
+  // TTS functionality
+  useEffect(() => {
+    if (!ttsAi) return; // Skip if ttsAi is false
+
     const audio = audioRef.current;
     if (!audio || wordTimestamps.length === 0) return;
 
@@ -73,7 +164,7 @@ const PassageText: React.FC<PassageTextProps> = ({
       } else if (
         currentTime >= wordTimestamps[wordTimestamps.length - 1].endTime
       ) {
-        setCurrentWordIndex(wordTimestamps.length); // All words completed
+        setCurrentWordIndex(wordIndices.length); // All words completed
         onComplete();
       }
     };
@@ -85,26 +176,120 @@ const PassageText: React.FC<PassageTextProps> = ({
     return () => {
       audio.removeEventListener('timeupdate', handleTimeUpdate);
     };
-  }, [
-    audioUrl,
-    wordTimestamps,
-    isPlaying,
-    currentWordIndex,
-    onComplete,
-    ttsAi,
-  ]);
+  }, [ttsAi, wordTimestamps, isPlaying, currentWordIndex, onComplete]);
+
+  // Adjust audio playback rate based on wpm
+  useEffect(() => {
+    if (ttsAi && audioRef.current) {
+      audioRef.current.playbackRate = wpm / 150; // Assuming 150 wpm is normal speed
+    }
+  }, [ttsAi, wpm]);
+
+  // Manage playback when ttsAi changes
+  useEffect(() => {
+    if (!ttsAi) return;
+    setCurrentWordIndex(0);
+    if (autoPlay && audioRef.current) {
+      audioRef.current.play().catch((error) => {
+        console.error('Error playing audio:', error);
+      });
+      setIsPlaying(true);
+    } else {
+      setIsPlaying(false);
+    }
+  }, [audioUrl, autoPlay, ttsAi]);
+
+  const handleWpmChange = (value: number | null) => {
+    if (value !== null) {
+      setWpm(value);
+    }
+  };
+
+  const handleIncreaseWpm = () => {
+    setWpm((prev) => (prev ? Math.min(prev + 5, 400) : 55));
+  };
+
+  const handleDecreaseWpm = () => {
+    setWpm((prev) => (prev ? Math.max(prev - 5, 50) : 50));
+  };
+
+  const togglePause = (e: any) => {
+    e.stopPropagation();
+    if (ttsAi) {
+      if (!audioUrl) return;
+      const audio = audioRef.current;
+      if (isPlaying) {
+        audio?.pause();
+      } else {
+        audio?.play();
+      }
+      setIsPlaying(!isPlaying);
+    } else {
+      setIsPaused((prev) => !prev);
+    }
+  };
+
+  // For highlighting words
+  const renderedText = tokenObjects.map((token, index) => {
+    let isHighlighted = false;
+    if (ttsAi && wordTimestamps.length > 0) {
+      // Use wordTimestamps to highlight words
+      const currentWordTimestamp = wordTimestamps[currentWordIndex];
+      if (currentWordTimestamp) {
+        const wordText = currentWordTimestamp.word;
+        if (token.isWord && token.text === wordText) {
+          isHighlighted = true;
+        }
+      }
+    } else if (autoPlay) {
+      isHighlighted = index === wordIndices[currentWordIndex];
+    }
+    return (
+      <span
+        key={index}
+        style={{
+          textDecoration: isHighlighted ? 'underline' : 'none',
+          borderRadius: '5px',
+        }}
+      >
+        {token.text}
+      </span>
+    );
+  });
 
   return (
     <Space direction='vertical'>
-      <Paragraph>{text}</Paragraph>
+      <Space>
+        {/* Speaker Profile Image */}
+        {userSettings?.passageSpeaker && speaker && speaker.imageUrl && (
+          <Space
+            key={speaker.id}
+            direction='vertical'
+            style={{ textAlign: 'center' }}
+          >
+            <Text style={{ color: '#fff' }}>{speaker.name}</Text>
+            <Image
+              src={speaker.imageUrl}
+              alt={`${speaker.name} Image`}
+              width={120}
+              preview={false}
+              style={{ borderRadius: '10px', marginRight: '15px' }}
+              placeholder={<Spin />}
+            />
+          </Space>
+        )}
+        <Paragraph style={{ fontSize: '1.2em', margin: 0 }}>
+          {renderedText}
+        </Paragraph>
+      </Space>
 
-      {audioUrl && (
-        <Space style={{ marginBottom: '10px' }}>
-          <Tooltip title='Adjust speed of autoplay in words per minute (wpm)'>
-            <Button
-              size='small'
-              onClick={() => setWpm((prev) => Math.max(prev - 5, 50))}
-            >
+      {(autoPlay || ttsAi) && (
+        <Space
+          style={{ marginBottom: '10px' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Tooltip title='Adjust speed of playback in words per minute (wpm)'>
+            <Button size='small' onClick={handleDecreaseWpm}>
               -
             </Button>
             <InputNumber
@@ -112,32 +297,34 @@ const PassageText: React.FC<PassageTextProps> = ({
               max={400}
               size='small'
               value={wpm}
-              onChange={(value) => setWpm(value || 150)}
+              onChange={handleWpmChange}
               style={{ width: '60px' }}
             />
-            <Button
-              size='small'
-              onClick={() => setWpm((prev) => Math.min(prev + 5, 400))}
-            >
+            <Button size='small' onClick={handleIncreaseWpm}>
               +
             </Button>
             <Text>WPM</Text>
           </Tooltip>
-          {ttsAi && (
-            <Button onClick={togglePlayPause}>
-              {isPlaying ? <PauseCircleOutlined /> : <PlayCircleOutlined />}{' '}
-              {isPlaying ? 'Pause' : 'Play'}
-            </Button>
-          )}
+          <Button onClick={togglePause}>
+            {(ttsAi && isPlaying) || (!ttsAi && !isPaused) ? (
+              <PauseCircleOutlined />
+            ) : (
+              <PlayCircleOutlined />
+            )}{' '}
+            {ttsAi ? 'TTS Play' : 'Auto-Play'}
+          </Button>
         </Space>
       )}
 
-      <audio
-        ref={audioRef}
-        src={audioUrl}
-        onEnded={onComplete}
-        key={audioUrl}
-      />
+      {/* Audio Element for TTS */}
+      {ttsAi && audioUrl && (
+        <audio
+          ref={audioRef}
+          src={audioUrl}
+          onEnded={onComplete}
+          key={audioUrl}
+        />
+      )}
     </Space>
   );
 };
