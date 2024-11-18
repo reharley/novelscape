@@ -59,6 +59,11 @@ const FullScreenReaderPage: React.FC = () => {
   // Add useRef to track if prefetch is in progress
   const isPrefetchingRef = useRef(false);
 
+  // New state variable for TTS enabled
+  const [ttsEnabled, setTtsEnabled] = useState<boolean>(
+    userSettings?.ttsAi ?? false
+  );
+
   // Fetch user settings when component mounts
   useEffect(() => {
     const fetchUserSettings = async () => {
@@ -112,11 +117,7 @@ const FullScreenReaderPage: React.FC = () => {
   // New useEffect for prefetching audio
   useEffect(() => {
     const prefetchAudio = async () => {
-      if (
-        !userSettings?.ttsAi ||
-        passages.length === 0 ||
-        isPrefetchingRef.current
-      )
+      if (!ttsEnabled || passages.length === 0 || isPrefetchingRef.current)
         return;
 
       const prefetchCount = 4;
@@ -163,7 +164,7 @@ const FullScreenReaderPage: React.FC = () => {
     if (userSettings?.ttsAi) {
       prefetchAudio();
     }
-  }, [passages, currentPassageIndex, baseUrl, userSettings?.ttsAi]); // Removed `audioMap` from dependencies
+  }, [passages, currentPassageIndex, baseUrl, userSettings?.ttsAi, ttsEnabled]); // Removed `audioMap` from dependencies
 
   // Update passages with audioUrls and wordTimestamps from audioMap
   useEffect(() => {
@@ -652,6 +653,8 @@ const FullScreenReaderPage: React.FC = () => {
               wordTimestamps={currentPassage.wordTimestamps} // Pass wordTimestamps here
               userSettings={userSettings}
               speaker={currentPassage.speaker}
+              ttsEnabled={ttsEnabled}
+              setTtsEnabled={setTtsEnabled}
               onComplete={() => {
                 handleNextPassage();
               }}

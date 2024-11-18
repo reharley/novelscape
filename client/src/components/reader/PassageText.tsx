@@ -5,10 +5,11 @@ import {
   InputNumber,
   Space,
   Spin,
+  Switch,
   Tooltip,
   Typography,
 } from 'antd';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { isNumber } from '../../utils/general';
 import { Profile, UserSettings, WordTimestamp } from '../../utils/types';
 
@@ -21,6 +22,8 @@ interface PassageTextProps {
   onComplete: () => void;
   userSettings?: UserSettings;
   speaker?: Profile | null;
+  ttsEnabled: boolean;
+  setTtsEnabled: (value: boolean) => void;
 }
 
 const PassageText: React.FC<PassageTextProps> = ({
@@ -30,20 +33,58 @@ const PassageText: React.FC<PassageTextProps> = ({
   onComplete,
   speaker,
   userSettings,
+  ttsEnabled,
+  setTtsEnabled,
 }) => {
   const { autoPlay, wpm: initialWpm, ttsAi } = userSettings ?? {};
   const [wpm, setWpm] = useState(initialWpm || 150);
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
 
-  const tokens = text.match(/\s+|[\w’']+|[—–-]|[^\w\s]/g) || [];
-  const tokenObjects = tokens.map((token) => {
-    const isWord = /[\w’']+/.test(token);
-    return { text: token, isWord };
-  });
+  const tokenObjects = useMemo(() => {
+    const tokens = text.match(/\s+|[\w’']+|[—–-]|[^\w\s]/g) || [];
+    const tokenObjects = tokens.map((token) => {
+      const isWord = /[\w’']+/.test(token);
+      return { text: token, isWord };
+    });
+    return tokenObjects;
+  }, [text]);
+
   const wordIndices = tokenObjects.reduce((arr, token, index) => {
     if (token.isWord) arr.push(index);
     return arr;
   }, [] as number[]);
+
+  // Function to normalize words (remove punctuation and convert to lowercase)
+
+  // Map wordTimestamps to token indices
+  const wordTokenIndices = useMemo(getWordTokenIndices, [
+    tokenObjects,
+    wordTimestamps,
+    ttsEnabled,
+  ]);
+  function getWordTokenIndices() {
+    if (ttsEnabled && wordTimestamps.length > 0) {
+      const indices: number[] = [];
+      let wordIndex = 0;
+
+      for (let tokenIndex = 0; tokenIndex < tokenObjects.length; tokenIndex++) {
+        const token = tokenObjects[tokenIndex];
+        if (token.isWord && wordIndex < wordTimestamps.length) {
+          const tokenText = token.text;
+          const wordText = wordTimestamps[wordIndex].word.match(
+            /\s+|[\w’']+|[—–-]|[^\w\s]/g
+          );
+          if (wordText?.includes(tokenText) && !indices.includes(tokenIndex)) {
+            indices.push(tokenIndex);
+            wordIndex++;
+          }
+        }
+      }
+      return indices;
+    } else {
+      return [];
+    }
+  }
 
   // State for autoPlay functionality
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -91,7 +132,7 @@ const PassageText: React.FC<PassageTextProps> = ({
     const handleVisibilityChange = () => {
       if (
         document.visibilityState === 'visible' &&
-        ((ttsAi && isPlaying) || (!ttsAi && !isPaused))
+        ((ttsEnabled && isPlaying) || (!ttsEnabled && !isPaused))
       ) {
         requestWakeLock();
       } else {
@@ -99,7 +140,7 @@ const PassageText: React.FC<PassageTextProps> = ({
       }
     };
 
-    if ((ttsAi && isPlaying) || (!ttsAi && !isPaused)) {
+    if ((ttsEnabled && isPlaying) || (!ttsEnabled && !isPaused)) {
       handleVisibilityChange();
       document.addEventListener('visibilitychange', handleVisibilityChange);
     } else {
@@ -110,11 +151,11 @@ const PassageText: React.FC<PassageTextProps> = ({
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       releaseWakeLock();
     };
-  }, [isPlaying, isPaused, ttsAi]);
+  }, [isPlaying, isPaused, ttsEnabled]);
 
-  // AutoPlay functionality when ttsAi is false
+  // AutoPlay functionality when ttsEnabled is false
   useEffect(() => {
-    if (ttsAi) return; // Skip this effect if ttsAi is true
+    if (ttsEnabled) return; // Skip this effect if ttsEnabled is true
 
     if (!isPaused) {
       if (currentWordIndex < wordIndices.length && isNumber(wpm)) {
@@ -137,13 +178,19 @@ const PassageText: React.FC<PassageTextProps> = ({
         timerRef.current = null;
       }
     };
-  }, [wpm, currentWordIndex, isPaused, wordIndices.length, onComplete, ttsAi]);
+  }, [
+    wpm,
+    currentWordIndex,
+    isPaused,
+    wordIndices.length,
+    onComplete,
+    ttsEnabled,
+  ]);
 
   // TTS functionality
   useEffect(() => {
-    if (!ttsAi) return; // Skip if ttsAi is false
+    if (!ttsEnabled) return; // Skip if ttsEnabled is false
 
-    setCurrentWordIndex(0);
     const audio = audioRef.current;
     if (!audio || wordTimestamps.length === 0) return;
 
@@ -154,15 +201,16 @@ const PassageText: React.FC<PassageTextProps> = ({
     } else {
       audio.pause();
     }
-  }, [audioUrl, isPlaying, ttsAi]);
+  }, [audioUrl, isPlaying, ttsEnabled]);
 
   // Update currentWordIndex based on audio playback time
   useEffect(() => {
-    if (!ttsAi) return; // Check ttsAi flag
+    if (!ttsEnabled) return;
     const audio = audioRef.current;
     if (!audio || wordTimestamps.length === 0) return;
 
     const handleTimeUpdate = () => {
+      console.log('Time update');
       const currentTime = audio.currentTime;
       const currentWord = wordTimestamps.find(
         (wt) => currentTime >= wt.startTime && currentTime < wt.endTime
@@ -180,12 +228,17 @@ const PassageText: React.FC<PassageTextProps> = ({
       }
     };
 
+    let timerId: NodeJS.Timeout | null = null;
+
     if (isPlaying) {
-      audio.addEventListener('timeupdate', handleTimeUpdate);
+      timerId = setInterval(handleTimeUpdate, 100);
     }
 
     return () => {
-      audio.removeEventListener('timeupdate', handleTimeUpdate);
+      if (timerId) {
+        clearInterval(timerId);
+        timerId = null;
+      }
     };
   }, [
     audioUrl,
@@ -193,15 +246,15 @@ const PassageText: React.FC<PassageTextProps> = ({
     isPlaying,
     currentWordIndex,
     onComplete,
-    ttsAi,
+    ttsEnabled,
   ]);
 
   // Adjust audio playback rate based on wpm
   useEffect(() => {
-    if (ttsAi && audioRef.current) {
+    if (ttsEnabled && audioRef.current) {
       audioRef.current.playbackRate = wpm / 150; // Assuming 150 wpm is normal speed
     }
-  }, [ttsAi, wpm]);
+  }, [ttsEnabled, wpm]);
 
   const handleWpmChange = (value: number | null) => {
     if (value !== null) {
@@ -219,7 +272,7 @@ const PassageText: React.FC<PassageTextProps> = ({
 
   const togglePause = (e: any) => {
     e.stopPropagation();
-    if (ttsAi) {
+    if (ttsEnabled) {
       if (!audioUrl) return;
       const audio = audioRef.current;
       if (isPlaying) {
@@ -234,19 +287,20 @@ const PassageText: React.FC<PassageTextProps> = ({
     }
   };
 
+  // console.log('currentWordIndex:', currentWordIndex);
+  // console.log('wordTokenIndices:', wordTokenIndices);
+  // console.log('tokenObjects:', tokenObjects);
+  // console.log('wordTimestamps:', wordTimestamps);
+
   // For highlighting words
   const renderedText = tokenObjects.map((token, index) => {
     let isHighlighted = false;
-    if (ttsAi && wordTimestamps.length > 0) {
-      // Use wordTimestamps to highlight words
-      const currentWordTimestamp = wordTimestamps[currentWordIndex];
-      if (currentWordTimestamp) {
-        const wordText = currentWordTimestamp.word;
-        if (token.isWord && token.text === wordText) {
-          isHighlighted = true;
-        }
+    if (ttsEnabled && wordTokenIndices.length > 0) {
+      const currentTokenIndex = wordTokenIndices[currentWordIndex];
+      if (index === currentTokenIndex) {
+        isHighlighted = true;
       }
-    } else if (!ttsAi && !isPaused) {
+    } else if (!ttsEnabled && !isPaused) {
       isHighlighted = index === wordIndices[currentWordIndex];
     }
     return (
@@ -287,42 +341,49 @@ const PassageText: React.FC<PassageTextProps> = ({
           {renderedText}
         </Paragraph>
       </Space>
-
-      {(autoPlay || ttsAi) && (
+      {(autoPlay || ttsEnabled) && (
         <Space
           style={{ marginBottom: '10px' }}
           onClick={(e) => e.stopPropagation()}
         >
-          <Tooltip title='Adjust speed of playback in words per minute (wpm)'>
-            <Button size='small' onClick={handleDecreaseWpm}>
-              -
-            </Button>
-            <InputNumber
-              min={50}
-              max={400}
-              size='small'
-              value={wpm}
-              onChange={handleWpmChange}
-              style={{ width: '60px' }}
-            />
-            <Button size='small' onClick={handleIncreaseWpm}>
-              +
-            </Button>
-            <Text>WPM</Text>
-          </Tooltip>
+          <Switch
+            checked={ttsEnabled}
+            onChange={(checked) => setTtsEnabled(checked)}
+            checkedChildren='TTS AI On'
+            unCheckedChildren='TTS AI Off'
+          />
+          {!ttsEnabled && (
+            <Tooltip title='Adjust speed of playback in words per minute (wpm)'>
+              <Button size='small' onClick={handleDecreaseWpm}>
+                -
+              </Button>
+              <InputNumber
+                min={50}
+                max={400}
+                size='small'
+                value={wpm}
+                onChange={handleWpmChange}
+                style={{ width: '60px' }}
+              />
+              <Button size='small' onClick={handleIncreaseWpm}>
+                +
+              </Button>
+              <Text>WPM</Text>
+            </Tooltip>
+          )}
           <Button onClick={togglePause}>
-            {(ttsAi && isPlaying) || (!ttsAi && !isPaused) ? (
+            {(ttsEnabled && isPlaying) || (!ttsEnabled && !isPaused) ? (
               <PauseCircleOutlined />
             ) : (
               <PlayCircleOutlined />
             )}{' '}
-            {ttsAi ? 'Play TTS' : 'Auto-Play'}
+            {ttsEnabled ? 'Play TTS' : 'Auto-Play'}
           </Button>
         </Space>
       )}
 
       {/* Audio Element for TTS */}
-      {ttsAi && audioUrl && (
+      {ttsEnabled && audioUrl && (
         <audio
           ref={audioRef}
           src={audioUrl}
