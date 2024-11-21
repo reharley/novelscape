@@ -210,19 +210,25 @@ const PassageText: React.FC<PassageTextProps> = ({
     if (!audio || wordTimestamps.length === 0) return;
 
     const handleTimeUpdate = () => {
-      console.log('Time update');
       const currentTime = audio.currentTime;
-      const currentWord = wordTimestamps.find(
-        (wt) => currentTime >= wt.startTime && currentTime < wt.endTime
-      );
-      if (currentWord) {
-        const index = wordTimestamps.indexOf(currentWord);
-        if (index !== currentWordIndex) {
-          setCurrentWordIndex(index);
+      let index = 0;
+      for (let i = wordTimestamps.length - 1; i >= 0; i--) {
+        index = i;
+        if (currentTime + 0.12 >= wordTimestamps[i].startTime) {
+          // console.log(
+          //   'Current Time:',
+          //   i,
+          //   currentTime,
+          //   wordTimestamps[i].startTime
+          // );
+          break;
         }
-      } else if (
-        currentTime >= wordTimestamps[wordTimestamps.length - 1].endTime
-      ) {
+      }
+      if (index !== currentWordIndex) {
+        setCurrentWordIndex(index);
+      }
+      if (currentTime >= wordTimestamps[wordTimestamps.length - 1].endTime) {
+        console.log('All words completed');
         setCurrentWordIndex(wordIndices.length); // All words completed
         onComplete();
       }
@@ -231,7 +237,7 @@ const PassageText: React.FC<PassageTextProps> = ({
     let timerId: NodeJS.Timeout | null = null;
 
     if (isPlaying) {
-      timerId = setInterval(handleTimeUpdate, 100);
+      timerId = setInterval(handleTimeUpdate, 50);
     }
 
     return () => {

@@ -182,8 +182,6 @@ const FullScreenReaderPage: React.FC = () => {
       )
     );
   }, [audioMap]);
-  console.log(audioMap);
-  console.log('currentPassage', passages[currentPassageIndex]);
   useEffect(() => {
     // Update currentPassageIndex when passageIndex param changes
     if (passageIndex) {
@@ -270,7 +268,7 @@ const FullScreenReaderPage: React.FC = () => {
           currentWordTimestamps.push(wordTimestamps[wordTimestampIndex]);
           wordTimestampIndex++;
         } else {
-          console.warn('Word timestamps exhausted before tokens');
+          // console.warn('Word timestamps exhausted before tokens');
         }
       }
 
