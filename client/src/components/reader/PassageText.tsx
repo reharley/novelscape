@@ -139,6 +139,7 @@ const PassageText: React.FC<PassageTextProps> = ({
         releaseWakeLock();
       }
     };
+    // console.log('wordTimestampsb', wordTimestamps);
 
     if ((ttsEnabled && isPlaying) || (!ttsEnabled && !isPaused)) {
       handleVisibilityChange();
@@ -211,6 +212,7 @@ const PassageText: React.FC<PassageTextProps> = ({
 
     const handleTimeUpdate = () => {
       const currentTime = audio.currentTime;
+      // console.log('Current Time:', currentTime);
       let index = 0;
       for (let i = wordTimestamps.length - 1; i >= 0; i--) {
         index = i;
