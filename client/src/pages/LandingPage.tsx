@@ -1,5 +1,5 @@
 import { DiscordOutlined, DownloadOutlined } from '@ant-design/icons';
-import { useIsAuthenticated, useMsal } from '@azure/msal-react';
+import { useMsal } from '@azure/msal-react';
 import {
   Button,
   Carousel,
@@ -48,12 +48,7 @@ const testimonials = [
 
 const LandingPage: React.FC = () => {
   const { instance } = useMsal();
-  const isAuthenticated = useIsAuthenticated();
   const navigate = useNavigate();
-
-  React.useEffect(() => {
-    if (isAuthenticated) navigate('/');
-  }, [isAuthenticated, navigate]);
 
   const handleLogin = () => {
     if (Capacitor.getPlatform() !== 'web') {
@@ -64,6 +59,9 @@ const LandingPage: React.FC = () => {
         })
         .then((res: any) => {
           localStorage.setItem('accessToken', res.accessToken);
+          setTimeout(() => {
+            navigate('/');
+          }, 600);
         })
         .catch((e) => {
           console.log('error', e);
@@ -76,6 +74,9 @@ const LandingPage: React.FC = () => {
         })
         .then((res: any) => {
           localStorage.setItem('accessToken', res.accessToken);
+          setTimeout(() => {
+            navigate('/');
+          }, 600);
         })
         .catch((e) => {
           console.error('Authentication error:', e);
