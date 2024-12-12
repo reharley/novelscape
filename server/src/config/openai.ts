@@ -5,8 +5,13 @@ if (!process.env.OPENAI_API_KEY) {
   process.exit(1);
 }
 
+// const openai = new OpenAI({
+//   apiKey: process.env.OPENAI_API_KEY,
+// });
+
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.GROK_API_KEY,
+  baseURL: 'https://api.x.ai/v1',
 });
 
 export default openai;
