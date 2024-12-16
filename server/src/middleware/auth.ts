@@ -38,11 +38,10 @@ export function auth(req: any, res: any, next: NextFunction) {
   if (webhooks.includes(req.url)) {
     return next();
   }
-  if (req.url.includes('/api/books/')) {
+  if (req.url.includes('/api/books/') && req.url !== '/api/books/') {
     // Allow access to books for easy sharing
     return next();
-  }
-  if (!req.headers.authorization) {
+  } else if (!req.headers.authorization) {
     res.status(401).send('Unauthorized');
     return;
   }
