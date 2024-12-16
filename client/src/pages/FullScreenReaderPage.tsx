@@ -13,6 +13,7 @@ import html2canvas from 'html2canvas';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import { useMsal } from '@azure/msal-react';
 import GenerateImagesModal from '../components/reader/GenerateImagesModal';
 import PassageText from '../components/reader/PassageText';
 import { apiUrl, isNumber } from '../utils/general';
@@ -38,6 +39,8 @@ const FullScreenReaderPage: React.FC = () => {
     chapterId: string;
     passageIndex: string;
   }>();
+  const msalInstance = useMsal();
+  const loggedIn = msalInstance.accounts.length > 0;
   const navigate = useNavigate();
 
   // State variables
@@ -91,7 +94,7 @@ const FullScreenReaderPage: React.FC = () => {
       }
       const [fetchedChapters, lastReadingPosition] = await Promise.all([
         fetchChapters(bookId),
-        fetchLastReadPosition(bookId),
+        loggedIn ? fetchLastReadPosition(bookId) : null,
       ]);
       if (!passageIndex) {
         if (lastReadingPosition) {
@@ -360,13 +363,15 @@ const FullScreenReaderPage: React.FC = () => {
     chapterId: string,
     passageIndex: number
   ) => {
-    try {
-      await axios.post(`${baseUrl}/books/${bookId}/reading-progress`, {
-        chapterId: parseInt(chapterId, 10),
-        passageIndex,
-      });
-    } catch (error) {
-      console.error('Error updating last read position:', error);
+    if (loggedIn) {
+      try {
+        await axios.post(`${baseUrl}/books/${bookId}/reading-progress`, {
+          chapterId: parseInt(chapterId, 10),
+          passageIndex,
+        });
+      } catch (error) {
+        console.error('Error updating last read position:', error);
+      }
     }
   };
 
@@ -706,6 +711,7 @@ const FullScreenReaderPage: React.FC = () => {
                   e.stopPropagation();
                   setProcessingModalVisible(true);
                 }}
+                disabled={!loggedIn}
               >
                 Generate Images
               </Button>

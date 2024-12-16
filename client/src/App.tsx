@@ -42,12 +42,12 @@ const router = createBrowserRouter(
     <>
       <Route element={<ThemeRoute />}>
         <Route path='welcome' element={<LandingPage />} />
+        <Route path='reader/:bookId' element={<FullScreenReaderPage />} />
+        <Route
+          path='reader/:bookId/:chapterId/:passageIndex'
+          element={<FullScreenReaderPage />}
+        />
         <Route element={<ProtectedRoute />}>
-          <Route path='reader/:bookId' element={<FullScreenReaderPage />} />
-          <Route
-            path='reader/:bookId/:chapterId/:passageIndex'
-            element={<FullScreenReaderPage />}
-          />
           <Route path='/' element={<LayoutRoute />}>
             <Route index element={<LibraryPage />} />
             <Route path='models' element={<ModelManagerPage />} />
