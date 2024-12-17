@@ -3,8 +3,7 @@ import { NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import jwksClient from 'jwks-rsa';
 const client = jwksClient({
-  jwksUri:
-    'https://novelscape.b2clogin.com/novelscape.onmicrosoft.com/B2C_1_signin/discovery/v2.0/keys',
+  jwksUri: process.env.JWKS_URI!,
 });
 
 function getKey(header: any, callback: any) {
